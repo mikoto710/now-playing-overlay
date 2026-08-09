@@ -9,13 +9,16 @@ internal sealed class MediaSessionProbe : IAsyncDisposable
     private readonly ProbeLogSink _sink;
     private readonly ThumbnailInspector _thumbnailInspector;
     private readonly string? _exerciseSource;
+    // WinRT may rewrap unchanged sessions; source counts determine logical add/remove events.
     private readonly ConcurrentDictionary<GlobalSystemMediaTransportControlsSession, SessionSubscription>
         _subscriptions = new();
+    // Prevent overlapping asynchronous reads for the same source.
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _sessionReads =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _knownSourceCounts = new(StringComparer.Ordinal);
 
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
+    // Prevent overlapping SessionsChanged refreshes.
     private readonly SemaphoreSlim _sessionsRefresh = new(1, 1);
     private long _readSequence;
 
@@ -89,6 +92,7 @@ internal sealed class MediaSessionProbe : IAsyncDisposable
         GlobalSystemMediaTransportControlsSessionManager sender,
         SessionsChangedEventArgs args)
     {
+        // WinRT requires a void handler, so contain exceptions inside the callback.
         try
         {
             await _sink.WriteAsync("sessions-changed");
@@ -152,6 +156,7 @@ internal sealed class MediaSessionProbe : IAsyncDisposable
                 subscription.Dispose();
             }
 
+            // Rebuild from current wrappers to avoid subscriptions to replaced sessions.
             _subscriptions.Clear();
             _knownSourceCounts.Clear();
             foreach (var session in sessions)
@@ -181,6 +186,7 @@ internal sealed class MediaSessionProbe : IAsyncDisposable
         GlobalSystemMediaTransportControlsSession session,
         string signal)
     {
+        // Record the cause, then enter the serialized read path.
         try
         {
             await _sink.WriteAsync(signal, session.SourceAppUserModelId);
@@ -201,6 +207,7 @@ internal sealed class MediaSessionProbe : IAsyncDisposable
             return;
         }
 
+        // Serialize duplicate event bursts per source; production debounce remains separate.
         await readLock.WaitAsync();
         try
         {

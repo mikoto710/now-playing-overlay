@@ -27,6 +27,7 @@ internal sealed class ThumbnailInspector
         {
             using var stream = await thumbnail.OpenReadAsync();
             var reportedSize = stream.Size;
+            // Bound allocation before converting the WinRT size to an array length.
             if (reportedSize > MaximumDiagnosticThumbnailBytes)
             {
                 await _sink.WriteAsync(
@@ -47,6 +48,7 @@ internal sealed class ThumbnailInspector
             uint? pixelHeight = null;
             try
             {
+                // Decode for dimensions and format instead of trusting ContentType.
                 stream.Seek(0);
                 var decoder = await BitmapDecoder.CreateAsync(stream);
                 decoderFormat = decoder.DecoderInformation.FriendlyName;
@@ -58,6 +60,7 @@ internal sealed class ThumbnailInspector
                 await WriteErrorAsync("thumbnail-decode-failed", source, exception, new { readId });
             }
 
+            // Rewind after decoding so the hash covers the full payload.
             stream.Seek(0);
             var bytes = await ReadBytesAsync(stream);
             var detectedContentType = ImageSignatureDetector.DetectContentType(bytes);

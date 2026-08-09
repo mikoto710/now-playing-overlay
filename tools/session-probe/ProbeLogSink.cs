@@ -49,6 +49,7 @@ internal sealed class ProbeLogSink : IAsyncDisposable
     public async Task WriteAsync(string eventName, string? sourceAppUserModelId = null, object? details = null)
     {
         var record = new ProbeRecord(
+            // Keep sequence values unique across concurrent callbacks.
             Interlocked.Increment(ref _sequence),
             DateTimeOffset.UtcNow,
             eventName,
@@ -56,6 +57,7 @@ internal sealed class ProbeLogSink : IAsyncDisposable
             details);
         var json = JsonSerializer.Serialize(record, JsonOptions);
 
+        // Serialize console and file writes to prevent interleaved JSONL records.
         await _writeLock.WaitAsync();
         try
         {

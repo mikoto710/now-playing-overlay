@@ -26,6 +26,7 @@ internal static class ProbeApplication
         using var cancellation = new CancellationTokenSource();
         ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
         {
+            // Use cooperative shutdown so DisposeAsync releases WinRT subscriptions.
             eventArgs.Cancel = true;
             cancellation.Cancel();
         };

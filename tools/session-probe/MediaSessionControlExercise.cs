@@ -29,6 +29,7 @@ internal sealed class MediaSessionControlExercise
             "control-exercise-source-matched",
             sourceAppUserModelId,
             new { exactMatchCount = matches.Length });
+        // Never control a guessed candidate; ambiguity is a probe result.
         if (matches.Length != 1)
         {
             throw new InvalidOperationException(
@@ -36,6 +37,7 @@ internal sealed class MediaSessionControlExercise
         }
 
         var session = matches[0];
+        // Allow Windows to publish each requested transition.
         await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
         await RunActionAsync(session, "pause", () => session.TryPauseAsync());
         await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
@@ -46,6 +48,7 @@ internal sealed class MediaSessionControlExercise
         await RunActionAsync(session, "play-after-stop", () => session.TryPlayAsync());
         await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
 
+        // Create the A-to-B-to-C race the production coordinator must handle.
         for (var index = 1; index <= 3; index++)
         {
             await RunActionAsync(session, $"rapid-skip-{index}", () => session.TrySkipNextAsync());
