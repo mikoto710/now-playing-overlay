@@ -23,3 +23,7 @@ Thumbs.db
 # Runtime output
 logs/
 *.log
+
+# Local media-session probe evidence can contain private listening information.
+PROBE_RESULTS.md
+probe-output/
