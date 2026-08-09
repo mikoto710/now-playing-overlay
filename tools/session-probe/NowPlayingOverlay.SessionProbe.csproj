@@ -6,4 +6,8 @@
     <RootNamespace>NowPlayingOverlay.SessionProbe</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="NowPlayingOverlay.SessionProbe.Tests" />
+  </ItemGroup>
+
 </Project>
