@@ -8,6 +8,7 @@ internal sealed class MediaSessionProbe : IAsyncDisposable
 {
     private readonly ProbeLogSink _sink;
     private readonly ThumbnailInspector _thumbnailInspector;
+    private readonly string? _exerciseSource;
     private readonly ConcurrentDictionary<GlobalSystemMediaTransportControlsSession, SessionSubscription>
         _subscriptions = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _sessionReads =
@@ -18,10 +19,11 @@ internal sealed class MediaSessionProbe : IAsyncDisposable
     private readonly SemaphoreSlim _sessionsRefresh = new(1, 1);
     private long _readSequence;
 
-    public MediaSessionProbe(ProbeLogSink sink)
+    public MediaSessionProbe(ProbeLogSink sink, string? exerciseSource)
     {
         _sink = sink;
         _thumbnailInspector = new ThumbnailInspector(sink);
+        _exerciseSource = exerciseSource;
     }
 
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -43,6 +45,12 @@ internal sealed class MediaSessionProbe : IAsyncDisposable
 
         _manager.SessionsChanged += OnSessionsChanged;
         await RefreshSessionsAsync("initial-enumeration");
+
+        if (_exerciseSource is not null)
+        {
+            var exercise = new MediaSessionControlExercise(_sink);
+            await exercise.RunAsync(_manager, _exerciseSource, cancellationToken);
+        }
 
         try
         {

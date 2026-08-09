@@ -5,13 +5,15 @@ namespace NowPlayingOverlay.SessionProbe;
 internal sealed record ProbeOptions(
     bool ShowHelp,
     TimeSpan? Duration,
-    string? OutputPath)
+    string? OutputPath,
+    string? ExerciseSource)
 {
     public static ProbeOptions Parse(IReadOnlyList<string> args)
     {
         var showHelp = false;
         TimeSpan? duration = null;
         string? outputPath = null;
+        string? exerciseSource = null;
 
         for (var index = 0; index < args.Count; index++)
         {
@@ -37,12 +39,15 @@ internal sealed record ProbeOptions(
                 case "--output":
                     outputPath = Path.GetFullPath(ReadValue(args, ref index, "--output"));
                     break;
+                case "--exercise-source":
+                    exerciseSource = ReadValue(args, ref index, "--exercise-source");
+                    break;
                 default:
                     throw new ArgumentException($"Unknown argument: {args[index]}");
             }
         }
 
-        return new ProbeOptions(showHelp, duration, outputPath);
+        return new ProbeOptions(showHelp, duration, outputPath, exerciseSource);
     }
 
     public static void WriteHelp(TextWriter writer)
@@ -55,9 +60,11 @@ internal sealed record ProbeOptions(
         writer.WriteLine("Options:");
         writer.WriteLine("  --duration <seconds>  Stop automatically after the specified duration.");
         writer.WriteLine("  --output <path>       Also write newline-delimited JSON records to a local file.");
+        writer.WriteLine("  --exercise-source <id>  Exercise pause/play/stop and rapid skip on one exact source.");
         writer.WriteLine("  -h, --help            Show this help.");
         writer.WriteLine();
         writer.WriteLine("The probe enumerates every session; it does not use GetCurrentSession().");
+        writer.WriteLine("Control exercise refuses missing or ambiguous exact source IDs.");
         writer.WriteLine("Press Ctrl+C to stop an open-ended run.");
     }
 

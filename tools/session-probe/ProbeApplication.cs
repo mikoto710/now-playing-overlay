@@ -39,7 +39,7 @@ internal static class ProbeApplication
         try
         {
             await using var sink = await ProbeLogSink.CreateAsync(options.OutputPath);
-            await using var probe = new MediaSessionProbe(sink);
+            await using var probe = new MediaSessionProbe(sink, options.ExerciseSource);
             await probe.RunAsync(cancellation.Token);
             return 0;
         }
