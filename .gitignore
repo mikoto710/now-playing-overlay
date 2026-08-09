@@ -1,0 +1,25 @@
+# .NET
+**/bin/
+**/obj/
+artifacts/
+publish/
+TestResults/
+*.user
+*.suo
+
+# Node and Vite
+web/node_modules/
+web/dist/
+web/coverage/
+*.tsbuildinfo
+
+# IDE and operating system
+.vs/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Runtime output
+logs/
+*.log

@@ -1,0 +1,13 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", sans-serif;
+}
+
+html,
+body {
+  width: 350px;
+  height: 70px;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+}

@@ -1,0 +1,9 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>NowPlayingOverlay.SessionProbe</AssemblyName>
+    <RootNamespace>NowPlayingOverlay.SessionProbe</RootNamespace>
+  </PropertyGroup>
+
+</Project>
