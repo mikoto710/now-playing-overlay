@@ -7,6 +7,7 @@ namespace NowPlayingOverlay.SessionProbe;
 internal sealed class MediaSessionProbe : IAsyncDisposable
 {
     private readonly ProbeLogSink _sink;
+    private readonly ThumbnailInspector _thumbnailInspector;
     private readonly ConcurrentDictionary<GlobalSystemMediaTransportControlsSession, SessionSubscription>
         _subscriptions = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _sessionReads =
@@ -20,6 +21,7 @@ internal sealed class MediaSessionProbe : IAsyncDisposable
     public MediaSessionProbe(ProbeLogSink sink)
     {
         _sink = sink;
+        _thumbnailInspector = new ThumbnailInspector(sink);
     }
 
     public async Task RunAsync(CancellationToken cancellationToken)
@@ -251,6 +253,15 @@ internal sealed class MediaSessionProbe : IAsyncDisposable
                     genres = media.Genres.ToArray(),
                     hasThumbnail = media.Thumbnail is not null,
                 });
+
+            if (media.Thumbnail is not null)
+            {
+                await _thumbnailInspector.InspectAsync(source, readId, media.Thumbnail);
+            }
+            else
+            {
+                await _sink.WriteAsync("thumbnail-missing", source, new { readId });
+            }
 
             await _sink.WriteAsync(
                 "session-read-completed",
