@@ -13,6 +13,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ILogger<TrayApplicationContext> _logger;
     private readonly ToolStripMenuItem _statusItem;
     private readonly ContextMenuStrip _menu;
+    private readonly Icon _applicationIcon;
     private readonly NotifyIcon _notifyIcon;
     private readonly System.Windows.Forms.Timer _statusTimer;
     private bool _faultNotificationShown;
@@ -37,10 +38,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
             new ToolStripSeparator(),
             CreateMenuItem("Exit", RequestExit),
         ]);
+        _applicationIcon = ApplicationIconProvider.LoadSmallIcon();
         _notifyIcon = new NotifyIcon
         {
             ContextMenuStrip = _menu,
-            Icon = SystemIcons.Application,
+            Icon = _applicationIcon,
             Text = "Now Playing Overlay",
             Visible = true,
         };
@@ -179,6 +181,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _statusTimer.Dispose();
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
+        _applicationIcon.Dispose();
         _menu.Dispose();
     }
 

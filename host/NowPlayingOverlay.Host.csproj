@@ -5,11 +5,13 @@
     <RootNamespace>NowPlayingOverlay.Host</RootNamespace>
     <OutputType>WinExe</OutputType>
     <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>Assets\NowPlayingOverlay.ico</ApplicationIcon>
     <WebAssetPath>$(MSBuildProjectDirectory)\..\web\dist\NowPlaying.html</WebAssetPath>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="NowPlayingOverlay.Host.Tests" />
+    <EmbeddedResource Include="Assets\NowPlayingOverlay.ico" LogicalName="NowPlayingOverlay.Assets.NowPlayingOverlay.ico" />
     <EmbeddedResource Include="$(WebAssetPath)" LogicalName="NowPlayingOverlay.Web.NowPlaying.html" />
   </ItemGroup>
 

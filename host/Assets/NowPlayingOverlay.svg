@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img">
+  <title>Now Playing Overlay</title>
+  <desc>Two overlapping media windows with a play symbol.</desc>
+  <rect x="270" y="115" width="655" height="660" rx="90" fill="#00B8C8"/>
+  <rect x="95" y="275" width="720" height="650" rx="90" fill="#061F46"/>
+  <path
+    d="M 398.7 433
+       Q 360 410 360 455
+       L 360 745
+       Q 360 790 398.7 767
+       L 641.3 623
+       Q 680 600 641.3 577
+       Z"
+    fill="#FFFFFF"/>
+</svg>
