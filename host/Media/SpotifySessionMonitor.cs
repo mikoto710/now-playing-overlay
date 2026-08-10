@@ -305,7 +305,10 @@ internal sealed class SpotifySessionMonitor : ISessionSource, ISessionSourceStat
         else
         {
             _logger.LogInformation(
-                "No verified Spotify media session found among sources: {Sources}.",
+                "No verified Spotify media session found among {SourceCount} media source(s).",
+                candidates.Count);
+            _logger.LogDebug(
+                "Observed media session sources: {Sources}.",
                 candidates.Select(candidate => candidate.SourceAppUserModelId).ToArray());
         }
     }

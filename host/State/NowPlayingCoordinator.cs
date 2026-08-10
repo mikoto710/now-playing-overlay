@@ -1,4 +1,6 @@
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Media;
 using NowPlayingOverlay.Host.Models;
 
@@ -13,6 +15,7 @@ internal sealed class NowPlayingCoordinator : IAsyncDisposable
     private readonly NowPlayingCoordinatorOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly Func<TimeSpan, CancellationToken, ValueTask> _delay;
+    private readonly ILogger<NowPlayingCoordinator> _logger;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Channel<bool> _refreshSignals = Channel.CreateBounded<bool>(
         new BoundedChannelOptions(1)
@@ -46,7 +49,8 @@ internal sealed class NowPlayingCoordinator : IAsyncDisposable
         ArtworkCache artworkCache,
         NowPlayingCoordinatorOptions? options = null,
         TimeProvider? timeProvider = null,
-        Func<TimeSpan, CancellationToken, ValueTask>? delay = null)
+        Func<TimeSpan, CancellationToken, ValueTask>? delay = null,
+        ILogger<NowPlayingCoordinator>? logger = null)
     {
         _source = source ?? throw new ArgumentNullException(nameof(source));
         _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -55,6 +59,7 @@ internal sealed class NowPlayingCoordinator : IAsyncDisposable
         _options.Validate();
         _timeProvider = timeProvider ?? TimeProvider.System;
         _delay = delay ?? DefaultDelayAsync;
+        _logger = logger ?? NullLogger<NowPlayingCoordinator>.Instance;
         _artworkRevision = store.Current.Artwork?.ArtworkRevision ?? 0;
     }
 
@@ -439,9 +444,23 @@ internal sealed class NowPlayingCoordinator : IAsyncDisposable
 
     private void SetLastError(Exception? error)
     {
+        Exception? previous;
         lock (_lifecycleGate)
         {
+            previous = _lastError;
             _lastError = error;
+        }
+
+        if (error is not null
+            && (previous is null
+                || previous.GetType() != error.GetType()
+                || !string.Equals(previous.Message, error.Message, StringComparison.Ordinal)))
+        {
+            _logger.LogError(error, "The now-playing coordinator could not read the media session.");
+        }
+        else if (error is null && previous is not null)
+        {
+            _logger.LogInformation("The now-playing coordinator recovered after a media session read failure.");
         }
     }
 

@@ -1,8 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <AssemblyName>NowPlayingOverlay.Host</AssemblyName>
+    <AssemblyName>NowPlayingOverlay</AssemblyName>
     <RootNamespace>NowPlayingOverlay.Host</RootNamespace>
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
     <WebAssetPath>$(MSBuildProjectDirectory)\..\web\dist\NowPlaying.html</WebAssetPath>
   </PropertyGroup>
 

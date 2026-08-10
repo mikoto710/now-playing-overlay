@@ -1,4 +1,6 @@
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.State;
@@ -9,8 +11,11 @@ internal sealed class NowPlayingStore
     private readonly Dictionary<long, Channel<NowPlayingSnapshot>> _subscribers = [];
     private long _nextSubscriberId;
     private NowPlayingSnapshot _current;
+    private readonly ILogger<NowPlayingStore> _logger;
 
-    public NowPlayingStore(NowPlayingSnapshot initialSnapshot)
+    public NowPlayingStore(
+        NowPlayingSnapshot initialSnapshot,
+        ILogger<NowPlayingStore>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(initialSnapshot);
         if (initialSnapshot.SnapshotRevision != 0)
@@ -19,6 +24,7 @@ internal sealed class NowPlayingStore
         }
 
         _current = initialSnapshot;
+        _logger = logger ?? NullLogger<NowPlayingStore>.Instance;
     }
 
     public NowPlayingSnapshot Current
@@ -68,9 +74,15 @@ internal sealed class NowPlayingStore
             {
                 subscriber.Writer.TryWrite(candidate);
             }
-
-            return true;
         }
+
+        // Normal logs intentionally omit track text and artwork identifiers.
+        _logger.LogInformation(
+            "Committed snapshot revision {SnapshotRevision} with playback {Playback} and artwork presence {HasArtwork}.",
+            snapshot.SnapshotRevision,
+            snapshot.Playback,
+            snapshot.Artwork is not null);
+        return true;
     }
 
     public NowPlayingSubscription Subscribe()

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using NowPlayingOverlay.Host.Media;
 using NowPlayingOverlay.Host.State;
 
@@ -9,13 +10,15 @@ internal sealed class OverlayRuntimeService(
     NowPlayingCoordinator coordinator,
     ISessionSource sessionSource,
     HostRuntimeState runtime,
-    OverlayHostOptions options) : IHostedService
+    OverlayHostOptions options,
+    ILogger<OverlayRuntimeService> logger) : IHostedService
 {
     private CancellationTokenSource? _scenarioCancellation;
     private Task? _scenario;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        logger.LogInformation("Starting the overlay runtime on port {Port}.", options.Port);
         coordinator.Start();
         runtime.MarkReady();
         if (options.RunFakeScenario)
@@ -33,6 +36,7 @@ internal sealed class OverlayRuntimeService(
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        logger.LogInformation("Stopping the overlay runtime.");
         if (_scenarioCancellation is not null)
         {
             await _scenarioCancellation.CancelAsync();
@@ -51,5 +55,6 @@ internal sealed class OverlayRuntimeService(
 
         await coordinator.DisposeAsync();
         _scenarioCancellation?.Dispose();
+        logger.LogInformation("The overlay runtime stopped.");
     }
 }

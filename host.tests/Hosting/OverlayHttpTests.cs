@@ -168,6 +168,63 @@ public sealed class OverlayHttpTests
         Assert.Equal(HttpStatusCode.MethodNotAllowed, post.StatusCode);
     }
 
+    [Fact]
+    public async Task CommandLinePortOverridesPersistedPort()
+    {
+        var commandLinePort = ReservePort();
+        var app = OverlayApplication.Build(
+        [
+            $"--Host:Port={commandLinePort}",
+            "--Host:SessionSource=Fake",
+            "--Host:RunFakeScenario=false",
+        ], persistedPort: ReservePort());
+
+        var options = app.Services.GetRequiredService<NowPlayingOverlay.Host.Configuration.HostOptions>();
+
+        Assert.Equal(commandLinePort, options.Port);
+        await app.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task GracefulStopClosesRuntimeAndDisposesSessionSource()
+    {
+        var port = ReservePort();
+        var app = OverlayApplication.Build(
+        [
+            $"--Host:Port={port}",
+            "--Host:SessionSource=Fake",
+            "--Host:RunFakeScenario=false",
+            "--Logging:LogLevel:Default=Warning",
+        ]);
+        await app.StartAsync();
+        var source = app.Services.GetRequiredService<FakeSessionSource>();
+
+        await app.StopAsync();
+
+        Assert.Throws<ObjectDisposedException>(() =>
+            source.Publish(SessionObservation.Create(null, PlaybackState.Unavailable)));
+        await app.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task OccupiedPortFailsWithoutSelectingAnotherPort()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var app = OverlayApplication.Build(
+        [
+            $"--Host:Port={port}",
+            "--Host:SessionSource=Fake",
+            "--Host:RunFakeScenario=false",
+            "--Logging:LogLevel:Default=Warning",
+        ]);
+
+        await Assert.ThrowsAnyAsync<Exception>(async () => await app.StartAsync());
+
+        await app.DisposeAsync();
+    }
+
     private static SessionObservation Playing(string title, IArtworkReader? artworkReader = null)
     {
         return SessionObservation.Create(
@@ -315,13 +372,14 @@ public sealed class OverlayHttpTests
             throw new TimeoutException("State did not reach the expected value.");
         }
 
-        private static int ReservePort()
-        {
-            var listener = new TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
-            var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-            listener.Stop();
-            return port;
-        }
+    }
+
+    private static int ReservePort()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        return port;
     }
 }

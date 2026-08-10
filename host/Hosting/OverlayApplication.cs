@@ -2,9 +2,11 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Media;
 using NowPlayingOverlay.Host.Models;
 using NowPlayingOverlay.Host.Protocol;
+using NowPlayingOverlay.Host.Shell;
 using NowPlayingOverlay.Host.State;
 
 namespace NowPlayingOverlay.Host.Hosting;
@@ -15,10 +17,22 @@ internal static class OverlayApplication
 {
     private static readonly string[] GetAndHead = [HttpMethods.Get, HttpMethods.Head];
 
-    public static WebApplication Build(string[] args)
+    public static WebApplication Build(
+        string[] args,
+        int? persistedPort = null,
+        BoundedLogFile? applicationLog = null)
     {
         var builder = WebApplication.CreateBuilder(args);
-        var options = new OverlayHostOptions();
+        if (applicationLog is not null)
+        {
+            builder.Logging.ClearProviders();
+            builder.Logging.AddProvider(new BoundedFileLoggerProvider(applicationLog));
+        }
+
+        var options = new OverlayHostOptions
+        {
+            Port = persistedPort ?? OverlayHostOptions.DefaultPort,
+        };
         builder.Configuration.GetSection(OverlayHostOptions.SectionName).Bind(options);
         options.Validate();
         var pageAsset = OverlayPageAsset.Load(options, builder.Environment.ContentRootPath);
@@ -30,11 +44,15 @@ internal static class OverlayApplication
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<HostRuntimeState>();
         builder.Services.AddSingleton(sp => new NowPlayingStore(
-            NowPlayingSnapshot.CreateInitial(Guid.NewGuid(), sp.GetRequiredService<TimeProvider>().GetUtcNow())));
+            NowPlayingSnapshot.CreateInitial(
+                Guid.NewGuid(),
+                sp.GetRequiredService<TimeProvider>().GetUtcNow()),
+            sp.GetRequiredService<ILogger<NowPlayingStore>>()));
         builder.Services.AddSingleton<ArtworkCache>();
         RegisterSessionSource(builder.Services, options);
         builder.Services.AddSingleton<NowPlayingCoordinator>();
         builder.Services.AddSingleton<HostHealthService>();
+        builder.Services.AddSingleton<TrayStatusService>();
         builder.Services.AddSingleton(sp => new SseConnectionLimiter(options.MaximumSseConnections));
         builder.Services.AddHostedService<OverlayRuntimeService>();
 

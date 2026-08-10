@@ -5,6 +5,6 @@ public sealed class ScaffoldTests
     [Fact]
     public void HostProjectIsReferencedByTheTestAssembly()
     {
-        Assert.Equal("NowPlayingOverlay.Host", typeof(Program).Assembly.GetName().Name);
+        Assert.Equal("NowPlayingOverlay", typeof(Program).Assembly.GetName().Name);
     }
 }
