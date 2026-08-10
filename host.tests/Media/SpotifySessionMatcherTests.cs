@@ -7,18 +7,34 @@ public sealed class SpotifySessionMatcherTests
 {
     private readonly SpotifySessionMatcher _matcher = new();
 
-    [Fact]
-    public void SelectsOnlyTheVerifiedExactSourceCaseInsensitively()
+    [Theory]
+    [InlineData("spotify.EXE")]
+    [InlineData("spotifyab.spotifymusic_ZPDNEKDRZREA0!spotify")]
+    public void SelectsVerifiedExactSourcesCaseInsensitively(string source)
     {
         var chrome = Session("Chrome", MediaSessionPlaybackStatus.Playing);
         var prefix = Session("SpotifyAB.SpotifyMusic", MediaSessionPlaybackStatus.Playing);
-        var spotify = Session("spotify.EXE", MediaSessionPlaybackStatus.Paused);
+        var spotify = Session(source, MediaSessionPlaybackStatus.Paused);
 
         var selection = _matcher.Select([chrome, prefix, spotify]);
 
         Assert.Equal(SpotifySessionSelectionStatus.Selected, selection.Status);
         Assert.Same(spotify.Session, selection.Session);
         Assert.Equal(1, selection.MatchCount);
+    }
+
+    [Theory]
+    [InlineData("SpotifyAB.SpotifyMusic")]
+    [InlineData("SpotifyAB.SpotifyMusic_zpdnekdrzrea0")]
+    [InlineData("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify-preview")]
+    public void RejectsNearMatchesForVerifiedSources(string source)
+    {
+        var selection = _matcher.Select(
+        [
+            Session(source, MediaSessionPlaybackStatus.Playing),
+        ]);
+
+        Assert.Equal(SpotifySessionSelection.NotFound, selection);
     }
 
     [Fact]
@@ -43,6 +59,21 @@ public sealed class SpotifySessionMatcherTests
 
         Assert.Equal(SpotifySessionSelectionStatus.Selected, selection.Status);
         Assert.Same(playing.Session, selection.Session);
+        Assert.Equal(2, selection.MatchCount);
+    }
+
+    [Fact]
+    public void SelectsOnlyPlayingCandidateAcrossVerifiedInstallSources()
+    {
+        var win32 = Session("Spotify.exe", MediaSessionPlaybackStatus.Paused);
+        var store = Session(
+            "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify",
+            MediaSessionPlaybackStatus.Playing);
+
+        var selection = _matcher.Select([win32, store]);
+
+        Assert.Equal(SpotifySessionSelectionStatus.Selected, selection.Status);
+        Assert.Same(store.Session, selection.Session);
         Assert.Equal(2, selection.MatchCount);
     }
 

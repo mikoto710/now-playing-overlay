@@ -2,16 +2,23 @@ namespace NowPlayingOverlay.Host.Media;
 
 internal sealed class SpotifySessionMatcher
 {
-    public const string VerifiedSourceAppUserModelId = "Spotify.exe";
+    public const string VerifiedWin32SourceAppUserModelId = "Spotify.exe";
+    public const string VerifiedStoreSourceAppUserModelId =
+        "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify";
+
+    private static readonly HashSet<string> VerifiedSourceAppUserModelIds =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            VerifiedWin32SourceAppUserModelId,
+            VerifiedStoreSourceAppUserModelId,
+        };
 
     public SpotifySessionSelection Select(IEnumerable<SpotifySessionCandidate> candidates)
     {
         ArgumentNullException.ThrowIfNull(candidates);
         var matches = candidates
-            .Where(candidate => string.Equals(
-                candidate.SourceAppUserModelId,
-                VerifiedSourceAppUserModelId,
-                StringComparison.OrdinalIgnoreCase))
+            .Where(candidate => VerifiedSourceAppUserModelIds.Contains(
+                candidate.SourceAppUserModelId))
             .ToArray();
 
         if (matches.Length == 0)

@@ -24,6 +24,24 @@ public sealed class SpotifySessionMonitorTests
     }
 
     [Fact]
+    public async Task InitializesAndSelectsVerifiedStoreSpotifySession()
+    {
+        const string source = "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify";
+        var spotify = new StubSession(
+            source,
+            MediaSessionPlaybackStatus.Playing,
+            Paused(source, "Store track"));
+        var manager = new StubManager([spotify]);
+        await using var monitor = CreateMonitor(manager);
+
+        var observation = await monitor.ReadAsync(CancellationToken.None);
+
+        Assert.Equal(source, observation.SourceAppUserModelId);
+        Assert.Equal("Store track", observation.Track!.Title);
+        Assert.Equal(SpotifySessionSelectionStatus.Selected, monitor.SelectionStatus);
+    }
+
+    [Fact]
     public async Task MissingAndAmbiguousSessionsReturnUnavailableWithoutGuessing()
     {
         var manager = new StubManager(
