@@ -5,4 +5,8 @@
     <RootNamespace>NowPlayingOverlay.Host</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="NowPlayingOverlay.Host.Tests" />
+  </ItemGroup>
+
 </Project>
