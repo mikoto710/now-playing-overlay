@@ -21,7 +21,9 @@ internal sealed record HostOptions
 
     public TimeSpan SseHeartbeatInterval { get; init; } = TimeSpan.FromSeconds(15);
 
-    public bool RunFakeScenario { get; init; } = true;
+    public SessionSourceKind SessionSource { get; init; } = SessionSourceKind.Windows;
+
+    public bool RunFakeScenario { get; init; }
 
     public void Validate()
     {
@@ -63,6 +65,16 @@ internal sealed record HostOptions
         if (SseHeartbeatInterval <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(SseHeartbeatInterval));
+        }
+
+        if (!Enum.IsDefined(SessionSource))
+        {
+            throw new ArgumentOutOfRangeException(nameof(SessionSource));
+        }
+
+        if (RunFakeScenario && SessionSource != SessionSourceKind.Fake)
+        {
+            throw new ArgumentException("The fake scenario requires the fake session source.");
         }
     }
 }

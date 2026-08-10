@@ -241,6 +241,7 @@ public sealed class OverlayHttpTests
             var app = OverlayApplication.Build(
             [
                 $"--Host:Port={port}",
+                "--Host:SessionSource=Fake",
                 "--Host:RunFakeScenario=false",
                 $"--Host:SseHeartbeatInterval=00:00:00.{heartbeatMilliseconds:D3}",
                 $"--Host:MaximumSseConnections={maximumSseConnections}",

@@ -31,8 +31,7 @@ internal static class OverlayApplication
         builder.Services.AddSingleton(sp => new NowPlayingStore(
             NowPlayingSnapshot.CreateInitial(Guid.NewGuid(), sp.GetRequiredService<TimeProvider>().GetUtcNow())));
         builder.Services.AddSingleton<ArtworkCache>();
-        builder.Services.AddSingleton<FakeSessionSource>();
-        builder.Services.AddSingleton<ISessionSource>(sp => sp.GetRequiredService<FakeSessionSource>());
+        RegisterSessionSource(builder.Services, options);
         builder.Services.AddSingleton<NowPlayingCoordinator>();
         builder.Services.AddSingleton<HostHealthService>();
         builder.Services.AddSingleton(sp => new SseConnectionLimiter(options.MaximumSseConnections));
@@ -47,6 +46,21 @@ internal static class OverlayApplication
         });
         MapEndpoints(app, options);
         return app;
+    }
+
+    private static void RegisterSessionSource(IServiceCollection services, OverlayHostOptions options)
+    {
+        if (options.SessionSource == Configuration.SessionSourceKind.Fake)
+        {
+            services.AddSingleton<FakeSessionSource>();
+            services.AddSingleton<ISessionSource>(sp => sp.GetRequiredService<FakeSessionSource>());
+            return;
+        }
+
+        services.AddSingleton<IMediaSessionManagerFactory, WindowsMediaSessionManagerFactory>();
+        services.AddSingleton<SpotifySessionMatcher>();
+        services.AddSingleton<SpotifySessionMonitor>();
+        services.AddSingleton<ISessionSource>(sp => sp.GetRequiredService<SpotifySessionMonitor>());
     }
 
     private static void ConfigureKestrel(KestrelServerOptions server, OverlayHostOptions options)

@@ -7,7 +7,7 @@ using OverlayHostOptions = Configuration.HostOptions;
 
 internal sealed class OverlayRuntimeService(
     NowPlayingCoordinator coordinator,
-    FakeSessionSource fakeSource,
+    ISessionSource sessionSource,
     HostRuntimeState runtime,
     OverlayHostOptions options) : IHostedService
 {
@@ -20,6 +20,8 @@ internal sealed class OverlayRuntimeService(
         runtime.MarkReady();
         if (options.RunFakeScenario)
         {
+            var fakeSource = sessionSource as FakeSessionSource
+                ?? throw new InvalidOperationException("The fake scenario requires the fake session source.");
             _scenarioCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _scenario = fakeSource.RunScriptAsync(
                 FakeScenario.Create(),

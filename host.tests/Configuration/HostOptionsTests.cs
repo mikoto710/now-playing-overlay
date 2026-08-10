@@ -13,6 +13,8 @@ public sealed class HostOptionsTests
 
         Assert.Equal(10598, options.Port);
         Assert.Equal("127.0.0.1", HostOptions.AllowedHost);
+        Assert.Equal(SessionSourceKind.Windows, options.SessionSource);
+        Assert.False(options.RunFakeScenario);
         Assert.InRange(options.MaximumSseConnections, 1, options.MaximumConcurrentConnections);
         Assert.True(options.MaximumRequestHeaderCount > 0);
         Assert.True(options.MaximumRequestHeadersTotalSize > 0);
@@ -38,5 +40,13 @@ public sealed class HostOptionsTests
         };
 
         Assert.Throws<ArgumentOutOfRangeException>(options.Validate);
+    }
+
+    [Fact]
+    public void RejectsFakeScenarioWithWindowsSource()
+    {
+        var options = new HostOptions { RunFakeScenario = true };
+
+        Assert.Throws<ArgumentException>(options.Validate);
     }
 }
