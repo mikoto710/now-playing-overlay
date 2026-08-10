@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
@@ -22,10 +21,12 @@ internal static class OverlayApplication
         var options = new OverlayHostOptions();
         builder.Configuration.GetSection(OverlayHostOptions.SectionName).Bind(options);
         options.Validate();
+        var pageAsset = OverlayPageAsset.Load(options, builder.Environment.ContentRootPath);
 
         builder.WebHost.ConfigureKestrel(server => ConfigureKestrel(server, options));
         builder.Services.AddHostFiltering(filter => filter.AllowedHosts = [OverlayHostOptions.AllowedHost]);
         builder.Services.AddSingleton(options);
+        builder.Services.AddSingleton(pageAsset);
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddSingleton<HostRuntimeState>();
         builder.Services.AddSingleton(sp => new NowPlayingStore(
@@ -77,20 +78,20 @@ internal static class OverlayApplication
 
     private static void MapEndpoints(WebApplication app, OverlayHostOptions options)
     {
-        app.MapMethods("/NowPlaying.html", GetAndHead, WriteDiagnosticPageAsync);
+        app.MapMethods("/NowPlaying.html", GetAndHead, WriteOverlayPageAsync);
         app.MapMethods("/api/v1/state", GetAndHead, WriteStateAsync);
         app.MapMethods("/api/v1/artwork/{artworkId}", GetAndHead, WriteArtworkAsync);
         app.MapGet("/api/v1/events", context => WriteEventsAsync(context, options));
         app.MapMethods("/health", GetAndHead, WriteHealthAsync);
     }
 
-    private static async Task WriteDiagnosticPageAsync(HttpContext context)
+    private static async Task WriteOverlayPageAsync(HttpContext context, OverlayPageAsset pageAsset)
     {
         context.Response.ContentType = "text/html; charset=utf-8";
         context.Response.Headers.CacheControl = "no-store";
         context.Response.Headers.ContentSecurityPolicy =
-            "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'";
-        await WriteBodyAsync(context, Encoding.UTF8.GetBytes(DiagnosticPage.Html));
+            "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+        await WriteBodyAsync(context, pageAsset.Bytes);
     }
 
     private static async Task WriteStateAsync(HttpContext context, NowPlayingStore store)

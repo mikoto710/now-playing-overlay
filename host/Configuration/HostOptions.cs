@@ -4,8 +4,9 @@ internal sealed record HostOptions
 {
     public const string SectionName = "Host";
     public const string AllowedHost = "127.0.0.1";
+    public const int DefaultPort = 10598;
 
-    public int Port { get; init; } = 10598;
+    public int Port { get; init; } = DefaultPort;
 
     public int MaximumConcurrentConnections { get; init; } = 32;
 
@@ -24,6 +25,10 @@ internal sealed record HostOptions
     public SessionSourceKind SessionSource { get; init; } = SessionSourceKind.Windows;
 
     public bool RunFakeScenario { get; init; }
+
+    public WebAssetMode WebAssetMode { get; init; } = WebAssetMode.Embedded;
+
+    public string? DevelopmentWebRoot { get; init; }
 
     public void Validate()
     {
@@ -75,6 +80,18 @@ internal sealed record HostOptions
         if (RunFakeScenario && SessionSource != SessionSourceKind.Fake)
         {
             throw new ArgumentException("The fake scenario requires the fake session source.");
+        }
+
+        if (!Enum.IsDefined(WebAssetMode))
+        {
+            throw new ArgumentOutOfRangeException(nameof(WebAssetMode));
+        }
+
+        if (DevelopmentWebRoot is not null && string.IsNullOrWhiteSpace(DevelopmentWebRoot))
+        {
+            throw new ArgumentException(
+                "The development web root must be a non-empty path when provided.",
+                nameof(DevelopmentWebRoot));
         }
     }
 }

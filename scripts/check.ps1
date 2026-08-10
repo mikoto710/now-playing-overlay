@@ -21,10 +21,6 @@ function Invoke-CheckedCommand {
 
 Push-Location $repositoryRoot
 try {
-    Invoke-CheckedCommand dotnet restore NowPlayingOverlay.sln
-    Invoke-CheckedCommand dotnet build NowPlayingOverlay.sln --no-restore
-    Invoke-CheckedCommand dotnet test NowPlayingOverlay.sln --no-build
-
     Push-Location (Join-Path $repositoryRoot "web")
     try {
         Invoke-CheckedCommand npm ci
@@ -35,6 +31,10 @@ try {
     finally {
         Pop-Location
     }
+
+    Invoke-CheckedCommand dotnet restore NowPlayingOverlay.sln
+    Invoke-CheckedCommand dotnet build NowPlayingOverlay.sln --no-restore
+    Invoke-CheckedCommand dotnet test NowPlayingOverlay.sln --no-build
 }
 finally {
     Pop-Location

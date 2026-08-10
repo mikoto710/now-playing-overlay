@@ -3,10 +3,18 @@
   <PropertyGroup>
     <AssemblyName>NowPlayingOverlay.Host</AssemblyName>
     <RootNamespace>NowPlayingOverlay.Host</RootNamespace>
+    <WebAssetPath>$(MSBuildProjectDirectory)\..\web\dist\NowPlaying.html</WebAssetPath>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="NowPlayingOverlay.Host.Tests" />
+    <EmbeddedResource Include="$(WebAssetPath)" LogicalName="NowPlayingOverlay.Web.NowPlaying.html" />
   </ItemGroup>
+
+  <Target Name="PrepareEmbeddedWebAsset" BeforeTargets="PrepareResourceNames">
+    <Error
+      Condition="!Exists('$(WebAssetPath)')"
+      Text="The production web asset is missing at '$(WebAssetPath)'. Run 'npm --prefix web run build' before building the host." />
+  </Target>
 
 </Project>

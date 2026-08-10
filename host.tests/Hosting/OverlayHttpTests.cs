@@ -36,7 +36,7 @@ public sealed class OverlayHttpTests
     }
 
     [Fact]
-    public async Task DiagnosticPageAndStateUseNoStoreAndSecurityHeaders()
+    public async Task ProductionPageAndStateUseNoStoreAndSecurityHeaders()
     {
         await using var host = await TestOverlayHost.StartAsync();
 
@@ -46,9 +46,14 @@ public sealed class OverlayHttpTests
         using var json = JsonDocument.Parse(await state.Content.ReadAsStringAsync());
 
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
-        Assert.Contains("protocol diagnostic", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"now-playing\"", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("protocol diagnostic", html, StringComparison.Ordinal);
         Assert.Equal("no-store", page.Headers.CacheControl!.ToString());
         Assert.True(page.Headers.Contains("Content-Security-Policy"));
+        Assert.Contains(
+            "frame-ancestors 'none'",
+            page.Headers.GetValues("Content-Security-Policy").Single(),
+            StringComparison.Ordinal);
         Assert.Equal("nosniff", page.Headers.GetValues("X-Content-Type-Options").Single());
         Assert.Equal("no-store", state.Headers.CacheControl!.ToString());
         Assert.Equal(1, json.RootElement.GetProperty("protocolVersion").GetInt32());
