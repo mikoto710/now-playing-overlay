@@ -6,7 +6,7 @@ internal sealed class PortConfigurationDialog : Form
 
     public PortConfigurationDialog(int currentPort)
     {
-        Text = "Now Playing Overlay port";
+        Text = "Now Playing Overlay Port";
         AutoScaleMode = AutoScaleMode.Dpi;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;

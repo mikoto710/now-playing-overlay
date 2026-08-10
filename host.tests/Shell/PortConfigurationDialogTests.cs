@@ -19,6 +19,7 @@ public sealed class PortConfigurationDialogTests
 
             dialog.PerformLayout();
 
+            Assert.Equal("Now Playing Overlay Port", dialog.Text);
             var layout = Assert.Single(dialog.Controls.OfType<TableLayoutPanel>());
             var controls = Descendants(dialog).ToArray();
             var explanation = Assert.Single(

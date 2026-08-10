@@ -32,9 +32,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _statusItem,
             new ToolStripSeparator(),
             CreateMenuItem("Copy OBS URL", CopyOverlayUrl),
-            CreateMenuItem("Open overlay", OpenOverlay),
-            CreateMenuItem("Open logs", OpenLogs),
-            CreateMenuItem("Configure port...", ConfigurePort),
+            CreateMenuItem("Open Overlay", OpenOverlay),
+            CreateMenuItem("Open Logs", OpenLogs),
+            CreateMenuItem("Configure Port...", ConfigurePort),
             new ToolStripSeparator(),
             CreateMenuItem("Exit", RequestExit),
         ]);
@@ -86,7 +86,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _faultNotificationShown = true;
             _notifyIcon.ShowBalloonTip(
                 timeout: 5000,
-                tipTitle: "Now Playing Overlay needs attention",
+                tipTitle: "Now Playing Overlay Needs Attention",
                 tipText: "The local host reported a fault. Open the logs for details.",
                 tipIcon: ToolTipIcon.Error);
         }
@@ -150,7 +150,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
                 MessageBox.Show(
                     $"Port {dialog.SelectedPort} was saved. Restart Now Playing Overlay, then update the OBS Browser Source URL to:\n\n{result.OverlayUrl}\n\nThis running instance remains on {_controller.OverlayUrl} until it exits.",
-                    "Restart required",
+                    "Restart Required",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
             });

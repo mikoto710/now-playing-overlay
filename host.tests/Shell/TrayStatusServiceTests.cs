@@ -18,7 +18,7 @@ public sealed class TrayStatusServiceTests
         var runtime = new HostRuntimeState(TimeProvider.System);
         var service = new TrayStatusService(runtime, coordinator, source, store);
 
-        Assert.Equal("Host starting", service.GetCurrent().Text);
+        Assert.Equal("Host Starting", service.GetCurrent().Text);
         runtime.MarkReady();
         Assert.Equal("Waiting for Spotify", service.GetCurrent().Text);
         store.TryCommit(
@@ -31,7 +31,7 @@ public sealed class TrayStatusServiceTests
 
         var status = service.GetCurrent();
 
-        Assert.Equal("Spotify: playing", status.Text);
+        Assert.Equal("Spotify: Playing", status.Text);
         Assert.DoesNotContain("Private", status.Text, StringComparison.Ordinal);
         await coordinator.DisposeAsync();
     }

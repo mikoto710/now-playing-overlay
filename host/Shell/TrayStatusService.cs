@@ -14,17 +14,17 @@ internal sealed class TrayStatusService(
     {
         if (coordinator.LastError is not null)
         {
-            return new TrayStatus("Host faulted - open logs for details", IsFaulted: true);
+            return new TrayStatus("Host Faulted - Open Logs For Details", IsFaulted: true);
         }
 
         if (!runtime.IsReady)
         {
-            return new TrayStatus("Host starting", IsFaulted: false);
+            return new TrayStatus("Host Starting", IsFaulted: false);
         }
 
         if (source is not ISessionSourceStatus status || !status.IsAvailable)
         {
-            return new TrayStatus("Windows media sessions unavailable", IsFaulted: false);
+            return new TrayStatus("Windows Media Sessions Unavailable", IsFaulted: false);
         }
 
         var snapshot = store.Current;
@@ -33,6 +33,6 @@ internal sealed class TrayStatusService(
             return new TrayStatus("Waiting for Spotify", IsFaulted: false);
         }
 
-        return new TrayStatus($"Spotify: {snapshot.Playback.ToString().ToLowerInvariant()}", IsFaulted: false);
+        return new TrayStatus($"Spotify: {snapshot.Playback}", IsFaulted: false);
     }
 }
