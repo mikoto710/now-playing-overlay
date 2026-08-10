@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  font-family: "Segoe UI", sans-serif;
+  font-family: "SF Pro Display", "Segoe UI", Helvetica, Arial, sans-serif;
 }
 
 html,
@@ -10,4 +10,133 @@ body {
   margin: 0;
   overflow: hidden;
   background: transparent;
+}
+
+.now-playing {
+  position: relative;
+  box-sizing: border-box;
+  width: 350px;
+  height: 70px;
+  padding: 0;
+  overflow: hidden;
+  background: rgb(27, 29, 32);
+  transform: translateX(-500px);
+}
+
+.artwork-placeholder {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  width: 70px;
+  height: 70px;
+  background: rgb(22, 24, 27);
+  pointer-events: none;
+}
+
+.artwork-placeholder-disc,
+.artwork-placeholder-groove {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.16);
+}
+
+.artwork-placeholder-disc {
+  stroke-width: 1.5;
+}
+
+.artwork-placeholder-groove {
+  stroke-width: 1;
+}
+
+.artwork-placeholder-label {
+  fill: rgba(37, 199, 160, 0.22);
+}
+
+.artwork-placeholder-hole {
+  fill: rgba(37, 199, 160, 0.55);
+}
+
+.artwork {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  width: 70px;
+  height: 70px;
+  margin: 0;
+  padding: 0;
+  object-fit: contain;
+}
+
+.artwork[hidden] {
+  display: none;
+}
+
+#artwork-base {
+  z-index: 5;
+}
+
+#artwork-overlay {
+  z-index: 10;
+}
+
+.track-details {
+  position: absolute;
+  top: 7px;
+  left: 70px;
+  box-sizing: border-box;
+  width: 280px;
+  height: 62px;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+.artist {
+  color: rgb(37, 199, 160);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 19px;
+  display: inline-block;
+  margin-top: 3px;
+  margin-bottom: 8px;
+  margin-left: 9px;
+  padding-left: 3px;
+  vertical-align: top;
+}
+
+.track {
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 26px;
+  display: inline-block;
+  margin-top: -2px;
+  margin-left: 9px;
+  padding-left: 3px;
+  vertical-align: top;
+}
+
+.artist,
+.track {
+  white-space: nowrap;
+}
+
+.marquee-text {
+  display: inline-block;
+}
+
+.marquee-copy {
+  display: none;
+}
+
+.is-marquee {
+  will-change: transform;
+}
+
+.is-marquee .marquee-copy {
+  display: inline-block;
+  margin-left: var(--marquee-gap);
 }

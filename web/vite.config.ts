@@ -6,6 +6,8 @@ export default defineConfig({
   plugins: [viteSingleFile({ removeViteModuleLoader: true })],
   base: "/",
   build: {
+    // OBS 31.0.1 ships CEF/Chromium 127; older OBS releases are not an M4B compatibility promise.
+    target: "chrome127",
     outDir: "dist",
     emptyOutDir: true,
     rollupOptions: {
