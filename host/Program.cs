@@ -96,7 +96,14 @@ public partial class Program
                 default,
                 "The application could not start or continue running.",
                 error);
-            ShowStartupFailure(error, options?.Port ?? loadedSettings.Settings.Port, paths.LogDirectory);
+            StopAndDispose(app, logFile);
+            app = null;
+            ShowStartupFailure(
+                error,
+                options?.Port ?? loadedSettings.Settings.Port,
+                paths.LogDirectory,
+                settingsStore,
+                logFile);
             return 1;
         }
         finally
@@ -178,12 +185,74 @@ public partial class Program
         };
     }
 
-    private static void ShowStartupFailure(Exception error, int port, string logDirectory)
+    private static void ShowStartupFailure(
+        Exception error,
+        int port,
+        string logDirectory,
+        ApplicationSettingsStore settingsStore,
+        BoundedLogFile logFile)
     {
-        var message = IsAddressInUse(error)
-            ? $"Port {port} is unavailable. Choose another port after closing the conflicting application."
-            : "Now Playing Overlay could not start.";
-        ShowMessage($"{message}\n\nLogs: {logDirectory}", MessageBoxIcon.Error);
+        if (!IsAddressInUse(error))
+        {
+            ShowMessage($"Now Playing Overlay could not start.\n\nLogs: {logDirectory}", MessageBoxIcon.Error);
+            return;
+        }
+
+        var configure = MessageBox.Show(
+            $"Port {port} is unavailable. Would you like to save a different loopback port?\n\nLogs: {logDirectory}",
+            ApplicationTitle,
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Error);
+        if (configure == DialogResult.Yes)
+        {
+            PromptForAlternativePort(port, settingsStore, logFile);
+        }
+    }
+
+    private static void PromptForAlternativePort(
+        int currentPort,
+        ApplicationSettingsStore settingsStore,
+        BoundedLogFile logFile)
+    {
+        while (true)
+        {
+            using var dialog = new PortConfigurationDialog(currentPort);
+            if (dialog.ShowDialog() != DialogResult.OK)
+            {
+                return;
+            }
+
+            var selectedPort = dialog.SelectedPort;
+            if (!LoopbackPortProbe.IsAvailable(selectedPort))
+            {
+                ShowMessage(
+                    $"Port {selectedPort} is also unavailable. Choose another port.",
+                    MessageBoxIcon.Warning);
+                currentPort = selectedPort;
+                continue;
+            }
+
+            try
+            {
+                settingsStore.Save(new ApplicationSettings { Port = selectedPort });
+                var overlayUrl = TrayMenuController.BuildOverlayUrl(selectedPort);
+                ShowMessage(
+                    $"Port {selectedPort} was saved. Restart Now Playing Overlay, then update the OBS Browser Source URL to:\n\n{overlayUrl}",
+                    MessageBoxIcon.Information);
+                return;
+            }
+            catch (Exception saveError) when (saveError is IOException or UnauthorizedAccessException)
+            {
+                logFile.Write(
+                    LogLevel.Error,
+                    "Bootstrap",
+                    default,
+                    "The replacement port could not be saved.",
+                    saveError);
+                ShowMessage("The port could not be saved. See the logs for details.", MessageBoxIcon.Error);
+                return;
+            }
+        }
     }
 
     private static bool IsAddressInUse(Exception error)
