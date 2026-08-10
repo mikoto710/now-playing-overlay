@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using NowPlayingOverlay.Host.Shell;
 
@@ -28,5 +29,43 @@ public sealed class ClipboardTextWriterTests
         Assert.True(capturedCopy);
         Assert.Equal(ClipboardTextWriter.RetryTimes, capturedRetryTimes);
         Assert.Equal(ClipboardTextWriter.RetryDelayMilliseconds, capturedRetryDelay);
+    }
+
+    [Fact]
+    public void RetriesTheCompleteOperationOnceAfterAnExternalFailure()
+    {
+        var calls = 0;
+        var delays = new List<int>();
+        var writer = new ClipboardTextWriter(
+            (_, _, _, _) =>
+            {
+                calls++;
+                if (calls == 1)
+                {
+                    throw new ExternalException("clipboard unavailable");
+                }
+            },
+            delays.Add);
+
+        writer.SetText("http://127.0.0.1:13130/NowPlaying.html");
+
+        Assert.Equal(ClipboardTextWriter.AttemptCount, calls);
+        Assert.Equal([ClipboardTextWriter.DelayBetweenAttemptsMilliseconds], delays);
+    }
+
+    [Fact]
+    public void RethrowsAfterTheSecondCompleteOperationFails()
+    {
+        var calls = 0;
+        var writer = new ClipboardTextWriter(
+            (_, _, _, _) =>
+            {
+                calls++;
+                throw new ExternalException("clipboard unavailable");
+            },
+            _ => { });
+
+        Assert.Throws<ExternalException>(() => writer.SetText("value"));
+        Assert.Equal(ClipboardTextWriter.AttemptCount, calls);
     }
 }

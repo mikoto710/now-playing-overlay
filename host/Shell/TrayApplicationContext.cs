@@ -98,7 +98,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         RunUserAction(
             "copy the OBS URL",
-            () => _clipboard.SetText(_controller.OverlayUrl));
+            () =>
+            {
+                _clipboard.SetText(_controller.OverlayUrl);
+                _logger.LogInformation("Copied the OBS URL to the clipboard.");
+            });
     }
 
     private void OpenOverlay()
