@@ -29,6 +29,6 @@ internal sealed class HostHealthService(
                 (long)(timeProvider.GetUtcNow() - runtime.StartedAt).TotalSeconds),
         };
 
-        return (body, faulted ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status200OK);
+        return (body, faulted ? 503 : 200);
     }
 }

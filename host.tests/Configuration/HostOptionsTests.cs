@@ -19,6 +19,7 @@ public sealed class HostOptionsTests
         Assert.InRange(options.MaximumSseConnections, 1, options.MaximumConcurrentConnections);
         Assert.True(options.MaximumRequestHeaderCount > 0);
         Assert.True(options.MaximumRequestHeadersTotalSize > 0);
+        Assert.True(options.PortRebindGracePeriod > TimeSpan.Zero);
     }
 
     [Theory]
@@ -65,5 +66,39 @@ public sealed class HostOptionsTests
         var options = new HostOptions { DevelopmentWebRoot = " " };
 
         Assert.Throws<ArgumentException>(options.Validate);
+    }
+
+    [Fact]
+    public void CommandLineValuesOverrideThePersistedPortAndParseAllSupportedTypes()
+    {
+        var options = HostOptionsLoader.Load(
+        [
+            "--Host:Port=13130",
+            "--Host:MaximumConcurrentConnections=9",
+            "--Host:RequestHeadersTimeout=00:00:03",
+            "--Host:PortRebindGracePeriod=00:00:00.250",
+            "--Host:SessionSource=Fake",
+            "--Host:RunFakeScenario=true",
+            "--Host:WebAssetMode=Development",
+            "--Host:DevelopmentWebRoot=web-output",
+            "--Logging:LogLevel:Default=Warning",
+        ], persistedPort: 12000);
+
+        Assert.Equal(13130, options.Port);
+        Assert.Equal(9, options.MaximumConcurrentConnections);
+        Assert.Equal(TimeSpan.FromSeconds(3), options.RequestHeadersTimeout);
+        Assert.Equal(TimeSpan.FromMilliseconds(250), options.PortRebindGracePeriod);
+        Assert.Equal(SessionSourceKind.Fake, options.SessionSource);
+        Assert.True(options.RunFakeScenario);
+        Assert.Equal(WebAssetMode.Development, options.WebAssetMode);
+        Assert.Equal("web-output", options.DevelopmentWebRoot);
+    }
+
+    [Fact]
+    public void RejectsMalformedHostArguments()
+    {
+        Assert.Throws<ArgumentException>(() => HostOptionsLoader.Load(["--Host:Port"]));
+        Assert.Throws<ArgumentException>(() => HostOptionsLoader.Load(["--Host:Port=not-a-port"]));
+        Assert.Throws<ArgumentException>(() => HostOptionsLoader.Load(["--Host:RunFakeScenario=sometimes"]));
     }
 }

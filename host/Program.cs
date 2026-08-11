@@ -1,6 +1,6 @@
+using System.Net;
 using System.Net.Sockets;
 using System.Windows.Forms;
-using Microsoft.AspNetCore.Connections;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Hosting;
@@ -71,20 +71,20 @@ internal static class Program
             logFile.Write(LogLevel.Warning, "Bootstrap", default, loadedSettings.Warning);
         }
 
-        WebApplication? app = null;
+        OverlayApplication? app = null;
         NowPlayingOverlay.Host.Configuration.HostOptions? options = null;
         try
         {
             app = OverlayApplication.Build(args, loadedSettings.Settings.Port, logFile);
-            options = app.Services.GetRequiredService<NowPlayingOverlay.Host.Configuration.HostOptions>();
+            options = app.Options;
             app.StartAsync().GetAwaiter().GetResult();
 
             var controller = new TrayMenuController(
                 options,
                 settingsStore,
-                app.Services.GetRequiredService<HostStatusService>(),
+                app.StatusService,
                 paths.LogDirectory);
-            var logger = app.Services.GetRequiredService<ILogger<TrayApplicationContext>>();
+            var logger = new BoundedFileLoggerProvider(logFile).CreateLogger<TrayApplicationContext>();
             using var tray = new TrayApplicationContext(controller, logger);
             Application.Run(tray);
             return 0;
@@ -113,7 +113,7 @@ internal static class Program
         }
     }
 
-    private static void StopAndDispose(WebApplication? app, BoundedLogFile logFile)
+    private static void StopAndDispose(OverlayApplication? app, BoundedLogFile logFile)
     {
         if (app is null)
         {
@@ -260,8 +260,8 @@ internal static class Program
     {
         for (Exception? current = error; current is not null; current = current.InnerException)
         {
-            if (current is AddressInUseException
-                || current is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse })
+            if (current is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse }
+                || current is HttpListenerException { NativeErrorCode: 183 or 10048 })
             {
                 return true;
             }

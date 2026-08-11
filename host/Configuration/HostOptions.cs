@@ -22,6 +22,8 @@ internal sealed record HostOptions
 
     public TimeSpan SseHeartbeatInterval { get; init; } = TimeSpan.FromSeconds(15);
 
+    public TimeSpan PortRebindGracePeriod { get; init; } = TimeSpan.FromSeconds(5);
+
     public SessionSourceKind SessionSource { get; init; } = SessionSourceKind.Windows;
 
     public bool RunFakeScenario { get; init; }
@@ -70,6 +72,11 @@ internal sealed record HostOptions
         if (SseHeartbeatInterval <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(SseHeartbeatInterval));
+        }
+
+        if (PortRebindGracePeriod <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(PortRebindGracePeriod));
         }
 
         if (!Enum.IsDefined(SessionSource))

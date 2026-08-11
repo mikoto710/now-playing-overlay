@@ -2,10 +2,6 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Text.Json;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting.Server;
-using Microsoft.AspNetCore.Hosting.Server.Features;
-using Microsoft.Extensions.DependencyInjection;
 using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Media;
@@ -23,17 +19,15 @@ public sealed class OverlayHttpTests
     public async Task ServerBindsOnlyIpv4LoopbackAndFiltersHost()
     {
         await using var host = await TestOverlayHost.StartAsync();
-        var addresses = host.App.Services
-            .GetRequiredService<IServer>()
-            .Features.Get<IServerAddressesFeature>()!
-            .Addresses;
         using var request = new HttpRequestMessage(HttpMethod.Get, "/health");
         request.Headers.Host = "localhost";
 
         using var response = await host.Client.SendAsync(request);
+        using var ipv6 = new TcpClient(AddressFamily.InterNetworkV6);
+        await Assert.ThrowsAnyAsync<SocketException>(
+            () => ipv6.ConnectAsync(IPAddress.IPv6Loopback, host.Port));
 
-        Assert.Single(addresses);
-        Assert.Equal($"http://127.0.0.1:{host.Port}", addresses.Single());
+        Assert.Equal(host.Port, host.App.CurrentPort);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -171,6 +165,23 @@ public sealed class OverlayHttpTests
     }
 
     [Fact]
+    public async Task TotalActiveRequestLimitIsSharedWithSseConnections()
+    {
+        await using var host = await TestOverlayHost.StartAsync(
+            maximumSseConnections: 1,
+            maximumConcurrentConnections: 1);
+        using var stream = await host.Client.GetAsync(
+            "/api/v1/events",
+            HttpCompletionOption.ResponseHeadersRead);
+
+        using var rejected = await host.Client.GetAsync("/health");
+
+        Assert.Equal(HttpStatusCode.OK, stream.StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, rejected.StatusCode);
+        Assert.Equal("1", rejected.Headers.RetryAfter!.ToString());
+    }
+
+    [Fact]
     public async Task HeadReturnsEndpointHeadersWithoutBodiesAndUnsupportedMethodIsRejected()
     {
         await using var host = await TestOverlayHost.StartAsync();
@@ -204,7 +215,9 @@ public sealed class OverlayHttpTests
         var largeHeadersStatus = await SendRawRequestAsync(host.Port, largeHeaders);
 
         Assert.Equal(431, manyHeadersStatus);
-        Assert.Equal(431, largeHeadersStatus);
+        // HTTP.sys rejects a single oversized field before HttpListener creates a context.
+        // The maintainer accepted its native 400 response; application-level aggregate limits stay 431.
+        Assert.Equal(400, largeHeadersStatus);
     }
 
     [Fact]
@@ -218,7 +231,7 @@ public sealed class OverlayHttpTests
             "--Host:RunFakeScenario=false",
         ], persistedPort: ReservePort());
 
-        var options = app.Services.GetRequiredService<NowPlayingOverlay.Host.Configuration.HostOptions>();
+        var options = app.Options;
 
         Assert.Equal(commandLinePort, options.Port);
         await app.DisposeAsync();
@@ -236,7 +249,7 @@ public sealed class OverlayHttpTests
             "--Logging:LogLevel:Default=Warning",
         ]);
         await app.StartAsync();
-        var source = app.Services.GetRequiredService<FakeSessionSource>();
+        var source = app.FakeSessionSource!;
 
         await app.StopAsync();
 
@@ -349,15 +362,15 @@ public sealed class OverlayHttpTests
 
     private sealed class TestOverlayHost : IAsyncDisposable
     {
-        private TestOverlayHost(WebApplication app, HttpClient client, int port)
+        private TestOverlayHost(OverlayApplication app, HttpClient client, int port)
         {
             App = app;
             Client = client;
             Port = port;
-            Source = app.Services.GetRequiredService<FakeSessionSource>();
+            Source = app.FakeSessionSource!;
         }
 
-        public WebApplication App { get; }
+        public OverlayApplication App { get; }
 
         public HttpClient Client { get; }
 
@@ -367,7 +380,8 @@ public sealed class OverlayHttpTests
 
         public static async Task<TestOverlayHost> StartAsync(
             int heartbeatMilliseconds = 100,
-            int maximumSseConnections = 4)
+            int maximumSseConnections = 4,
+            int maximumConcurrentConnections = 32)
         {
             var port = ReservePort();
             var app = OverlayApplication.Build(
@@ -377,6 +391,7 @@ public sealed class OverlayHttpTests
                 "--Host:RunFakeScenario=false",
                 $"--Host:SseHeartbeatInterval=00:00:00.{heartbeatMilliseconds:D3}",
                 $"--Host:MaximumSseConnections={maximumSseConnections}",
+                $"--Host:MaximumConcurrentConnections={maximumConcurrentConnections}",
                 "--Logging:LogLevel:Default=Warning",
             ]);
             await app.StartAsync();

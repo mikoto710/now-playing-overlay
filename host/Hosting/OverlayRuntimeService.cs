@@ -11,7 +11,7 @@ internal sealed class OverlayRuntimeService(
     ISessionSource sessionSource,
     HostRuntimeState runtime,
     OverlayHostOptions options,
-    ILogger<OverlayRuntimeService> logger) : IHostedService
+    ILogger<OverlayRuntimeService> logger)
 {
     private CancellationTokenSource? _scenarioCancellation;
     private Task? _scenario;
