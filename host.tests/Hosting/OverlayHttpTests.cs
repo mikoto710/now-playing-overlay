@@ -3,10 +3,11 @@ using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Text.Json;
 using NowPlayingOverlay.Host.Artwork;
+using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Media;
-using NowPlayingOverlay.Host.Media.Development;
 using NowPlayingOverlay.Host.Models;
+using NowPlayingOverlay.Host.Tests.TestInfrastructure;
 
 namespace NowPlayingOverlay.Host.Tests.Hosting;
 
@@ -221,35 +222,15 @@ public sealed class OverlayHttpTests
     }
 
     [Fact]
-    public async Task CommandLinePortOverridesPersistedPort()
-    {
-        var commandLinePort = ReservePort();
-        var app = OverlayApplication.Build(
-        [
-            $"--Host:Port={commandLinePort}",
-            "--Host:SessionSource=Fake",
-            "--Host:RunFakeScenario=false",
-        ], persistedPort: ReservePort());
-
-        var options = app.Options;
-
-        Assert.Equal(commandLinePort, options.Port);
-        await app.DisposeAsync();
-    }
-
-    [Fact]
     public async Task GracefulStopClosesRuntimeAndDisposesSessionSource()
     {
         var port = ReservePort();
+        var source = new FakeSessionSource();
         var app = OverlayApplication.Build(
-        [
-            $"--Host:Port={port}",
-            "--Host:SessionSource=Fake",
-            "--Host:RunFakeScenario=false",
-            "--Logging:LogLevel:Default=Warning",
-        ]);
+            new HostOptions { Port = port },
+            source,
+            OverlayPageAsset.LoadEmbedded(typeof(OverlayPageAsset).Assembly));
         await app.StartAsync();
-        var source = app.FakeSessionSource!;
 
         await app.StopAsync();
 
@@ -265,12 +246,9 @@ public sealed class OverlayHttpTests
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         var app = OverlayApplication.Build(
-        [
-            $"--Host:Port={port}",
-            "--Host:SessionSource=Fake",
-            "--Host:RunFakeScenario=false",
-            "--Logging:LogLevel:Default=Warning",
-        ]);
+            new HostOptions { Port = port },
+            new FakeSessionSource(),
+            OverlayPageAsset.LoadEmbedded(typeof(OverlayPageAsset).Assembly));
 
         await Assert.ThrowsAnyAsync<Exception>(async () => await app.StartAsync());
 
@@ -433,12 +411,16 @@ public sealed class OverlayHttpTests
 
     private sealed class TestOverlayHost : IAsyncDisposable
     {
-        private TestOverlayHost(OverlayApplication app, HttpClient client, int port)
+        private TestOverlayHost(
+            OverlayApplication app,
+            FakeSessionSource source,
+            HttpClient client,
+            int port)
         {
             App = app;
+            Source = source;
             Client = client;
             Port = port;
-            Source = app.FakeSessionSource!;
         }
 
         public OverlayApplication App { get; }
@@ -456,20 +438,22 @@ public sealed class OverlayHttpTests
             int rebindGraceMilliseconds = 100)
         {
             var port = ReservePort();
+            var source = new FakeSessionSource();
+            var options = new HostOptions
+            {
+                Port = port,
+                SseHeartbeatInterval = TimeSpan.FromMilliseconds(heartbeatMilliseconds),
+                MaximumSseConnections = maximumSseConnections,
+                MaximumConcurrentConnections = maximumConcurrentConnections,
+                PortRebindGracePeriod = TimeSpan.FromMilliseconds(rebindGraceMilliseconds),
+            };
             var app = OverlayApplication.Build(
-            [
-                $"--Host:Port={port}",
-                "--Host:SessionSource=Fake",
-                "--Host:RunFakeScenario=false",
-                $"--Host:SseHeartbeatInterval=00:00:00.{heartbeatMilliseconds:D3}",
-                $"--Host:MaximumSseConnections={maximumSseConnections}",
-                $"--Host:MaximumConcurrentConnections={maximumConcurrentConnections}",
-                $"--Host:PortRebindGracePeriod=00:00:00.{rebindGraceMilliseconds:D3}",
-                "--Logging:LogLevel:Default=Warning",
-            ]);
+                options,
+                source,
+                OverlayPageAsset.LoadEmbedded(typeof(OverlayPageAsset).Assembly));
             await app.StartAsync();
             var client = CreateClient(port);
-            return new TestOverlayHost(app, client, port);
+            return new TestOverlayHost(app, source, client, port);
         }
 
         public async Task WaitForRevisionAsync(long revision)

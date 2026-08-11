@@ -24,14 +24,6 @@ internal sealed record HostOptions
 
     public TimeSpan PortRebindGracePeriod { get; init; } = TimeSpan.FromSeconds(5);
 
-    public SessionSourceKind SessionSource { get; init; } = SessionSourceKind.Windows;
-
-    public bool RunFakeScenario { get; init; }
-
-    public WebAssetMode WebAssetMode { get; init; } = WebAssetMode.Embedded;
-
-    public string? DevelopmentWebRoot { get; init; }
-
     public void Validate()
     {
         if (Port is < 1 or > 65535)
@@ -79,26 +71,5 @@ internal sealed record HostOptions
             throw new ArgumentOutOfRangeException(nameof(PortRebindGracePeriod));
         }
 
-        if (!Enum.IsDefined(SessionSource))
-        {
-            throw new ArgumentOutOfRangeException(nameof(SessionSource));
-        }
-
-        if (RunFakeScenario && SessionSource != SessionSourceKind.Fake)
-        {
-            throw new ArgumentException("The fake scenario requires the fake session source.");
-        }
-
-        if (!Enum.IsDefined(WebAssetMode))
-        {
-            throw new ArgumentOutOfRangeException(nameof(WebAssetMode));
-        }
-
-        if (DevelopmentWebRoot is not null && string.IsNullOrWhiteSpace(DevelopmentWebRoot))
-        {
-            throw new ArgumentException(
-                "The development web root must be a non-empty path when provided.",
-                nameof(DevelopmentWebRoot));
-        }
     }
 }

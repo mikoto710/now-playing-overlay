@@ -4,7 +4,6 @@ using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Media;
-using NowPlayingOverlay.Host.Media.Development;
 using NowPlayingOverlay.Host.Media.Spotify;
 using NowPlayingOverlay.Host.Media.Windows;
 using NowPlayingOverlay.Host.Models;
@@ -22,14 +21,12 @@ internal sealed class OverlayApplication : IAsyncDisposable
     private OverlayApplication(
         HostOptions options,
         ISessionSource sessionSource,
-        FakeSessionSource? fakeSessionSource,
         HostStatusService statusService,
         OverlayRuntimeService runtime,
         OverlayHttpServer httpServer)
     {
         Options = options;
         SessionSource = sessionSource;
-        FakeSessionSource = fakeSessionSource;
         StatusService = statusService;
         _runtime = runtime;
         _httpServer = httpServer;
@@ -40,8 +37,6 @@ internal sealed class OverlayApplication : IAsyncDisposable
     public int CurrentPort => _httpServer.CurrentPort;
 
     public ISessionSource SessionSource { get; }
-
-    public FakeSessionSource? FakeSessionSource { get; }
 
     public HostStatusService StatusService { get; }
 
@@ -54,14 +49,42 @@ internal sealed class OverlayApplication : IAsyncDisposable
         var loggerProvider = applicationLog is null
             ? null
             : new BoundedFileLoggerProvider(applicationLog);
-        var pageAsset = OverlayPageAsset.Load(options, Directory.GetCurrentDirectory());
+        var sessionSource = new SpotifySessionMonitor(
+            new WindowsMediaSessionManagerFactory(),
+            new SpotifySessionMatcher(),
+            CreateLogger<SpotifySessionMonitor>(loggerProvider));
+        return Build(
+            options,
+            sessionSource,
+            OverlayPageAsset.LoadEmbedded(typeof(OverlayPageAsset).Assembly),
+            loggerProvider);
+    }
+
+    internal static OverlayApplication Build(
+        HostOptions options,
+        ISessionSource sessionSource,
+        OverlayPageAsset pageAsset)
+    {
+        return Build(options, sessionSource, pageAsset, loggerProvider: null);
+    }
+
+    private static OverlayApplication Build(
+        HostOptions options,
+        ISessionSource sessionSource,
+        OverlayPageAsset pageAsset,
+        BoundedFileLoggerProvider? loggerProvider)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(sessionSource);
+        ArgumentNullException.ThrowIfNull(pageAsset);
+        options.Validate();
+
         var timeProvider = TimeProvider.System;
         var runtimeState = new HostRuntimeState(timeProvider);
         var store = new NowPlayingStore(
             NowPlayingSnapshot.CreateInitial(Guid.NewGuid(), timeProvider.GetUtcNow()),
             CreateLogger<NowPlayingStore>(loggerProvider));
         var artworkCache = new ArtworkCache();
-        var (sessionSource, fakeSessionSource) = CreateSessionSource(options, loggerProvider);
         var coordinator = new NowPlayingCoordinator(
             sessionSource,
             store,
@@ -81,9 +104,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
             store);
         var runtime = new OverlayRuntimeService(
             coordinator,
-            sessionSource,
             runtimeState,
-            options,
             CreateLogger<OverlayRuntimeService>(loggerProvider));
         var httpServer = new OverlayHttpServer(
             options,
@@ -99,7 +120,6 @@ internal sealed class OverlayApplication : IAsyncDisposable
         return new OverlayApplication(
             options,
             sessionSource,
-            fakeSessionSource,
             statusService,
             runtime,
             httpServer);
@@ -157,23 +177,6 @@ internal sealed class OverlayApplication : IAsyncDisposable
         await StopAsync();
         await _httpServer.DisposeAsync();
         _disposed = true;
-    }
-
-    private static (ISessionSource Source, FakeSessionSource? FakeSource) CreateSessionSource(
-        HostOptions options,
-        BoundedFileLoggerProvider? loggerProvider)
-    {
-        if (options.SessionSource == SessionSourceKind.Fake)
-        {
-            var fakeSource = new FakeSessionSource();
-            return (fakeSource, fakeSource);
-        }
-
-        var source = new SpotifySessionMonitor(
-            new WindowsMediaSessionManagerFactory(),
-            new SpotifySessionMatcher(),
-            CreateLogger<SpotifySessionMonitor>(loggerProvider));
-        return (source, null);
     }
 
     private static ILogger<T> CreateLogger<T>(BoundedFileLoggerProvider? provider)
