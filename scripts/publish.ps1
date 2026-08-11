@@ -11,6 +11,9 @@ $releaseVersion = "0.1.0"
 $expectedExecutableName = "NowPlayingOverlay.exe"
 $releaseArchiveName = "NowPlayingOverlay-v$releaseVersion-win-x64.zip"
 $releaseChecksumName = "$releaseArchiveName.sha256"
+$publishArtifactsRoot = [System.IO.Path]::GetFullPath(
+    (Join-Path ([System.IO.Path]::GetTempPath()) "NowPlayingOverlay-publish-$([guid]::NewGuid().ToString('N'))")
+)
 
 function Invoke-CheckedCommand {
     param(
@@ -161,6 +164,94 @@ function Assert-ExecutableIdentity {
     }
 }
 
+function Assert-DesktopRuntimeClosure {
+    $temporaryRoot = [System.IO.Path]::GetFullPath(
+        (Join-Path ([System.IO.Path]::GetTempPath()) "NowPlayingOverlay-runtime-closure-$([guid]::NewGuid().ToString('N'))")
+    )
+    $publishRoot = Join-Path $temporaryRoot "publish"
+    try {
+        $closureArguments = @(
+            "publish"
+            $hostProject
+            "--configuration"
+            "Release"
+            "--runtime"
+            "win-x64"
+            "--self-contained"
+            "false"
+            "-p:PublishSingleFile=false"
+            "-p:UseAppHost=false"
+            "-p:DebugSymbols=false"
+            "-p:DebugType=None"
+            "--artifacts-path"
+            $temporaryRoot
+            "--output"
+            $publishRoot
+        )
+        Invoke-CheckedCommand -Executable "dotnet" -Arguments $closureArguments
+
+        $runtimeConfigPath = Join-Path $publishRoot "NowPlayingOverlay.runtimeconfig.json"
+        $dependencyManifestPath = Join-Path $publishRoot "NowPlayingOverlay.deps.json"
+        foreach ($requiredPath in @($runtimeConfigPath, $dependencyManifestPath)) {
+            if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+                throw "Runtime closure manifest is missing at '$requiredPath'."
+            }
+        }
+
+        $runtimeConfig = Get-Content -LiteralPath $runtimeConfigPath -Raw | ConvertFrom-Json
+        $frameworkNames = @($runtimeConfig.runtimeOptions.frameworks | ForEach-Object name | Sort-Object)
+        $expectedFrameworkNames = @("Microsoft.NETCore.App", "Microsoft.WindowsDesktop.App")
+        if (($frameworkNames -join "`n") -cne ($expectedFrameworkNames -join "`n")) {
+            throw "Unexpected framework-dependent runtime closure: $($frameworkNames -join ', ')."
+        }
+
+        $dependencyManifest = Get-Content -LiteralPath $dependencyManifestPath -Raw
+        $forbiddenDependencies = @(
+            "Microsoft.AspNetCore.App"
+            "Microsoft.AspNetCore."
+            "Microsoft.Web.WebView2"
+            "Microsoft.Windows.SDK.NET"
+            "WinRT.Runtime"
+        )
+        foreach ($forbiddenDependency in $forbiddenDependencies) {
+            if ($dependencyManifest.IndexOf(
+                $forbiddenDependency,
+                [System.StringComparison]::OrdinalIgnoreCase
+            ) -ge 0) {
+                throw "Forbidden runtime dependency '$forbiddenDependency' entered the publish closure."
+            }
+        }
+
+        $requiredApplicationLibraries = @(
+            "Microsoft.Extensions.DependencyInjection.Abstractions.dll"
+            "Microsoft.Extensions.Logging.Abstractions.dll"
+            "NowPlayingOverlay.dll"
+            "NowPlayingOverlay.WinRT.dll"
+        )
+        foreach ($requiredLibrary in $requiredApplicationLibraries) {
+            $requiredPath = Join-Path $publishRoot $requiredLibrary
+            if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+                throw "Expected application-owned runtime library '$requiredLibrary' is missing."
+            }
+        }
+
+        Write-Host "Verified Desktop Runtime-only framework closure."
+    }
+    finally {
+        $systemTemporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+        if (-not $temporaryRoot.StartsWith(
+            $systemTemporaryRoot,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )) {
+            throw "Refusing to clean unexpected runtime closure directory '$temporaryRoot'."
+        }
+
+        if (Test-Path -LiteralPath $temporaryRoot) {
+            Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
+        }
+    }
+}
+
 function New-ReleasePackage {
     param(
         [Parameter(Mandatory)]
@@ -253,6 +344,8 @@ if (-not $?) {
     throw "Repository validation failed."
 }
 
+Assert-DesktopRuntimeClosure
+
 $publishArguments = @(
     "publish"
     $hostProject
@@ -266,25 +359,40 @@ $publishArguments = @(
     "-p:PublishTrimmed=false"
     "-p:DebugSymbols=false"
     "-p:DebugType=None"
-    "-p:StaticWebAssetsEnabled=false"
-    "-p:IsTransformWebConfigDisabled=true"
+    "--artifacts-path"
+    $publishArtifactsRoot
     "--output"
     $publishDirectory
 )
 
-Invoke-CheckedCommand -Executable "dotnet" -Arguments $publishArguments
-$publishedExecutable = Assert-SingleExecutableOutput `
-    -Directory $publishDirectory `
-    -ExecutableName $expectedExecutableName
-Assert-ExecutableIdentity -Executable $publishedExecutable -Version $releaseVersion
+try {
+    Invoke-CheckedCommand -Executable "dotnet" -Arguments $publishArguments
+    $publishedExecutable = Assert-SingleExecutableOutput `
+        -Directory $publishDirectory `
+        -ExecutableName $expectedExecutableName
+    Assert-ExecutableIdentity -Executable $publishedExecutable -Version $releaseVersion
 
-$releasePackage = New-ReleasePackage `
-    -Executable $publishedExecutable `
-    -Directory $releaseDirectory `
-    -ArchiveName $releaseArchiveName `
-    -ChecksumName $releaseChecksumName
+    $releasePackage = New-ReleasePackage `
+        -Executable $publishedExecutable `
+        -Directory $releaseDirectory `
+        -ArchiveName $releaseArchiveName `
+        -ChecksumName $releaseChecksumName
 
-$sizeMiB = [Math]::Round($publishedExecutable.Length / 1MB, 1)
-Write-Host "Published $($publishedExecutable.FullName) ($sizeMiB MiB)"
-Write-Host "Packaged $($releasePackage.Archive.FullName)"
-Write-Host "SHA-256 $($releasePackage.Sha256)"
+    $sizeMiB = [Math]::Round($publishedExecutable.Length / 1MB, 1)
+    Write-Host "Published $($publishedExecutable.FullName) ($sizeMiB MiB)"
+    Write-Host "Packaged $($releasePackage.Archive.FullName)"
+    Write-Host "SHA-256 $($releasePackage.Sha256)"
+}
+finally {
+    $systemTemporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+    if (-not $publishArtifactsRoot.StartsWith(
+        $systemTemporaryRoot,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "Refusing to clean unexpected publish artifacts directory '$publishArtifactsRoot'."
+    }
+
+    if (Test-Path -LiteralPath $publishArtifactsRoot) {
+        Remove-Item -LiteralPath $publishArtifactsRoot -Recurse -Force
+    }
+}

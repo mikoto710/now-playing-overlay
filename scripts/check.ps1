@@ -3,6 +3,9 @@ param()
 
 $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
+$dotnetArtifactsRoot = [System.IO.Path]::GetFullPath(
+    (Join-Path ([System.IO.Path]::GetTempPath()) "NowPlayingOverlay-validation-$([guid]::NewGuid().ToString('N'))")
+)
 
 function Invoke-CheckedCommand {
     param(
@@ -32,10 +35,24 @@ try {
         Pop-Location
     }
 
-    Invoke-CheckedCommand dotnet restore NowPlayingOverlay.sln
-    Invoke-CheckedCommand dotnet build NowPlayingOverlay.sln --no-restore
-    Invoke-CheckedCommand dotnet test NowPlayingOverlay.sln --no-build
+    # Keep validation isolated from IDE-owned bin/obj files so a live development
+    # session cannot make the release gate fail through unrelated file locks.
+    Invoke-CheckedCommand dotnet restore NowPlayingOverlay.sln --artifacts-path $dotnetArtifactsRoot
+    Invoke-CheckedCommand dotnet build NowPlayingOverlay.sln --no-restore --artifacts-path $dotnetArtifactsRoot
+    Invoke-CheckedCommand dotnet test NowPlayingOverlay.sln --no-build --artifacts-path $dotnetArtifactsRoot
 }
 finally {
     Pop-Location
+
+    $systemTemporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+    if (-not $dotnetArtifactsRoot.StartsWith(
+        $systemTemporaryRoot,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "Refusing to clean unexpected validation directory '$dotnetArtifactsRoot'."
+    }
+
+    if (Test-Path -LiteralPath $dotnetArtifactsRoot) {
+        Remove-Item -LiteralPath $dotnetArtifactsRoot -Recurse -Force
+    }
 }
