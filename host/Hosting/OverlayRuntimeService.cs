@@ -1,4 +1,5 @@
 using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Development;
 using NowPlayingOverlay.Host.State;
 
 namespace NowPlayingOverlay.Host.Hosting;

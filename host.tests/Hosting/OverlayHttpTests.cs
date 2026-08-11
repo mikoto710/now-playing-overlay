@@ -6,8 +6,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
+using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Development;
 using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Tests.Hosting;

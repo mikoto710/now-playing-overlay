@@ -1,18 +1,19 @@
+using NowPlayingOverlay.Host.Configuration;
+using NowPlayingOverlay.Host.Hosting;
+using OverlayHostOptions = NowPlayingOverlay.Host.Configuration.HostOptions;
 
 namespace NowPlayingOverlay.Host.Shell;
-
-using OverlayHostOptions = Configuration.HostOptions;
 
 internal sealed class TrayMenuController
 {
     private readonly ApplicationSettingsStore _settingsStore;
-    private readonly Func<TrayStatus> _getStatus;
+    private readonly Func<HostStatus> _getStatus;
     private readonly Func<int, bool> _isPortAvailable;
 
     public TrayMenuController(
         OverlayHostOptions hostOptions,
         ApplicationSettingsStore settingsStore,
-        TrayStatusService statusService,
+        HostStatusService statusService,
         string logDirectory)
         : this(
             hostOptions,
@@ -28,7 +29,7 @@ internal sealed class TrayMenuController
     internal TrayMenuController(
         OverlayHostOptions hostOptions,
         ApplicationSettingsStore settingsStore,
-        Func<TrayStatus> getStatus,
+        Func<HostStatus> getStatus,
         string logDirectory,
         Func<int, bool>? isPortAvailable = null)
     {
@@ -47,7 +48,7 @@ internal sealed class TrayMenuController
 
     public string LogDirectory { get; }
 
-    public TrayStatus GetStatus()
+    public HostStatus GetStatus()
     {
         return _getStatus();
     }

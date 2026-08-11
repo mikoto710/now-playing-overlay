@@ -2,11 +2,14 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Development;
+using NowPlayingOverlay.Host.Media.Spotify;
+using NowPlayingOverlay.Host.Media.Windows;
 using NowPlayingOverlay.Host.Models;
 using NowPlayingOverlay.Host.Protocol;
-using NowPlayingOverlay.Host.Shell;
 using NowPlayingOverlay.Host.State;
 
 namespace NowPlayingOverlay.Host.Hosting;
@@ -52,7 +55,7 @@ internal static class OverlayApplication
         RegisterSessionSource(builder.Services, options);
         builder.Services.AddSingleton<NowPlayingCoordinator>();
         builder.Services.AddSingleton<HostHealthService>();
-        builder.Services.AddSingleton<TrayStatusService>();
+        builder.Services.AddSingleton<HostStatusService>();
         builder.Services.AddSingleton(new SseConnectionLimiter(options.MaximumSseConnections));
         builder.Services.AddHostedService<OverlayRuntimeService>();
 

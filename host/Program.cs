@@ -1,13 +1,14 @@
 using System.Net.Sockets;
 using System.Windows.Forms;
 using Microsoft.AspNetCore.Connections;
+using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Shell;
 
 namespace NowPlayingOverlay.Host;
 
-public class Program
+internal static class Program
 {
     private const string ApplicationTitle = "Now Playing Overlay";
 
@@ -81,7 +82,7 @@ public class Program
             var controller = new TrayMenuController(
                 options,
                 settingsStore,
-                app.Services.GetRequiredService<TrayStatusService>(),
+                app.Services.GetRequiredService<HostStatusService>(),
                 paths.LogDirectory);
             var logger = app.Services.GetRequiredService<ILogger<TrayApplicationContext>>();
             using var tray = new TrayApplicationContext(controller, logger);

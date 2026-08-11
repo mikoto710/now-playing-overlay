@@ -1,3 +1,4 @@
+using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Media;
 using NowPlayingOverlay.Host.Models;
 

@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Sockets;
 using NowPlayingOverlay.Host.Configuration;
+using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Shell;
+using NowPlayingOverlay.Host.Tests.TestInfrastructure;
 
 namespace NowPlayingOverlay.Host.Tests.Shell;
 
@@ -15,7 +17,7 @@ public sealed class TrayMenuControllerTests
         var controller = new TrayMenuController(
             new HostOptions { Port = 13000 },
             new ApplicationSettingsStore(settingsPath),
-            () => new TrayStatus("Waiting for Spotify", IsFaulted: false),
+            () => new HostStatus("Waiting for Spotify", IsFaulted: false),
             Path.Combine(directory.Path, "logs"),
             _ => true);
 
@@ -42,7 +44,7 @@ public sealed class TrayMenuControllerTests
         var controller = new TrayMenuController(
             new HostOptions(),
             new ApplicationSettingsStore(Path.Combine(directory.Path, "settings.json")),
-            () => new TrayStatus("Ready", IsFaulted: false),
+            () => new HostStatus("Ready", IsFaulted: false),
             directory.Path,
             _ => true);
 
@@ -57,7 +59,7 @@ public sealed class TrayMenuControllerTests
         var controller = new TrayMenuController(
             new HostOptions(),
             new ApplicationSettingsStore(settingsPath),
-            () => new TrayStatus("Ready", IsFaulted: false),
+            () => new HostStatus("Ready", IsFaulted: false),
             directory.Path,
             _ => false);
 
@@ -75,20 +77,5 @@ public sealed class TrayMenuControllerTests
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
 
         Assert.False(LoopbackPortProbe.IsAvailable(port));
-    }
-
-    private sealed class TemporaryDirectory : IDisposable
-    {
-        public TemporaryDirectory()
-        {
-            Path = Directory.CreateTempSubdirectory("now-playing-overlay-tray-tests-").FullName;
-        }
-
-        public string Path { get; }
-
-        public void Dispose()
-        {
-            Directory.Delete(Path, recursive: true);
-        }
     }
 }

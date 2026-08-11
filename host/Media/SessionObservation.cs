@@ -1,4 +1,5 @@
 using System.Text;
+using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Media;
