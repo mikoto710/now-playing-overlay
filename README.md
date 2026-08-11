@@ -26,10 +26,11 @@ The .NET 10 SDK also supplies the required runtimes, but end users do not need t
 
 ## Download and start
 
-1. Download `NowPlayingOverlay.exe` for Windows x64 from the project's [Releases](https://github.com/mikoto710/now-playing-overlay/releases) page.
-2. Place the executable in a directory where you want to keep it, then run it.
-3. Look for the Now Playing Overlay icon in the Windows notification area. The application intentionally has no main window.
-4. Start Spotify and play a track. The tray status should change from `Waiting for Spotify` to a Spotify playback status.
+1. Download `NowPlayingOverlay-v0.1.0-win-x64.zip` and its `.sha256` file from the project's [Releases](https://github.com/mikoto710/now-playing-overlay/releases) page.
+2. Optionally verify the ZIP against the published SHA-256, then extract it. Keep `README.md` and `LICENSE` for reference; the application itself only needs `NowPlayingOverlay.exe` at runtime.
+3. Place the executable in a directory where you want to keep it, then run it.
+4. Look for the Now Playing Overlay icon in the Windows notification area. The application intentionally has no main window.
+5. Start Spotify and play a track. The tray status should change from `Waiting for Spotify` to a Spotify playback status.
 
 Only one instance can run for the current Windows user. The current preview has no installer, automatic updater, or code signature; only run an executable obtained from a source you trust.
 
@@ -162,10 +163,17 @@ Create the framework-dependent Windows x64 single-file application with:
 .\scripts\publish.ps1
 ```
 
-The script runs the full validation chain and writes only:
+The script runs the full validation chain. The runtime publish directory still contains only:
 
 ```text
 artifacts/publish/win-x64/NowPlayingOverlay.exe
+```
+
+It also creates the versioned GitHub release assets under `artifacts/release`:
+
+```text
+NowPlayingOverlay-v0.1.0-win-x64.zip
+NowPlayingOverlay-v0.1.0-win-x64.zip.sha256
 ```
 
 Console projects in this repository are development probes and are not user release artifacts.
