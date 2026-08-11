@@ -65,6 +65,19 @@ public sealed class OverlayHttpTests
     }
 
     [Fact]
+    public async Task ResponsesDoNotIdentifyTheServerAndUnknownRoutesFailClosed()
+    {
+        await using var host = await TestOverlayHost.StartAsync();
+
+        using var health = await host.Client.GetAsync("/health");
+        using var missing = await host.Client.GetAsync("/not-an-overlay-route");
+
+        Assert.False(health.Headers.Contains("Server"));
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal("nosniff", missing.Headers.GetValues("X-Content-Type-Options").Single());
+    }
+
+    [Fact]
     public async Task HealthReportsReadyAvailabilityBindingAndFaultsWithoutMetadata()
     {
         await using var host = await TestOverlayHost.StartAsync();
@@ -158,16 +171,40 @@ public sealed class OverlayHttpTests
     }
 
     [Fact]
-    public async Task HeadReturnsHeadersWithoutBodyAndUnsupportedMethodIsRejected()
+    public async Task HeadReturnsEndpointHeadersWithoutBodiesAndUnsupportedMethodIsRejected()
     {
         await using var host = await TestOverlayHost.StartAsync();
-        using var head = await host.Client.SendAsync(new HttpRequestMessage(HttpMethod.Head, "/api/v1/state"));
+        host.Source.Publish(Playing(
+            "Artwork track",
+            new ImmediateArtworkReader(ArtworkPayload.Create(OnePixelPng, "application/octet-stream"))));
+        using var state = await host.WaitForArtworkAsync();
+        var artworkUrl = state.RootElement.GetProperty("artwork").GetProperty("url").GetString()!;
+
+        using var pageHead = await SendHeadAsync(host.Client, "/NowPlaying.html");
+        using var stateHead = await SendHeadAsync(host.Client, "/api/v1/state");
+        using var artworkHead = await SendHeadAsync(host.Client, artworkUrl);
+        using var healthHead = await SendHeadAsync(host.Client, "/health");
         using var post = await host.Client.PostAsync("/api/v1/state", content: null);
 
-        Assert.Equal(HttpStatusCode.OK, head.StatusCode);
-        Assert.Empty(await head.Content.ReadAsByteArrayAsync());
-        Assert.True(head.Content.Headers.ContentLength > 0);
+        AssertHead(pageHead, "text/html", "no-store");
+        AssertHead(stateHead, "application/json", "no-store");
+        AssertHead(artworkHead, "image/png", "public, max-age=31536000, immutable");
+        AssertHead(healthHead, "application/json", "no-store");
         Assert.Equal(HttpStatusCode.MethodNotAllowed, post.StatusCode);
+    }
+
+    [Fact]
+    public async Task RequestHeaderCountAndTotalSizeAreBounded()
+    {
+        await using var host = await TestOverlayHost.StartAsync();
+        var manyHeaders = string.Concat(Enumerable.Range(0, 40).Select(index => $"X-M7-{index}: value\r\n"));
+        var largeHeaders = $"X-M7-Large: {new string('a', 17 * 1024)}\r\n";
+
+        var manyHeadersStatus = await SendRawRequestAsync(host.Port, manyHeaders);
+        var largeHeadersStatus = await SendRawRequestAsync(host.Port, largeHeaders);
+
+        Assert.Equal(431, manyHeadersStatus);
+        Assert.Equal(431, largeHeadersStatus);
     }
 
     [Fact]
@@ -266,6 +303,37 @@ public sealed class OverlayHttpTests
                 return new SseEvent(eventName, id, data);
             }
         }
+    }
+
+    private static Task<HttpResponseMessage> SendHeadAsync(HttpClient client, string path)
+    {
+        return client.SendAsync(new HttpRequestMessage(HttpMethod.Head, path));
+    }
+
+    private static void AssertHead(
+        HttpResponseMessage response,
+        string mediaType,
+        string cacheControl)
+    {
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Empty(response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult());
+        Assert.True(response.Content.Headers.ContentLength > 0);
+        Assert.Equal(mediaType, response.Content.Headers.ContentType!.MediaType);
+        Assert.Equal(cacheControl, response.Headers.CacheControl!.ToString());
+    }
+
+    private static async Task<int> SendRawRequestAsync(int port, string additionalHeaders)
+    {
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        await using var stream = client.GetStream();
+        var request = System.Text.Encoding.ASCII.GetBytes(
+            $"GET /health HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n{additionalHeaders}Connection: close\r\n\r\n");
+        await stream.WriteAsync(request);
+        using var reader = new StreamReader(stream, System.Text.Encoding.ASCII);
+        var statusLine = await reader.ReadLineAsync();
+        Assert.NotNull(statusLine);
+        return int.Parse(statusLine.Split(' ', StringSplitOptions.RemoveEmptyEntries)[1]);
     }
 
     private sealed record SseEvent(string Event, string Id, string Data);
