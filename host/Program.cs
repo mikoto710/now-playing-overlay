@@ -80,10 +80,12 @@ internal static class Program
             app.StartAsync().GetAwaiter().GetResult();
 
             var controller = new TrayMenuController(
-                options,
+                () => app.CurrentPort,
                 settingsStore,
                 app.StatusService,
-                paths.LogDirectory);
+                paths.LogDirectory,
+                (port, persistPort, cancellationToken) =>
+                    app.RebindPortAsync(port, persistPort, cancellationToken));
             var logger = new BoundedFileLoggerProvider(logFile).CreateLogger<TrayApplicationContext>();
             using var tray = new TrayApplicationContext(controller, logger);
             Application.Run(tray);

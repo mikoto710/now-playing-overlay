@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Configuration;
@@ -172,28 +173,36 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
-        ListenerEndpoint[] endpoints;
-        Task[] retirements;
-        lock (_gate)
-        {
-            if (!_started)
-            {
-                return;
-            }
-
-            _started = false;
-            _shutdown.Cancel();
-            endpoints = _endpoints.ToArray();
-            retirements = _retirements.ToArray();
-        }
-
-        await Task.WhenAll(endpoints.Select(endpoint => endpoint.StopAsync()));
+        await _rebindGate.WaitAsync(cancellationToken);
         try
         {
-            await Task.WhenAll(retirements).WaitAsync(cancellationToken);
+            ListenerEndpoint[] endpoints;
+            Task[] retirements;
+            lock (_gate)
+            {
+                if (!_started)
+                {
+                    return;
+                }
+
+                _started = false;
+                _shutdown.Cancel();
+                endpoints = _endpoints.ToArray();
+                retirements = _retirements.ToArray();
+            }
+
+            await Task.WhenAll(endpoints.Select(endpoint => endpoint.StopAsync()));
+            try
+            {
+                await Task.WhenAll(retirements).WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+            {
+            }
         }
-        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        finally
         {
+            _rebindGate.Release();
         }
     }
 
@@ -651,7 +660,8 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
             && value.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
     }
 
-    private sealed record ServerEndpointDto(string OverlayUrl);
+    private sealed record ServerEndpointDto(
+        [property: JsonPropertyName("overlayUrl")] string OverlayUrl);
 
     private sealed class ListenerEndpoint
     {

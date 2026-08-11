@@ -34,7 +34,7 @@ internal sealed class PortConfigurationDialog : Form
             AutoSize = true,
             Margin = new Padding(0, 0, 0, 12),
             MaximumSize = new Size(420, 0),
-            Text = "Choose the loopback port. The new URL takes effect after restarting the app.",
+            Text = "Choose the loopback port. The running server will move without restarting.",
         };
         var portLabel = new Label
         {

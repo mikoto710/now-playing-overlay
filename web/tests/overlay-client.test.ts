@@ -17,10 +17,13 @@ class FakeEventSource implements EventSourceLike {
   onerror: ((event: Event) => void) | null = null;
   closed = false;
   private stateListener: ((event: { data: string }) => void) | null = null;
+  private serverListener: ((event: { data: string }) => void) | null = null;
 
-  addEventListener(type: "state", listener: (event: { data: string }) => void): void {
+  addEventListener(type: "state" | "server", listener: (event: { data: string }) => void): void {
     if (type === "state") {
       this.stateListener = listener;
+    } else {
+      this.serverListener = listener;
     }
   }
 
@@ -34,6 +37,10 @@ class FakeEventSource implements EventSourceLike {
 
   disconnect(): void {
     this.onerror?.(new Event("error"));
+  }
+
+  moveServer(value: unknown): void {
+    this.serverListener?.({ data: JSON.stringify(value) });
   }
 }
 
@@ -130,6 +137,29 @@ describe("OverlayClient", () => {
     expect(onStale).toHaveBeenCalledOnce();
     expect(onProtocolError).toHaveBeenCalledOnce();
   });
+
+  it("accepts only an exact loopback overlay URL from a server endpoint event", () => {
+    const source = new FakeEventSource();
+    const onServerEndpointChange = vi.fn();
+    const onDiagnostic = vi.fn();
+    const callbacks: OverlayClientCallbacks = {
+      onSnapshot: () => undefined,
+      onStale: () => undefined,
+      onProtocolError: () => undefined,
+      onDiagnostic,
+      onServerEndpointChange,
+    };
+    const client = createClientWithCallbacks(source, callbacks);
+
+    client.start();
+    source.moveServer({ overlayUrl: "http://127.0.0.1:13130/NowPlaying.html" });
+    source.moveServer({ overlayUrl: "http://localhost:13130/NowPlaying.html" });
+    source.moveServer({ overlayUrl: "https://127.0.0.1:13130/NowPlaying.html" });
+
+    expect(onServerEndpointChange).toHaveBeenCalledOnce();
+    expect(onServerEndpointChange).toHaveBeenCalledWith("http://127.0.0.1:13130/NowPlaying.html");
+    expect(onDiagnostic).toHaveBeenCalledTimes(2);
+  });
 });
 
 function createClient(
@@ -145,7 +175,16 @@ function createClient(
     onStale,
     onProtocolError,
     onDiagnostic: () => undefined,
+    onServerEndpointChange: () => undefined,
   };
+  return createClientWithCallbacks(source, callbacks, fetchState);
+}
+
+function createClientWithCallbacks(
+  source: FakeEventSource,
+  callbacks: OverlayClientCallbacks,
+  fetchState: () => Promise<Response> = () => new Promise<Response>(() => undefined),
+): OverlayClient {
   const dependencies: OverlayClientDependencies = {
     fetchState: fetchState as typeof fetch,
     createEventSource: () => source,

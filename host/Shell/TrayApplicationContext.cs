@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -125,7 +126,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             });
     }
 
-    private void ConfigurePort()
+    private async void ConfigurePort()
     {
         using var dialog = new PortConfigurationDialog(_controller.EffectivePort);
         if (dialog.ShowDialog() != DialogResult.OK)
@@ -134,11 +135,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
 
         var selectedPort = dialog.SelectedPort;
-        RunUserAction(
-            "save the port",
-            () =>
+        await RunUserActionAsync(
+            "change the port",
+            async () =>
             {
-                var result = _controller.SavePort(selectedPort);
+                var result = await _controller.SavePortAsync(selectedPort);
                 if (!result.Changed)
                 {
                     MessageBox.Show(
@@ -150,8 +151,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 }
 
                 MessageBox.Show(
-                    $"Port {selectedPort} was saved. Restart Now Playing Overlay, then update the OBS Browser Source URL to:\n\n{result.OverlayUrl}\n\nThis running instance remains on {_controller.OverlayUrl} until it exits.",
-                    "Restart Required",
+                    $"The server moved to port {selectedPort} without restarting. Loaded overlay pages were asked to follow the new URL:\n\n{result.OverlayUrl}\n\nUpdate the saved OBS Browser Source URL so future reloads and OBS restarts use the new port.",
+                    "Port Changed",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
             });
@@ -201,6 +202,28 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _logger.LogError(error, "Could not {ActionDescription}.", description);
             MessageBox.Show(
                 $"Could not {description}. Open the log directory for details.",
+                "Now Playing Overlay",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+    }
+
+    private async Task RunUserActionAsync(string description, Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception error) when (error is IOException
+            or UnauthorizedAccessException
+            or Win32Exception
+            or ExternalException
+            or InvalidOperationException
+            or HttpListenerException)
+        {
+            _logger.LogError(error, "Could not {ActionDescription}.", description);
+            MessageBox.Show(
+                $"Could not {description}. The current port remains active. Open the log directory for details.",
                 "Now Playing Overlay",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);

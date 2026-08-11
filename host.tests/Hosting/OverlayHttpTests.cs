@@ -277,6 +277,77 @@ public sealed class OverlayHttpTests
         await app.DisposeAsync();
     }
 
+    [Fact]
+    public async Task LivePortRebindPublishesTheNewEndpointAndRetiresTheOldPort()
+    {
+        await using var host = await TestOverlayHost.StartAsync(rebindGraceMilliseconds: 300);
+        using var events = await host.Client.GetAsync(
+            "/api/v1/events",
+            HttpCompletionOption.ResponseHeadersRead);
+        await using var eventStream = await events.Content.ReadAsStreamAsync();
+        using var reader = new StreamReader(eventStream);
+        _ = await ReadSseEventAsync(reader);
+        var newPort = ReservePort();
+        var persistedPort = 0;
+
+        await host.App.RebindPortAsync(newPort, () => persistedPort = newPort);
+        var endpointEvent = await ReadSseEventAsync(reader);
+        using var endpointJson = JsonDocument.Parse(endpointEvent.Data);
+        using var newClient = CreateClient(newPort);
+        using var newHealth = await newClient.GetAsync("/health");
+        using var oldDuringGrace = await host.Client.GetAsync("/health");
+
+        Assert.Equal("server", endpointEvent.Event);
+        Assert.Null(endpointEvent.Id);
+        Assert.Equal(
+            $"http://127.0.0.1:{newPort}/NowPlaying.html",
+            endpointJson.RootElement.GetProperty("overlayUrl").GetString());
+        Assert.Equal(newPort, persistedPort);
+        Assert.Equal(newPort, host.App.CurrentPort);
+        Assert.Equal(HttpStatusCode.OK, newHealth.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, oldDuringGrace.StatusCode);
+
+        await Task.Delay(600);
+        using var retiredClient = CreateClient(host.Port);
+        await Assert.ThrowsAsync<HttpRequestException>(() => retiredClient.GetAsync("/health"));
+    }
+
+    [Fact]
+    public async Task FailedPortRebindLeavesTheOldEndpointAndSettingsUntouched()
+    {
+        await using var host = await TestOverlayHost.StartAsync();
+        using var occupied = new TcpListener(IPAddress.Loopback, 0);
+        occupied.Start();
+        var occupiedPort = ((IPEndPoint)occupied.LocalEndpoint).Port;
+        var persistCalled = false;
+
+        await Assert.ThrowsAnyAsync<Exception>(() => host.App.RebindPortAsync(
+            occupiedPort,
+            () => persistCalled = true));
+        using var oldHealth = await host.Client.GetAsync("/health");
+
+        Assert.False(persistCalled);
+        Assert.Equal(host.Port, host.App.CurrentPort);
+        Assert.Equal(HttpStatusCode.OK, oldHealth.StatusCode);
+    }
+
+    [Fact]
+    public async Task PersistenceFailureRollsBackTheCandidateEndpoint()
+    {
+        await using var host = await TestOverlayHost.StartAsync();
+        var candidatePort = ReservePort();
+
+        await Assert.ThrowsAsync<IOException>(() => host.App.RebindPortAsync(
+            candidatePort,
+            () => throw new IOException("settings unavailable")));
+        using var oldHealth = await host.Client.GetAsync("/health");
+        using var candidateClient = CreateClient(candidatePort);
+
+        Assert.Equal(host.Port, host.App.CurrentPort);
+        Assert.Equal(HttpStatusCode.OK, oldHealth.StatusCode);
+        await Assert.ThrowsAsync<HttpRequestException>(() => candidateClient.GetAsync("/health"));
+    }
+
     private static SessionObservation Playing(string title, IArtworkReader? artworkReader = null)
     {
         return SessionObservation.Create(
@@ -311,7 +382,7 @@ public sealed class OverlayHttpTests
                 }
             }
 
-            if (eventName is not null && id is not null && data is not null)
+            if (eventName is not null && data is not null)
             {
                 return new SseEvent(eventName, id, data);
             }
@@ -349,7 +420,7 @@ public sealed class OverlayHttpTests
         return int.Parse(statusLine.Split(' ', StringSplitOptions.RemoveEmptyEntries)[1]);
     }
 
-    private sealed record SseEvent(string Event, string Id, string Data);
+    private sealed record SseEvent(string Event, string? Id, string Data);
 
     private sealed class ImmediateArtworkReader(ArtworkPayload payload) : IArtworkReader
     {
@@ -381,7 +452,8 @@ public sealed class OverlayHttpTests
         public static async Task<TestOverlayHost> StartAsync(
             int heartbeatMilliseconds = 100,
             int maximumSseConnections = 4,
-            int maximumConcurrentConnections = 32)
+            int maximumConcurrentConnections = 32,
+            int rebindGraceMilliseconds = 100)
         {
             var port = ReservePort();
             var app = OverlayApplication.Build(
@@ -392,14 +464,11 @@ public sealed class OverlayHttpTests
                 $"--Host:SseHeartbeatInterval=00:00:00.{heartbeatMilliseconds:D3}",
                 $"--Host:MaximumSseConnections={maximumSseConnections}",
                 $"--Host:MaximumConcurrentConnections={maximumConcurrentConnections}",
+                $"--Host:PortRebindGracePeriod=00:00:00.{rebindGraceMilliseconds:D3}",
                 "--Logging:LogLevel:Default=Warning",
             ]);
             await app.StartAsync();
-            var client = new HttpClient
-            {
-                BaseAddress = new Uri($"http://127.0.0.1:{port}"),
-                Timeout = TimeSpan.FromSeconds(5),
-            };
+            var client = CreateClient(port);
             return new TestOverlayHost(app, client, port);
         }
 
@@ -466,5 +535,14 @@ public sealed class OverlayHttpTests
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
         return port;
+    }
+
+    private static HttpClient CreateClient(int port)
+    {
+        return new HttpClient
+        {
+            BaseAddress = new Uri($"http://127.0.0.1:{port}"),
+            Timeout = TimeSpan.FromSeconds(5),
+        };
     }
 }

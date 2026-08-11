@@ -8,41 +8,42 @@ internal sealed class TrayMenuController
 {
     private readonly ApplicationSettingsStore _settingsStore;
     private readonly Func<HostStatus> _getStatus;
-    private readonly Func<int, bool> _isPortAvailable;
+    private readonly Func<int> _getEffectivePort;
+    private readonly Func<int, Action, CancellationToken, Task> _rebindPort;
 
     public TrayMenuController(
-        OverlayHostOptions hostOptions,
+        Func<int> getEffectivePort,
         ApplicationSettingsStore settingsStore,
         HostStatusService statusService,
-        string logDirectory)
+        string logDirectory,
+        Func<int, Action, CancellationToken, Task> rebindPort)
         : this(
-            hostOptions,
+            getEffectivePort,
             settingsStore,
             statusService is null
                 ? throw new ArgumentNullException(nameof(statusService))
                 : statusService.GetCurrent,
             logDirectory,
-            LoopbackPortProbe.IsAvailable)
+            rebindPort)
     {
     }
 
     internal TrayMenuController(
-        OverlayHostOptions hostOptions,
+        Func<int> getEffectivePort,
         ApplicationSettingsStore settingsStore,
         Func<HostStatus> getStatus,
         string logDirectory,
-        Func<int, bool>? isPortAvailable = null)
+        Func<int, Action, CancellationToken, Task> rebindPort)
     {
-        ArgumentNullException.ThrowIfNull(hostOptions);
-        EffectivePort = hostOptions.Port;
+        _getEffectivePort = getEffectivePort ?? throw new ArgumentNullException(nameof(getEffectivePort));
         _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
         _getStatus = getStatus ?? throw new ArgumentNullException(nameof(getStatus));
-        _isPortAvailable = isPortAvailable ?? LoopbackPortProbe.IsAvailable;
+        _rebindPort = rebindPort ?? throw new ArgumentNullException(nameof(rebindPort));
         LogDirectory = Path.GetFullPath(
             logDirectory ?? throw new ArgumentNullException(nameof(logDirectory)));
     }
 
-    public int EffectivePort { get; }
+    public int EffectivePort => _getEffectivePort();
 
     public string OverlayUrl => BuildOverlayUrl(EffectivePort);
 
@@ -53,25 +54,24 @@ internal sealed class TrayMenuController
         return _getStatus();
     }
 
-    public PortChangeResult SavePort(int port)
+    public async Task<PortChangeResult> SavePortAsync(
+        int port,
+        CancellationToken cancellationToken = default)
     {
         var settings = new ApplicationSettings { Port = port };
         settings.Validate();
         if (port == EffectivePort)
         {
-            return new PortChangeResult(Changed: false, RequiresRestart: false, OverlayUrl);
+            return new PortChangeResult(Changed: false, OverlayUrl);
         }
 
-        if (!_isPortAvailable(port))
-        {
-            throw new InvalidOperationException($"Port {port} is not available on 127.0.0.1.");
-        }
-
-        _settingsStore.Save(settings);
+        await _rebindPort(
+            port,
+            () => _settingsStore.Save(settings),
+            cancellationToken);
         return new PortChangeResult(
             Changed: true,
-            RequiresRestart: true,
-            BuildOverlayUrl(port));
+            OverlayUrl);
     }
 
     internal static string BuildOverlayUrl(int port)
@@ -87,5 +87,4 @@ internal sealed class TrayMenuController
 
 internal sealed record PortChangeResult(
     bool Changed,
-    bool RequiresRestart,
     string OverlayUrl);

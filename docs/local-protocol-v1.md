@@ -61,4 +61,13 @@ data: <version 1 JSON snapshot>
 
 The initial event always contains the current state. `Last-Event-ID` is diagnostic only; the host does not replay history. Heartbeats are SSE comments and do not change the revision. Each client subscription has capacity one, so a slow client retains only the newest complete snapshot, and the host enforces a separate total SSE connection limit.
 
+When a running user changes the loopback port, an already loaded page can receive this backward-compatible control event before the old listener retires:
+
+```text
+event: server
+data: {"overlayUrl":"http://127.0.0.1:13130/NowPlaying.html"}
+```
+
+The production client navigates only when `overlayUrl` is an absolute `http://127.0.0.1:<port>/NowPlaying.html` URL without credentials, query, or fragment. Invalid control events are ignored without invalidating the last good state snapshot. Older version 1 clients listen only for named `state` events and therefore ignore `server`; this extension does not change the state DTO or revision rules. It also does not rewrite the URL saved in OBS, which the user must update for future reloads and OBS restarts.
+
 Changing this contract requires a new protocol version or a backward-compatible extension reviewed against both DTO implementations and their contract tests.

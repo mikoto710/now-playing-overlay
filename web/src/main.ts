@@ -50,6 +50,7 @@ const client = new OverlayClient(
     onStale: () => commit(markConnectionStale(state)),
     onProtocolError: (error) => console.error("Unsupported now-playing protocol state.", error),
     onDiagnostic: (message, error) => console.warn(message, error),
+    onServerEndpointChange: (overlayUrl) => window.location.replace(overlayUrl),
   },
 );
 

@@ -10,26 +10,31 @@ namespace NowPlayingOverlay.Host.Tests.Shell;
 public sealed class TrayMenuControllerTests
 {
     [Fact]
-    public void UsesEffectivePortAndPersistsOnlyAChangedPort()
+    public async Task UsesLiveEffectivePortAndPersistsOnlyAChangedPort()
     {
         using var directory = new TemporaryDirectory();
         var settingsPath = Path.Combine(directory.Path, "settings.json");
+        var effectivePort = 13000;
         var controller = new TrayMenuController(
-            new HostOptions { Port = 13000 },
+            () => effectivePort,
             new ApplicationSettingsStore(settingsPath),
             () => new HostStatus("Waiting for Spotify", IsFaulted: false),
             Path.Combine(directory.Path, "logs"),
-            _ => true);
+            (port, persistPort, _) =>
+            {
+                persistPort();
+                effectivePort = port;
+                return Task.CompletedTask;
+            });
 
-        var unchanged = controller.SavePort(13000);
+        var unchanged = await controller.SavePortAsync(13000);
         var fileExistsAfterUnchanged = File.Exists(settingsPath);
-        var changed = controller.SavePort(13001);
+        var changed = await controller.SavePortAsync(13001);
 
-        Assert.Equal("http://127.0.0.1:13000/NowPlaying.html", controller.OverlayUrl);
+        Assert.Equal("http://127.0.0.1:13001/NowPlaying.html", controller.OverlayUrl);
         Assert.False(unchanged.Changed);
         Assert.False(fileExistsAfterUnchanged);
         Assert.True(changed.Changed);
-        Assert.True(changed.RequiresRestart);
         Assert.Equal("http://127.0.0.1:13001/NowPlaying.html", changed.OverlayUrl);
         Assert.Equal(13001, new ApplicationSettingsStore(settingsPath).Load().Settings.Port);
         Assert.Equal("Waiting for Spotify", controller.GetStatus().Text);
@@ -38,34 +43,35 @@ public sealed class TrayMenuControllerTests
     [Theory]
     [InlineData(0)]
     [InlineData(65536)]
-    public void RejectsInvalidPort(int port)
+    public async Task RejectsInvalidPort(int port)
     {
         using var directory = new TemporaryDirectory();
         var controller = new TrayMenuController(
-            new HostOptions(),
+            () => HostOptions.DefaultPort,
             new ApplicationSettingsStore(Path.Combine(directory.Path, "settings.json")),
             () => new HostStatus("Ready", IsFaulted: false),
             directory.Path,
-            _ => true);
+            (_, _, _) => Task.CompletedTask);
 
-        Assert.Throws<InvalidDataException>(() => controller.SavePort(port));
+        await Assert.ThrowsAsync<InvalidDataException>(() => controller.SavePortAsync(port));
     }
 
     [Fact]
-    public void DoesNotPersistUnavailablePort()
+    public async Task DoesNotPersistWhenRebindingFails()
     {
         using var directory = new TemporaryDirectory();
         var settingsPath = Path.Combine(directory.Path, "settings.json");
         var controller = new TrayMenuController(
-            new HostOptions(),
+            () => HostOptions.DefaultPort,
             new ApplicationSettingsStore(settingsPath),
             () => new HostStatus("Ready", IsFaulted: false),
             directory.Path,
-            _ => false);
+            (_, _, _) => throw new InvalidOperationException("Port is unavailable."));
 
-        var error = Assert.Throws<InvalidOperationException>(() => controller.SavePort(13000));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => controller.SavePortAsync(13000));
 
-        Assert.Contains("not available", error.Message, StringComparison.Ordinal);
+        Assert.Contains("unavailable", error.Message, StringComparison.Ordinal);
         Assert.False(File.Exists(settingsPath));
     }
 

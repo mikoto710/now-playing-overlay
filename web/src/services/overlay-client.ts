@@ -2,7 +2,7 @@ import { parseNowPlayingState, type NowPlayingStateDto } from "../protocol";
 
 export interface EventSourceLike {
   onerror: ((event: Event) => void) | null;
-  addEventListener(type: "state", listener: (event: { data: string }) => void): void;
+  addEventListener(type: "state" | "server", listener: (event: { data: string }) => void): void;
   close(): void;
 }
 
@@ -11,6 +11,7 @@ export interface OverlayClientCallbacks {
   onStale(): void;
   onProtocolError(error: Error): void;
   onDiagnostic(message: string, error?: unknown): void;
+  onServerEndpointChange(overlayUrl: string): void;
 }
 
 export interface OverlayClientDependencies {
@@ -56,6 +57,9 @@ export class OverlayClient {
     try {
       this.eventSource = this.dependencies.createEventSource(this.options.eventsUrl);
       this.eventSource.addEventListener("state", (event) => this.handleEvent(event.data));
+      this.eventSource.addEventListener("server", (event) =>
+        this.handleServerEndpointChange(event.data),
+      );
       this.eventSource.onerror = () => this.scheduleStaleState();
     } catch (error) {
       this.callbacks.onDiagnostic("Unable to open the now-playing event stream.", error);
@@ -123,6 +127,34 @@ export class OverlayClient {
     }
   }
 
+  private handleServerEndpointChange(data: string): void {
+    try {
+      const value = JSON.parse(data) as unknown;
+      if (!isRecord(value) || typeof value.overlayUrl !== "string") {
+        throw new Error("Server endpoint event is missing overlayUrl.");
+      }
+
+      const url = new URL(value.overlayUrl);
+      if (
+        url.protocol !== "http:" ||
+        url.hostname !== "127.0.0.1" ||
+        url.username !== "" ||
+        url.password !== "" ||
+        url.pathname !== "/NowPlaying.html" ||
+        url.search !== "" ||
+        url.hash !== "" ||
+        url.port === ""
+      ) {
+        throw new Error("Server endpoint event contains an unsafe overlay URL.");
+      }
+
+      this.callbacks.onServerEndpointChange(url.href);
+    } catch (error) {
+      // A malformed optional control event must not invalidate the last good protocol snapshot.
+      this.callbacks.onDiagnostic("Ignored an invalid server endpoint event.", error);
+    }
+  }
+
   private scheduleStaleState(): void {
     if (this.failed || this.staleTimer !== null) {
       return;
@@ -159,4 +191,8 @@ export class OverlayClient {
 
 function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
