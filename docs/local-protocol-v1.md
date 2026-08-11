@@ -6,7 +6,7 @@ This document freezes the local contract shared by the host and browser client. 
 
 | Method | Path | Cache policy | Purpose |
 | --- | --- | --- | --- |
-| `GET`, `HEAD` | `/NowPlaying.html` | `no-store` | Diagnostic page in M3; replaced by the production overlay later |
+| `GET`, `HEAD` | `/NowPlaying.html` | `no-store` | Embedded production overlay page |
 | `GET`, `HEAD` | `/api/v1/state` | `no-store` | Latest complete state snapshot |
 | `GET` | `/api/v1/events` | `no-store` | Server-Sent Events containing complete state snapshots |
 | `GET`, `HEAD` | `/api/v1/artwork/{artworkId}` | one year, `immutable` | Content-addressed PNG, JPEG, or WebP bytes |

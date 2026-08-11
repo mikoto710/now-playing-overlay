@@ -6,20 +6,19 @@
 
 Now Playing Overlay is a lightweight local Windows application that displays the current Spotify track in a transparent `350 x 70` OBS Browser Source. It reads Spotify's Windows media session, serves the overlay on loopback, and runs from the system tray.
 
-It does not require Snip text or artwork files, and the current version does not require a Spotify Web API login.
+Playback metadata and artwork are read directly from the local Windows media session. The current version does not require a Spotify Web API login or intermediate metadata files.
 
 ## Requirements
 
 - Windows 10 version 1809 (build 17763) or later, x64
 - Spotify for Windows: the official Win32 version or the Microsoft Store version
 - OBS Studio 31.0.1 for the currently validated Browser Source baseline (CEF 127)
-- The x64 .NET 10 Desktop Runtime **and** ASP.NET Core Runtime
+- The x64 .NET 10 Desktop Runtime
 
-The application is framework-dependent, so the .NET runtime files are not bundled into the executable. Install both runtimes from the official [.NET 10 download page](https://dotnet.microsoft.com/en-us/download/dotnet/10.0), or use WinGet:
+The application is framework-dependent, so the .NET runtime files are not bundled into the executable. The Desktop Runtime includes everything the application needs; no additional server or embedded-browser runtime is required. Install it from the official [.NET 10 download page](https://dotnet.microsoft.com/en-us/download/dotnet/10.0), or use WinGet:
 
 ```powershell
 winget install Microsoft.DotNet.DesktopRuntime.10
-winget install Microsoft.DotNet.AspNetCore.10
 ```
 
 The .NET 10 SDK also supplies the required runtimes, but end users do not need the SDK.
@@ -60,7 +59,7 @@ The overlay is visible only while Spotify reports a playing track. Pausing or st
 | **Copy OBS URL**      | Copies the URL for the current running port.                                                 |
 | **Open Overlay**      | Opens the overlay in the default browser. Double-clicking the tray icon does the same thing. |
 | **Open Logs**         | Opens the application log directory.                                                         |
-| **Configure Port...** | Saves a different available loopback port. A restart is required.                            |
+| **Configure Port...** | Moves the running loopback server to a different available port.                            |
 | **Exit**              | Stops the local server and exits the application.                                            |
 
 ## Connection and startup behavior
@@ -79,10 +78,12 @@ To change it:
 
 1. Select **Configure Port...** from the tray menu.
 2. Choose an available port and save it.
-3. Exit and restart Now Playing Overlay.
-4. Copy the new OBS URL and update the Browser Source.
+3. The running server starts the new port first and asks already loaded overlay pages to follow it.
+4. Copy the new OBS URL and update the saved Browser Source for future OBS reloads and restarts.
 
-The running instance stays on its old port until it exits. If the saved port is occupied during startup, the application offers to save another one instead of silently choosing a random port.
+The old port remains available for a short migration period and then closes. If the new port is occupied or the setting cannot be saved, the old port remains active and the saved configuration is not changed. The application cannot rewrite the Browser Source URL stored by OBS.
+
+If the saved port is occupied during startup, the application offers to save another one instead of silently choosing a random port; because the server did not start in that case, restart the application after saving the replacement.
 
 For a temporary one-run override, start the executable from PowerShell with:
 
@@ -103,11 +104,11 @@ User settings are stored in `%LOCALAPPDATA%\NowPlayingOverlay\settings.json`.
 
 ### The application reports a missing framework
 
-Install both the x64 .NET 10 Desktop Runtime and ASP.NET Core Runtime. Installing only the plain .NET Runtime is not sufficient.
+Install the x64 .NET 10 Desktop Runtime. The plain .NET Runtime alone is not sufficient because the tray uses Windows Forms.
 
 ### The port is unavailable
 
-Use the startup prompt or **Configure Port...** to select another available loopback port. Restart the application and replace the URL in OBS afterward.
+Use the startup prompt or **Configure Port...** to select another available loopback port. A running instance moves without restarting; a startup failure still requires restarting after saving the replacement. Replace the saved URL in OBS afterward.
 
 ### Spotify is playing but the tray keeps waiting
 
@@ -175,6 +176,8 @@ It also creates the versioned GitHub release assets under `artifacts/release`:
 NowPlayingOverlay-v0.1.0-win-x64.zip
 NowPlayingOverlay-v0.1.0-win-x64.zip.sha256
 ```
+
+The publish gate also verifies that the framework closure contains only `Microsoft.NETCore.App` and `Microsoft.WindowsDesktop.App`. The reasoning and measurements behind the selected framework-dependent single-file format are recorded in [docs/runtime-optimization.md](docs/runtime-optimization.md).
 
 Console projects in this repository are development probes and are not user release artifacts.
 

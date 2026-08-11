@@ -27,3 +27,6 @@ logs/
 # Local media-session probe evidence can contain private listening information.
 PROBE_RESULTS.md
 probe-output/
+
+# Maintainer-specific release notes and checklists stay local.
+docs/release-checklist.md
