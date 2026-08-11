@@ -10,7 +10,6 @@ namespace NowPlayingOverlay.Host.Shell;
 internal sealed class TrayApplicationContext : ApplicationContext
 {
     private readonly TrayMenuController _controller;
-    private readonly ClipboardTextWriter _clipboard = new();
     private readonly ILogger<TrayApplicationContext> _logger;
     private readonly ToolStripMenuItem _statusItem;
     private readonly ContextMenuStrip _menu;
@@ -103,7 +102,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
             "copy the OBS URL",
             () =>
             {
-                _clipboard.SetText(_controller.OverlayUrl);
+                Clipboard.SetDataObject(
+                    _controller.OverlayUrl,
+                    copy: true,
+                    retryTimes: 10,
+                    retryDelay: 100);
                 _logger.LogInformation("Copied the OBS URL to the clipboard.");
             });
     }
