@@ -21,7 +21,7 @@ public sealed class ProtocolContractTests
             albumTrackCount: 12,
             playbackType: MediaPlaybackKind.Music,
             genres: ["Rock", "Pop"]);
-        var artwork = ArtworkDescriptor.Create(
+        var artwork = new ArtworkDescriptor(
             7,
             "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a",
             "image/png",

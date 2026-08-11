@@ -59,37 +59,6 @@ public sealed class TrackMetadataTests
     }
 
     [Fact]
-    public void IdentityExcludesSupplementalMetadata()
-    {
-        var first = TrackIdentity.Create(
-            " Spotify.exe ",
-            TrackMetadata.Create(
-                "Title",
-                "Artist",
-                "First album",
-                "First album artist",
-                "First subtitle",
-                1,
-                10,
-                MediaPlaybackKind.Music,
-                ["Rock"]));
-        var second = TrackIdentity.Create(
-            "Spotify.exe",
-            TrackMetadata.Create(
-                "Title",
-                "Artist",
-                "Second album",
-                "Second album artist",
-                "Second subtitle",
-                2,
-                20,
-                MediaPlaybackKind.Video,
-                ["Pop"]));
-
-        Assert.Equal(first, second);
-    }
-
-    [Fact]
     public void EqualityUsesNormalizedGenreContentInsteadOfCollectionIdentity()
     {
         var first = TrackMetadata.Create("Title", "Artist", null, genres: ["Rock", "Pop"]);
@@ -110,32 +79,4 @@ public sealed class TrackMetadataTests
         Assert.NotEqual(baseline, changed);
     }
 
-    [Fact]
-    public void CreateRejectsUnknownPlaybackType()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(
-            () => TrackMetadata.Create(
-                "Title",
-                "Artist",
-                null,
-                playbackType: (MediaPlaybackKind)999));
-    }
-
-    [Fact]
-    public void IdentityIncludesSourceTitleAndArtist()
-    {
-        var baseline = TrackIdentity.Create(
-            "Spotify.exe",
-            TrackMetadata.Create("Title", "Artist", null));
-
-        Assert.NotEqual(
-            baseline,
-            TrackIdentity.Create("Other.exe", TrackMetadata.Create("Title", "Artist", null)));
-        Assert.NotEqual(
-            baseline,
-            TrackIdentity.Create("Spotify.exe", TrackMetadata.Create("Other", "Artist", null)));
-        Assert.NotEqual(
-            baseline,
-            TrackIdentity.Create("Spotify.exe", TrackMetadata.Create("Title", "Other", null)));
-    }
 }

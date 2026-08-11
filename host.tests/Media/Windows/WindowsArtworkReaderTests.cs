@@ -19,7 +19,6 @@ public sealed class WindowsArtworkReaderTests
         var payload = await reader.ReadAsync(CancellationToken.None);
 
         Assert.NotNull(payload);
-        Assert.Equal("image/png", payload.DeclaredContentType);
         Assert.Equal(OnePixelPng, payload.Bytes.ToArray());
     }
 

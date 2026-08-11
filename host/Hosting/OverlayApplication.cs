@@ -13,30 +13,29 @@ namespace NowPlayingOverlay.Host.Hosting;
 
 internal sealed class OverlayApplication : IAsyncDisposable
 {
-    private readonly OverlayRuntimeService _runtime;
+    private readonly NowPlayingCoordinator _coordinator;
+    private readonly HostRuntimeState _runtimeState;
     private readonly OverlayHttpServer _httpServer;
     private bool _started;
     private bool _disposed;
 
     private OverlayApplication(
         HostOptions options,
-        ISessionSource sessionSource,
         HostStatusService statusService,
-        OverlayRuntimeService runtime,
+        NowPlayingCoordinator coordinator,
+        HostRuntimeState runtimeState,
         OverlayHttpServer httpServer)
     {
         Options = options;
-        SessionSource = sessionSource;
         StatusService = statusService;
-        _runtime = runtime;
+        _coordinator = coordinator;
+        _runtimeState = runtimeState;
         _httpServer = httpServer;
     }
 
     public HostOptions Options { get; }
 
     public int CurrentPort => _httpServer.CurrentPort;
-
-    public ISessionSource SessionSource { get; }
 
     public HostStatusService StatusService { get; }
 
@@ -102,10 +101,6 @@ internal sealed class OverlayApplication : IAsyncDisposable
             coordinator,
             sessionSource,
             store);
-        var runtime = new OverlayRuntimeService(
-            coordinator,
-            runtimeState,
-            CreateLogger<OverlayRuntimeService>(loggerProvider));
         var httpServer = new OverlayHttpServer(
             options,
             pageAsset,
@@ -119,9 +114,9 @@ internal sealed class OverlayApplication : IAsyncDisposable
 
         return new OverlayApplication(
             options,
-            sessionSource,
             statusService,
-            runtime,
+            coordinator,
+            runtimeState,
             httpServer);
     }
 
@@ -136,7 +131,8 @@ internal sealed class OverlayApplication : IAsyncDisposable
         await _httpServer.StartAsync(cancellationToken);
         try
         {
-            await _runtime.StartAsync(cancellationToken);
+            _coordinator.Start();
+            _runtimeState.MarkReady();
             _started = true;
         }
         catch
@@ -164,7 +160,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
 
         _started = false;
         await _httpServer.StopAsync(cancellationToken);
-        await _runtime.StopAsync(cancellationToken);
+        await _coordinator.DisposeAsync();
     }
 
     public async ValueTask DisposeAsync()

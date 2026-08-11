@@ -28,7 +28,7 @@ internal sealed class WindowsArtworkReader : IArtworkReader
         cancellationToken.ThrowIfCancellationRequested();
         using var stream = await _openStream();
         cancellationToken.ThrowIfCancellationRequested();
-        if (stream.Size is 0 or > ArtworkDescriptor.MaximumByteLength)
+        if (stream.Size is 0 or > ArtworkCacheOptions.DefaultMaximumItemBytes)
         {
             return null;
         }
@@ -62,7 +62,7 @@ internal sealed class WindowsArtworkReader : IArtworkReader
         }
 
         reader.ReadBytes(bytes);
-        return ArtworkPayload.Create(bytes, contentType);
+        return ArtworkPayload.Create(bytes);
     }
 
     private static string? GetContentType(Guid codecId)

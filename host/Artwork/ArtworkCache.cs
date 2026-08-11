@@ -17,29 +17,7 @@ internal sealed class ArtworkCache
         _options.Validate();
     }
 
-    public int Count
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _entries.Count;
-            }
-        }
-    }
-
-    public long TotalBytes
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _totalBytes;
-            }
-        }
-    }
-
-    public bool TryAdd(ArtworkPayload payload, out ArtworkCacheEntry? entry, out bool added)
+    public bool TryAdd(ArtworkPayload payload, out ArtworkCacheEntry? entry)
     {
         ArgumentNullException.ThrowIfNull(payload);
         var bytes = payload.Bytes;
@@ -50,7 +28,6 @@ internal sealed class ArtworkCache
             || (long)width * height > _options.MaximumPixels)
         {
             entry = null;
-            added = false;
             return false;
         }
 
@@ -61,7 +38,6 @@ internal sealed class ArtworkCache
             {
                 existing.LastAccess = NextAccessSequence();
                 entry = existing.Entry;
-                added = false;
                 return true;
             }
 
@@ -72,7 +48,6 @@ internal sealed class ArtworkCache
             if (evictions is null)
             {
                 entry = null;
-                added = false;
                 return false;
             }
 
@@ -85,12 +60,9 @@ internal sealed class ArtworkCache
             entry = new ArtworkCacheEntry(
                 artworkId,
                 contentType,
-                bytes.ToArray(),
-                width,
-                height);
+                bytes.ToArray());
             _entries.Add(artworkId, new CacheItem(entry, NextAccessSequence()));
             _totalBytes += entry.ByteLength;
-            added = true;
             return true;
         }
     }

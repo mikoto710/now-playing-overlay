@@ -7,15 +7,11 @@ internal sealed class ArtworkCacheEntry
     internal ArtworkCacheEntry(
         string artworkId,
         string contentType,
-        byte[] bytes,
-        int width,
-        int height)
+        byte[] bytes)
     {
         ArtworkId = artworkId;
         ContentType = contentType;
         _bytes = bytes;
-        Width = width;
-        Height = height;
     }
 
     public string ArtworkId { get; }
@@ -26,7 +22,4 @@ internal sealed class ArtworkCacheEntry
 
     public int ByteLength => _bytes.Length;
 
-    public int Width { get; }
-
-    public int Height { get; }
 }

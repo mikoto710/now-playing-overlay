@@ -18,7 +18,7 @@ public sealed class SessionObservationTests
             new StubArtworkReader());
 
         Assert.Equal("Spotify.exe", observation.SourceAppUserModelId);
-        Assert.Equal(TrackIdentity.Create("Spotify.exe", track), observation.Identity);
+        Assert.Equal(new TrackIdentity("Spotify.exe", "Title", "Artist"), observation.Identity);
     }
 
     [Fact]
@@ -45,12 +45,11 @@ public sealed class SessionObservationTests
     public void ArtworkPayloadCopiesInputBytes()
     {
         byte[] bytes = [1, 2, 3];
-        var payload = ArtworkPayload.Create(bytes, " image/png ");
+        var payload = ArtworkPayload.Create(bytes);
 
         bytes[0] = 9;
 
         Assert.Equal([1, 2, 3], payload.Bytes.ToArray());
-        Assert.Equal("image/png", payload.DeclaredContentType);
     }
 
     private sealed class StubArtworkReader : IArtworkReader

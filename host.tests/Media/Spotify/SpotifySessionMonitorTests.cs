@@ -20,7 +20,6 @@ public sealed class SpotifySessionMonitorTests
 
         Assert.Equal("Spotify.exe", observation.SourceAppUserModelId);
         Assert.True(monitor.IsAvailable);
-        Assert.Equal(SpotifySessionSelectionStatus.Selected, monitor.SelectionStatus);
         Assert.True(chrome.Disposed);
         Assert.False(spotify.Disposed);
     }
@@ -40,7 +39,6 @@ public sealed class SpotifySessionMonitorTests
 
         Assert.Equal(source, observation.SourceAppUserModelId);
         Assert.Equal("Store track", observation.Track!.Title);
-        Assert.Equal(SpotifySessionSelectionStatus.Selected, monitor.SelectionStatus);
     }
 
     [Fact]
@@ -63,7 +61,6 @@ public sealed class SpotifySessionMonitorTests
 
         Assert.Equal(PlaybackState.Unavailable, missing.Playback);
         Assert.Equal(PlaybackState.Unavailable, ambiguous.Playback);
-        Assert.Equal(SpotifySessionSelectionStatus.Ambiguous, monitor.SelectionStatus);
         Assert.True(monitor.IsAvailable);
     }
 

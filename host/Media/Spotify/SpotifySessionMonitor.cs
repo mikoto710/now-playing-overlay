@@ -12,7 +12,6 @@ internal sealed class SpotifySessionMonitor : ISessionSource, ISessionSourceStat
     private readonly ILogger<SpotifySessionMonitor> _logger;
     private IMediaSessionManager? _manager;
     private IMediaSessionAdapter? _boundSession;
-    private SpotifySessionSelectionStatus _selectionStatus = SpotifySessionSelectionStatus.NotFound;
     private Exception? _backgroundError;
     private long _bindingGeneration;
     private bool _disposed;
@@ -36,17 +35,6 @@ internal sealed class SpotifySessionMonitor : ISessionSource, ISessionSourceStat
             lock (_gate)
             {
                 return _manager is not null && _backgroundError is null;
-            }
-        }
-    }
-
-    internal SpotifySessionSelectionStatus SelectionStatus
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _selectionStatus;
             }
         }
     }
@@ -261,7 +249,6 @@ internal sealed class SpotifySessionMonitor : ISessionSource, ISessionSourceStat
             }
 
             _boundSession = selected;
-            _selectionStatus = selection.Status;
             _backgroundError = null;
             _bindingGeneration = checked(_bindingGeneration + 1);
             if (selected is not null && !ReferenceEquals(previous, selected))

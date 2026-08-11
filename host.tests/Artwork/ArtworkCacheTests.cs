@@ -11,15 +11,12 @@ public sealed class ArtworkCacheTests
     public void TryAddUsesSignatureContentTypeAndContentAddress()
     {
         var cache = CreateCache();
-        var payload = ArtworkPayload.Create(OnePixelPng, "application/octet-stream");
+        var payload = ArtworkPayload.Create(OnePixelPng);
 
-        Assert.True(cache.TryAdd(payload, out var entry, out var added));
+        Assert.True(cache.TryAdd(payload, out var entry));
 
-        Assert.True(added);
         Assert.NotNull(entry);
         Assert.Equal("image/png", entry.ContentType);
-        Assert.Equal(1, entry.Width);
-        Assert.Equal(1, entry.Height);
         Assert.Equal(64, entry.ArtworkId.Length);
         Assert.Equal(entry.ArtworkId.ToLowerInvariant(), entry.ArtworkId);
         Assert.True(cache.TryGet(entry.ArtworkId, out var cached));
@@ -32,13 +29,10 @@ public sealed class ArtworkCacheTests
         var cache = CreateCache();
         var payload = ArtworkPayload.Create(OnePixelPng);
 
-        Assert.True(cache.TryAdd(payload, out var first, out var firstAdded));
-        Assert.True(cache.TryAdd(payload, out var second, out var secondAdded));
+        Assert.True(cache.TryAdd(payload, out var first));
+        Assert.True(cache.TryAdd(payload, out var second));
 
-        Assert.True(firstAdded);
-        Assert.False(secondAdded);
         Assert.Same(first, second);
-        Assert.Equal(1, cache.Count);
     }
 
     [Theory]
@@ -47,10 +41,8 @@ public sealed class ArtworkCacheTests
     {
         var cache = CreateCache();
 
-        Assert.True(cache.TryAdd(ArtworkPayload.Create(bytes), out var entry, out _));
+        Assert.True(cache.TryAdd(ArtworkPayload.Create(bytes), out var entry));
         Assert.Equal(expectedContentType, entry!.ContentType);
-        Assert.Equal(1, entry.Width);
-        Assert.Equal(1, entry.Height);
     }
 
     [Fact]
@@ -61,10 +53,9 @@ public sealed class ArtworkCacheTests
         oversizedDimensions[19] = 2;
 
         Assert.False(
-            cache.TryAdd(ArtworkPayload.Create([1, 2, 3]), out _, out _));
+            cache.TryAdd(ArtworkPayload.Create([1, 2, 3]), out _));
         Assert.False(
-            cache.TryAdd(ArtworkPayload.Create(oversizedDimensions), out _, out _));
-        Assert.Equal(0, cache.Count);
+            cache.TryAdd(ArtworkPayload.Create(oversizedDimensions), out _));
     }
 
     [Fact]
@@ -73,8 +64,7 @@ public sealed class ArtworkCacheTests
         var cache = CreateCache(maximumItemBytes: OnePixelPng.Length - 1);
 
         Assert.False(
-            cache.TryAdd(ArtworkPayload.Create(OnePixelPng), out _, out _));
-        Assert.Equal(0, cache.TotalBytes);
+            cache.TryAdd(ArtworkPayload.Create(OnePixelPng), out _));
     }
 
     [Fact]
@@ -84,15 +74,14 @@ public sealed class ArtworkCacheTests
             maximumEntries: 4,
             maximumItemBytes: OnePixelPng.Length,
             maximumTotalBytes: OnePixelPng.Length * 2);
-        cache.TryAdd(CreateDistinctPng(1), out var first, out _);
-        cache.TryAdd(CreateDistinctPng(2), out var second, out _);
+        cache.TryAdd(CreateDistinctPng(1), out var first);
+        cache.TryAdd(CreateDistinctPng(2), out var second);
 
-        Assert.True(cache.TryAdd(CreateDistinctPng(3), out var third, out _));
+        Assert.True(cache.TryAdd(CreateDistinctPng(3), out var third));
 
         Assert.False(cache.TryGet(first!.ArtworkId, out _));
         Assert.True(cache.TryGet(second!.ArtworkId, out _));
         Assert.True(cache.TryGet(third!.ArtworkId, out _));
-        Assert.True(cache.TotalBytes <= OnePixelPng.Length * 2);
     }
 
     [Fact]
@@ -102,11 +91,11 @@ public sealed class ArtworkCacheTests
         var firstPayload = CreateDistinctPng(1);
         var secondPayload = CreateDistinctPng(2);
         var thirdPayload = CreateDistinctPng(3);
-        cache.TryAdd(firstPayload, out var first, out _);
-        cache.TryAdd(secondPayload, out var second, out _);
+        cache.TryAdd(firstPayload, out var first);
+        cache.TryAdd(secondPayload, out var second);
         cache.SetProtectedIds(first!.ArtworkId);
 
-        Assert.True(cache.TryAdd(thirdPayload, out var third, out _));
+        Assert.True(cache.TryAdd(thirdPayload, out var third));
 
         Assert.True(cache.TryGet(first.ArtworkId, out _));
         Assert.False(cache.TryGet(second!.ArtworkId, out _));
@@ -117,12 +106,13 @@ public sealed class ArtworkCacheTests
     public void TryAddDoesNotEvictProtectedCurrentAndPreviousEntries()
     {
         var cache = CreateCache(maximumEntries: 2);
-        cache.TryAdd(CreateDistinctPng(1), out var first, out _);
-        cache.TryAdd(CreateDistinctPng(2), out var second, out _);
+        cache.TryAdd(CreateDistinctPng(1), out var first);
+        cache.TryAdd(CreateDistinctPng(2), out var second);
         cache.SetProtectedIds(first!.ArtworkId, second!.ArtworkId);
 
-        Assert.False(cache.TryAdd(CreateDistinctPng(3), out _, out _));
-        Assert.Equal(2, cache.Count);
+        Assert.False(cache.TryAdd(CreateDistinctPng(3), out _));
+        Assert.True(cache.TryGet(first.ArtworkId, out _));
+        Assert.True(cache.TryGet(second.ArtworkId, out _));
     }
 
     private static ArtworkCache CreateCache(

@@ -4,7 +4,9 @@ namespace NowPlayingOverlay.Host.Artwork;
 
 internal sealed record ArtworkCacheOptions
 {
-    public int MaximumItemBytes { get; init; } = ArtworkDescriptor.MaximumByteLength;
+    public const int DefaultMaximumItemBytes = 5 * 1024 * 1024;
+
+    public int MaximumItemBytes { get; init; } = DefaultMaximumItemBytes;
 
     public int MaximumWidth { get; init; } = 4096;
 
@@ -18,7 +20,7 @@ internal sealed record ArtworkCacheOptions
 
     public void Validate()
     {
-        if (MaximumItemBytes is <= 0 or > ArtworkDescriptor.MaximumByteLength)
+        if (MaximumItemBytes is <= 0 or > DefaultMaximumItemBytes)
         {
             throw new ArgumentOutOfRangeException(nameof(MaximumItemBytes));
         }

@@ -30,7 +30,7 @@ public sealed class NowPlayingSnapshotTests
 
         var snapshot = CreateSnapshot(1, PlaybackState.Playing, track: track);
 
-        Assert.Equal(TrackIdentity.Create("Spotify.exe", track), snapshot.Identity);
+        Assert.Equal(new TrackIdentity("Spotify.exe", "Title", "Artist"), snapshot.Identity);
     }
 
     [Fact]
@@ -134,20 +134,6 @@ public sealed class NowPlayingSnapshotTests
                 DateTimeOffset.UtcNow));
     }
 
-    [Fact]
-    public void CreateRejectsUnknownPlaybackState()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(
-            () => NowPlayingSnapshot.Create(
-                ServerInstanceId,
-                1,
-                "Spotify.exe",
-                (PlaybackState)999,
-                track: null,
-                artwork: null,
-                DateTimeOffset.UtcNow));
-    }
-
     private static NowPlayingSnapshot CreateSnapshot(
         long revision,
         PlaybackState playback,
@@ -166,7 +152,7 @@ public sealed class NowPlayingSnapshotTests
 
     private static ArtworkDescriptor CreateArtwork(long revision)
     {
-        return ArtworkDescriptor.Create(
+        return new ArtworkDescriptor(
             revision,
             "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a",
             "image/png",

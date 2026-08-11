@@ -37,7 +37,7 @@ internal sealed record NowPlayingSnapshot
     public DateTimeOffset ObservedAt { get; }
 
     public TrackIdentity? Identity =>
-        Track is null ? null : TrackIdentity.Create(SourceAppUserModelId, Track);
+        Track is null ? null : new TrackIdentity(SourceAppUserModelId, Track.Title, Track.Artist);
 
     public static NowPlayingSnapshot CreateInitial(
         Guid serverInstanceId,

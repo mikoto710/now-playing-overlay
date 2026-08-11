@@ -28,7 +28,7 @@ internal sealed class SessionObservation
     public IArtworkReader? ArtworkReader { get; }
 
     public TrackIdentity? Identity =>
-        Track is null ? null : TrackIdentity.Create(SourceAppUserModelId, Track);
+        Track is null ? null : new TrackIdentity(SourceAppUserModelId, Track.Title, Track.Artist);
 
     public static SessionObservation Create(
         string? sourceAppUserModelId,

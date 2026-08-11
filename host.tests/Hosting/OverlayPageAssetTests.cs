@@ -13,6 +13,5 @@ public sealed class OverlayPageAssetTests
 
         Assert.Contains("id=\"now-playing\"", html, StringComparison.Ordinal);
         Assert.DoesNotContain("protocol diagnostic", html, StringComparison.Ordinal);
-        Assert.StartsWith("embedded resource", asset.Source, StringComparison.Ordinal);
     }
 }

@@ -102,7 +102,7 @@ public sealed class OverlayHttpTests
         await using var host = await TestOverlayHost.StartAsync();
         host.Source.Publish(Playing(
             "Artwork track",
-            new ImmediateArtworkReader(ArtworkPayload.Create(OnePixelPng, "application/octet-stream"))));
+            new ImmediateArtworkReader(ArtworkPayload.Create(OnePixelPng))));
         var state = await host.WaitForArtworkAsync();
         var artwork = state.RootElement.GetProperty("artwork");
         var artworkId = artwork.GetProperty("artworkId").GetString()!;
@@ -188,7 +188,7 @@ public sealed class OverlayHttpTests
         await using var host = await TestOverlayHost.StartAsync();
         host.Source.Publish(Playing(
             "Artwork track",
-            new ImmediateArtworkReader(ArtworkPayload.Create(OnePixelPng, "application/octet-stream"))));
+            new ImmediateArtworkReader(ArtworkPayload.Create(OnePixelPng))));
         using var state = await host.WaitForArtworkAsync();
         var artworkUrl = state.RootElement.GetProperty("artwork").GetProperty("url").GetString()!;
 

@@ -355,7 +355,7 @@ internal sealed class NowPlayingCoordinator : IAsyncDisposable
 
         // Cache insertion precedes publication, so snapshots never reference missing bytes.
         if (completion.Payload is null
-            || !_artworkCache.TryAdd(completion.Payload, out var cacheEntry, out _))
+            || !_artworkCache.TryAdd(completion.Payload, out var cacheEntry))
         {
             _store.TryCommit(
                 current.SourceAppUserModelId,
@@ -380,7 +380,7 @@ internal sealed class NowPlayingCoordinator : IAsyncDisposable
             return;
         }
 
-        var descriptor = ArtworkDescriptor.Create(
+        var descriptor = new ArtworkDescriptor(
             checked(++_artworkRevision),
             cacheEntry.ArtworkId,
             cacheEntry.ContentType,

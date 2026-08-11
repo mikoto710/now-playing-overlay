@@ -4,26 +4,20 @@ internal sealed class ArtworkPayload
 {
     private readonly byte[] _bytes;
 
-    private ArtworkPayload(byte[] bytes, string? declaredContentType)
+    private ArtworkPayload(byte[] bytes)
     {
         _bytes = bytes;
-        DeclaredContentType = declaredContentType;
     }
 
     public ReadOnlyMemory<byte> Bytes => _bytes;
 
-    public string? DeclaredContentType { get; }
-
-    public static ArtworkPayload Create(ReadOnlySpan<byte> bytes, string? declaredContentType = null)
+    public static ArtworkPayload Create(ReadOnlySpan<byte> bytes)
     {
         if (bytes.IsEmpty)
         {
             throw new ArgumentException("Artwork payload must not be empty.", nameof(bytes));
         }
 
-        var contentType = string.IsNullOrWhiteSpace(declaredContentType)
-            ? null
-            : declaredContentType.Trim();
-        return new ArtworkPayload(bytes.ToArray(), contentType);
+        return new ArtworkPayload(bytes.ToArray());
     }
 }
