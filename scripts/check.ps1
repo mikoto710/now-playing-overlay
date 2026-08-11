@@ -1,11 +1,20 @@
 [CmdletBinding()]
-param()
+param(
+    [switch]$Release
+)
 
 $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$dotnetArtifactsRoot = [System.IO.Path]::GetFullPath(
-    (Join-Path ([System.IO.Path]::GetTempPath()) "NowPlayingOverlay-validation-$([guid]::NewGuid().ToString('N'))")
-)
+$dotnetArtifactsRoot = if ($Release) {
+    [System.IO.Path]::GetFullPath(
+        (Join-Path ([System.IO.Path]::GetTempPath()) "NowPlayingOverlay-validation-$([guid]::NewGuid().ToString('N'))")
+    )
+}
+else {
+    [System.IO.Path]::GetFullPath(
+        (Join-Path $repositoryRoot "artifacts\validation\dotnet")
+    )
+}
 
 function Invoke-CheckedCommand {
     param(
@@ -26,7 +35,13 @@ Push-Location $repositoryRoot
 try {
     Push-Location (Join-Path $repositoryRoot "web")
     try {
-        Invoke-CheckedCommand npm ci
+        if ($Release) {
+            Invoke-CheckedCommand npm ci
+        }
+        elseif (-not (Test-Path -LiteralPath "node_modules" -PathType Container)) {
+            throw "Frontend dependencies are missing. Run 'npm --prefix web install' once, then rerun the check."
+        }
+
         Invoke-CheckedCommand npm run check
         Invoke-CheckedCommand npm test
         Invoke-CheckedCommand npm run build
@@ -35,24 +50,46 @@ try {
         Pop-Location
     }
 
-    # Keep validation isolated from IDE-owned bin/obj files so a live development
-    # session cannot make the release gate fail through unrelated file locks.
-    Invoke-CheckedCommand dotnet restore NowPlayingOverlay.sln --artifacts-path $dotnetArtifactsRoot
-    Invoke-CheckedCommand dotnet build NowPlayingOverlay.sln --no-restore --artifacts-path $dotnetArtifactsRoot
-    Invoke-CheckedCommand dotnet test NowPlayingOverlay.sln --no-build --artifacts-path $dotnetArtifactsRoot
+    $testArguments = @(
+        "test"
+        "host.tests\NowPlayingOverlay.Host.Tests.csproj"
+        "--artifacts-path"
+        $dotnetArtifactsRoot
+        "--disable-build-servers"
+        "-m:2"
+        "-nodeReuse:false"
+        "-p:UseSharedCompilation=false"
+    )
+    Invoke-CheckedCommand dotnet @testArguments
+
+    if ($Release) {
+        $probeTestArguments = @(
+            "test"
+            "tools\session-probe.tests\NowPlayingOverlay.SessionProbe.Tests.csproj"
+            "--artifacts-path"
+            $dotnetArtifactsRoot
+            "--disable-build-servers"
+            "-m:2"
+            "-nodeReuse:false"
+            "-p:UseSharedCompilation=false"
+        )
+        Invoke-CheckedCommand dotnet @probeTestArguments
+    }
 }
 finally {
     Pop-Location
 
-    $systemTemporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
-    if (-not $dotnetArtifactsRoot.StartsWith(
-        $systemTemporaryRoot,
-        [System.StringComparison]::OrdinalIgnoreCase
-    )) {
-        throw "Refusing to clean unexpected validation directory '$dotnetArtifactsRoot'."
-    }
+    if ($Release) {
+        $systemTemporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+        if (-not $dotnetArtifactsRoot.StartsWith(
+            $systemTemporaryRoot,
+            [System.StringComparison]::OrdinalIgnoreCase
+        )) {
+            throw "Refusing to clean unexpected validation directory '$dotnetArtifactsRoot'."
+        }
 
-    if (Test-Path -LiteralPath $dotnetArtifactsRoot) {
-        Remove-Item -LiteralPath $dotnetArtifactsRoot -Recurse -Force
+        if (Test-Path -LiteralPath $dotnetArtifactsRoot) {
+            Remove-Item -LiteralPath $dotnetArtifactsRoot -Recurse -Force
+        }
     }
 }

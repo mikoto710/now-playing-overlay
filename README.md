@@ -144,11 +144,16 @@ The current file is `NowPlayingOverlay.log`; bounded rotated logs are kept in th
 
 Development requires Windows 10 version 1809 or later, the .NET 10 SDK, Node.js 22, and npm.
 
-Run the complete validation chain from the repository root:
+Run the normal product validation chain from the repository root. It reuses ignored
+incremental artifacts and the existing frontend dependencies:
 
 ```powershell
 .\scripts\check.ps1
 ```
+
+The release script performs the clean dependency install and also runs the separate
+media-session probe tests before publishing. The probe is kept out of the normal
+product check because it is a development diagnostic, not part of the shipped host.
 
 The frontend package is under `web`, not the repository root. For frontend-only work, use `npm --prefix web <command>`; for example:
 

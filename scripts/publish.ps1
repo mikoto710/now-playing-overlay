@@ -339,7 +339,7 @@ Assert-ReleaseVersionSources -Version $releaseVersion
 Reset-PublishDirectory -Directory $publishDirectory
 Reset-ReleaseDirectory -Directory $releaseDirectory
 
-& $checkScript
+& $checkScript -Release
 if (-not $?) {
     throw "Repository validation failed."
 }
