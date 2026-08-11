@@ -4,16 +4,28 @@ using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Media;
 
-internal sealed class WindowsArtworkReader(IRandomAccessStreamReference thumbnail) : IArtworkReader
+internal sealed class WindowsArtworkReader : IArtworkReader
 {
     private const int MaximumWidth = 4096;
     private const int MaximumHeight = 4096;
     private const long MaximumPixels = 16_777_216;
+    private readonly Func<ValueTask<IRandomAccessStream>> _openStream;
+
+    public WindowsArtworkReader(IRandomAccessStreamReference thumbnail)
+    {
+        ArgumentNullException.ThrowIfNull(thumbnail);
+        _openStream = async () => await thumbnail.OpenReadAsync();
+    }
+
+    internal WindowsArtworkReader(Func<ValueTask<IRandomAccessStream>> openStream)
+    {
+        _openStream = openStream ?? throw new ArgumentNullException(nameof(openStream));
+    }
 
     public async ValueTask<ArtworkPayload?> ReadAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        using var stream = await thumbnail.OpenReadAsync();
+        using var stream = await _openStream();
         cancellationToken.ThrowIfCancellationRequested();
         if (stream.Size is 0 or > ArtworkDescriptor.MaximumByteLength)
         {

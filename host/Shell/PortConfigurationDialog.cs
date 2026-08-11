@@ -1,3 +1,5 @@
+using System.Windows.Forms;
+
 namespace NowPlayingOverlay.Host.Shell;
 
 internal sealed class PortConfigurationDialog : Form

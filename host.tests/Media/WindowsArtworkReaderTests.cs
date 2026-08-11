@@ -14,7 +14,7 @@ public sealed class WindowsArtworkReaderTests
     public async Task ReadsOnlyAfterSuccessfulAllowedDecoderValidation()
     {
         using var stream = await CreateStreamAsync(OnePixelPng);
-        var reader = new WindowsArtworkReader(RandomAccessStreamReference.CreateFromStream(stream));
+        var reader = CreateReader(stream);
 
         var payload = await reader.ReadAsync(CancellationToken.None);
 
@@ -27,7 +27,7 @@ public sealed class WindowsArtworkReaderTests
     public async Task RejectsDecodedFormatsOutsideTheAllowlist()
     {
         using var stream = await CreateStreamAsync(OnePixelGif);
-        var reader = new WindowsArtworkReader(RandomAccessStreamReference.CreateFromStream(stream));
+        var reader = CreateReader(stream);
 
         var payload = await reader.ReadAsync(CancellationToken.None);
 
@@ -39,7 +39,7 @@ public sealed class WindowsArtworkReaderTests
     {
         var oversized = new byte[5 * 1024 * 1024 + 1];
         using var stream = await CreateStreamAsync(oversized);
-        var reader = new WindowsArtworkReader(RandomAccessStreamReference.CreateFromStream(stream));
+        var reader = CreateReader(stream);
 
         var payload = await reader.ReadAsync(CancellationToken.None);
 
@@ -50,7 +50,7 @@ public sealed class WindowsArtworkReaderTests
     public async Task HonorsCancellationBeforeOpeningStream()
     {
         using var stream = await CreateStreamAsync(OnePixelPng);
-        var reader = new WindowsArtworkReader(RandomAccessStreamReference.CreateFromStream(stream));
+        var reader = CreateReader(stream);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
@@ -68,5 +68,10 @@ public sealed class WindowsArtworkReaderTests
         writer.DetachStream();
         stream.Seek(0);
         return stream;
+    }
+
+    private static WindowsArtworkReader CreateReader(IRandomAccessStream stream)
+    {
+        return new WindowsArtworkReader(() => ValueTask.FromResult(stream));
     }
 }

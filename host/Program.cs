@@ -1,13 +1,13 @@
 using System.Net.Sockets;
-using Microsoft.AspNetCore.Builder;
+using System.Windows.Forms;
 using Microsoft.AspNetCore.Connections;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Shell;
 
-public partial class Program
+namespace NowPlayingOverlay.Host;
+
+public class Program
 {
     private const string ApplicationTitle = "Now Playing Overlay";
 

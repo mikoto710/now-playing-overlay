@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>NowPlayingOverlay.WinRT</AssemblyName>
+    <RootNamespace>NowPlayingOverlay.WinRT</RootNamespace>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <!-- CsWinRT 2.3.1 embedded sources trigger newer compiler diagnostics. -->
+    <NoWarn>$(NoWarn);CS0618;CS9191</NoWarn>
+    <IncludeWindowsSDKRefFrameworkReferences>false</IncludeWindowsSDKRefFrameworkReferences>
+    <CsWinRTEmbedded>true</CsWinRTEmbedded>
+    <CsWinRTWindowsMetadata>$(PkgMicrosoft_Windows_SDK_NET_Ref)\winmd</CsWinRTWindowsMetadata>
+    <CsWinRTIncludes>
+      Windows.Foundation;
+      Windows.Graphics.DirectX.DirectXPixelFormat;
+      Windows.Graphics.DirectX.Direct3D11;
+      Windows.Graphics.Imaging;
+      Windows.Media.MediaPlaybackType;
+      Windows.Media.MediaPlaybackAutoRepeatMode;
+      Windows.Media.Control;
+      Windows.Storage.Streams.IBuffer;
+      Windows.Storage.Streams.Buffer;
+      Windows.Storage.Streams.ByteOrder;
+      Windows.Storage.Streams.IContentTypeProvider;
+      Windows.Storage.Streams.IInputStream;
+      Windows.Storage.Streams.IOutputStream;
+      Windows.Storage.Streams.IRandomAccessStream;
+      Windows.Storage.Streams.IRandomAccessStreamReference;
+      Windows.Storage.Streams.IRandomAccessStreamWithContentType;
+      Windows.Storage.Streams.InputStreamOptions;
+      Windows.Storage.Streams.UnicodeEncoding;
+      Windows.Storage.Streams.DataReader;
+      Windows.Storage.Streams.IDataReader;
+      Windows.Storage.Streams.IDataReaderFactory;
+      Windows.Storage.Streams.DataWriter;
+      Windows.Storage.Streams.IDataWriter;
+      Windows.Storage.Streams.IDataWriterFactory;
+      Windows.Storage.Streams.InMemoryRandomAccessStream;
+    </CsWinRTIncludes>
+    <CsWinRTExcludes>
+      Windows.Foundation.Diagnostics;
+      Windows.Foundation.PropertyType;
+      Windows.Storage.Streams.IRandomAccessStreamReferenceStatics;
+      Windows.Storage.Streams.IRandomAccessStreamStatics;
+    </CsWinRTExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference
+      Include="Microsoft.Windows.CsWinRT"
+      Version="2.3.1"
+      ExcludeAssets="compile;runtime"
+      PrivateAssets="all" />
+    <PackageReference
+      Include="Microsoft.Windows.SDK.NET.Ref"
+      Version="10.0.17763.57"
+      ExcludeAssets="all"
+      GeneratePathProperty="true"
+      PrivateAssets="all" />
+    <InternalsVisibleTo Include="NowPlayingOverlay" />
+    <InternalsVisibleTo Include="NowPlayingOverlay.Host.Tests" />
+  </ItemGroup>
+
+</Project>
