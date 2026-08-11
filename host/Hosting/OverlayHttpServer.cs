@@ -23,8 +23,8 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
     private readonly NowPlayingStore _store;
     private readonly ArtworkCache _artworkCache;
     private readonly HostHealthService _healthService;
-    private readonly SseConnectionLimiter _sseLimiter;
-    private readonly RequestConnectionLimiter _requestLimiter;
+    private readonly ConnectionLimiter _sseLimiter;
+    private readonly ConnectionLimiter _requestLimiter;
     private readonly ServerEndpointChangeBroadcaster _endpointChanges;
     private readonly ILogger<OverlayHttpServer> _logger;
     private readonly SemaphoreSlim _rebindGate = new(1, 1);
@@ -41,8 +41,8 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
         NowPlayingStore store,
         ArtworkCache artworkCache,
         HostHealthService healthService,
-        SseConnectionLimiter sseLimiter,
-        RequestConnectionLimiter requestLimiter,
+        ConnectionLimiter sseLimiter,
+        ConnectionLimiter requestLimiter,
         ServerEndpointChangeBroadcaster endpointChanges,
         ILogger<OverlayHttpServer> logger)
     {

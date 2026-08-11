@@ -1,6 +1,6 @@
 namespace NowPlayingOverlay.Host.Hosting;
 
-internal sealed class SseConnectionLimiter(int maximumConnections)
+internal sealed class ConnectionLimiter(int maximumConnections)
 {
     private int _activeConnections;
 
@@ -23,9 +23,9 @@ internal sealed class SseConnectionLimiter(int maximumConnections)
         }
     }
 
-    private sealed class Lease(SseConnectionLimiter owner) : IDisposable
+    private sealed class Lease(ConnectionLimiter owner) : IDisposable
     {
-        private SseConnectionLimiter? _owner = owner;
+        private ConnectionLimiter? _owner = owner;
 
         public void Dispose()
         {

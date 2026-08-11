@@ -107,8 +107,8 @@ internal sealed class OverlayApplication : IAsyncDisposable
             store,
             artworkCache,
             healthService,
-            new SseConnectionLimiter(options.MaximumSseConnections),
-            new RequestConnectionLimiter(options.MaximumConcurrentConnections),
+            new ConnectionLimiter(options.MaximumSseConnections),
+            new ConnectionLimiter(options.MaximumConcurrentConnections),
             new ServerEndpointChangeBroadcaster(),
             CreateLogger<OverlayHttpServer>(loggerProvider));
 
