@@ -1,6 +1,7 @@
 using System.Text;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Hosting;
+using NowPlayingOverlay.Host.Tests.TestInfrastructure;
 
 namespace NowPlayingOverlay.Host.Tests.Hosting;
 
@@ -43,20 +44,5 @@ public sealed class OverlayPageAssetTests
 
         Assert.Contains(Path.Combine("web", "dist", "NowPlaying.html"), error.Message, StringComparison.Ordinal);
         Assert.Contains("npm --prefix web run build", error.Message, StringComparison.Ordinal);
-    }
-
-    private sealed class TemporaryDirectory : IDisposable
-    {
-        public TemporaryDirectory()
-        {
-            Path = Directory.CreateTempSubdirectory("now-playing-overlay-tests-").FullName;
-        }
-
-        public string Path { get; }
-
-        public void Dispose()
-        {
-            Directory.Delete(Path, recursive: true);
-        }
     }
 }

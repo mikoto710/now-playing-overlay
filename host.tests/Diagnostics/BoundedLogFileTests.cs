@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using NowPlayingOverlay.Host.Diagnostics;
+using NowPlayingOverlay.Host.Tests.TestInfrastructure;
 
 namespace NowPlayingOverlay.Host.Tests.Diagnostics;
 
@@ -8,7 +9,7 @@ public sealed class BoundedLogFileTests
     [Fact]
     public void RotationKeepsFileCountAndTotalBytesBounded()
     {
-        using var directory = new TemporaryDirectory();
+        using var directory = new TemporaryDirectory("now-playing-overlay-log-tests-");
         var path = Path.Combine(directory.Path, "NowPlayingOverlay.log");
 
         using (var log = new BoundedLogFile(path, maximumFileBytes: 256, maximumFileCount: 3))
@@ -28,7 +29,7 @@ public sealed class BoundedLogFileTests
     [Fact]
     public void OversizedEntryIsTruncatedWithoutBreakingUtf8Boundary()
     {
-        using var directory = new TemporaryDirectory();
+        using var directory = new TemporaryDirectory("now-playing-overlay-log-tests-");
         var path = Path.Combine(directory.Path, "NowPlayingOverlay.log");
 
         using (var log = new BoundedLogFile(path, maximumFileBytes: 160, maximumFileCount: 1))
@@ -41,20 +42,5 @@ public sealed class BoundedLogFileTests
         Assert.InRange(bytes.Length, 1, 160);
         Assert.EndsWith("... log entry truncated\r\n", text, StringComparison.Ordinal);
         Assert.DoesNotContain('\uFFFD', text);
-    }
-
-    private sealed class TemporaryDirectory : IDisposable
-    {
-        public TemporaryDirectory()
-        {
-            Path = Directory.CreateTempSubdirectory("now-playing-overlay-log-tests-").FullName;
-        }
-
-        public string Path { get; }
-
-        public void Dispose()
-        {
-            Directory.Delete(Path, recursive: true);
-        }
     }
 }
