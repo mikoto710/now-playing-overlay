@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Microsoft.Extensions.Logging;
+using System.Windows.Forms;
 using Microsoft.Win32;
 
 namespace NowPlayingOverlay.Host.Shell;
@@ -133,11 +133,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
             return;
         }
 
+        var selectedPort = dialog.SelectedPort;
         RunUserAction(
             "save the port",
             () =>
             {
-                var result = _controller.SavePort(dialog.SelectedPort);
+                var result = _controller.SavePort(selectedPort);
                 if (!result.Changed)
                 {
                     MessageBox.Show(
@@ -149,7 +150,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 }
 
                 MessageBox.Show(
-                    $"Port {dialog.SelectedPort} was saved. Restart Now Playing Overlay, then update the OBS Browser Source URL to:\n\n{result.OverlayUrl}\n\nThis running instance remains on {_controller.OverlayUrl} until it exits.",
+                    $"Port {selectedPort} was saved. Restart Now Playing Overlay, then update the OBS Browser Source URL to:\n\n{result.OverlayUrl}\n\nThis running instance remains on {_controller.OverlayUrl} until it exits.",
                     "Restart Required",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);

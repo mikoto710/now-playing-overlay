@@ -48,13 +48,15 @@ internal sealed class ProbeLogSink : IAsyncDisposable
 
     public async Task WriteAsync(string eventName, string? sourceAppUserModelId = null, object? details = null)
     {
-        var record = new ProbeRecord(
+        var record = new
+        {
             // Keep sequence values unique across concurrent callbacks.
-            Interlocked.Increment(ref _sequence),
-            DateTimeOffset.UtcNow,
-            eventName,
-            sourceAppUserModelId,
-            details);
+            Sequence = Interlocked.Increment(ref _sequence),
+            TimestampUtc = DateTimeOffset.UtcNow,
+            Event = eventName,
+            SourceAppUserModelId = sourceAppUserModelId,
+            Details = details,
+        };
         var json = JsonSerializer.Serialize(record, JsonOptions);
 
         // Serialize console and file writes to prevent interleaved JSONL records.
@@ -82,11 +84,4 @@ internal sealed class ProbeLogSink : IAsyncDisposable
 
         _writeLock.Dispose();
     }
-
-    private sealed record ProbeRecord(
-        long Sequence,
-        DateTimeOffset TimestampUtc,
-        string Event,
-        string? SourceAppUserModelId,
-        object? Details);
 }

@@ -152,7 +152,7 @@ public sealed class OverlayHttpTests
 
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, second.StatusCode);
-        Assert.Equal("1", second.Headers.RetryAfter!.Delta?.TotalSeconds.ToString() ?? second.Headers.GetValues("Retry-After").Single());
+        Assert.Equal("1", second.Headers.RetryAfter!.ToString());
     }
 
     [Fact]
@@ -318,9 +318,9 @@ public sealed class OverlayHttpTests
             return new TestOverlayHost(app, client, port);
         }
 
-        public async Task<JsonDocument> WaitForRevisionAsync(long revision)
+        public async Task WaitForRevisionAsync(long revision)
         {
-            return await WaitForStateAsync(root =>
+            using var document = await WaitForStateAsync(root =>
                 root.GetProperty("snapshotRevision").GetInt64() >= revision);
         }
 

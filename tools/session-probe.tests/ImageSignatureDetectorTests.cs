@@ -1,5 +1,3 @@
-using NowPlayingOverlay.SessionProbe;
-
 namespace NowPlayingOverlay.SessionProbe.Tests;
 
 public sealed class ImageSignatureDetectorTests

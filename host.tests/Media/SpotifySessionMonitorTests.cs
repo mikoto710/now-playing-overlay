@@ -205,8 +205,6 @@ public sealed class SpotifySessionMonitorTests
 
         public event EventHandler? SessionsChanged;
 
-        public bool Disposed { get; private set; }
-
         public IReadOnlyList<IMediaSessionAdapter> GetSessions()
         {
             return _sessions;
@@ -224,7 +222,6 @@ public sealed class SpotifySessionMonitorTests
 
         public void Dispose()
         {
-            Disposed = true;
         }
     }
 

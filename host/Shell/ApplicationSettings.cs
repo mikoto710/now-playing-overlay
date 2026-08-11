@@ -1,5 +1,3 @@
-using NowPlayingOverlay.Host.Configuration;
-
 namespace NowPlayingOverlay.Host.Shell;
 
 using OverlayHostOptions = Configuration.HostOptions;

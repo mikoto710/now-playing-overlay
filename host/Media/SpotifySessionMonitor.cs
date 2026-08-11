@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Media;

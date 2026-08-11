@@ -53,7 +53,7 @@ internal static class OverlayApplication
         builder.Services.AddSingleton<NowPlayingCoordinator>();
         builder.Services.AddSingleton<HostHealthService>();
         builder.Services.AddSingleton<TrayStatusService>();
-        builder.Services.AddSingleton(sp => new SseConnectionLimiter(options.MaximumSseConnections));
+        builder.Services.AddSingleton(new SseConnectionLimiter(options.MaximumSseConnections));
         builder.Services.AddHostedService<OverlayRuntimeService>();
 
         var app = builder.Build();

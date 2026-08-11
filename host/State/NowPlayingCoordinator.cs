@@ -1,5 +1,4 @@
 using System.Threading.Channels;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Media;
 using NowPlayingOverlay.Host.Models;

@@ -322,13 +322,10 @@ internal sealed class MediaSessionProbe : IAsyncDisposable
         {
             _session = session;
             _signal = signal;
-            SourceAppUserModelId = session.SourceAppUserModelId;
             _session.MediaPropertiesChanged += OnMediaPropertiesChanged;
             _session.PlaybackInfoChanged += OnPlaybackInfoChanged;
             _session.TimelinePropertiesChanged += OnTimelinePropertiesChanged;
         }
-
-        public string SourceAppUserModelId { get; }
 
         public void Dispose()
         {
