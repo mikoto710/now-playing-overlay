@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ArtworkLoader,
   preloadArtwork,
@@ -48,6 +48,8 @@ class FakeImage {
     }
   }
 }
+
+afterEach(() => vi.useRealTimers());
 
 describe("preloadArtwork", () => {
   it("uses the load event when Image.decode is unavailable", async () => {
@@ -104,6 +106,52 @@ describe("ArtworkLoader", () => {
     expect(target.replaceArtwork).not.toHaveBeenCalled();
     expect(reportError).toHaveBeenCalledOnce();
   });
+
+  it("keeps a shared cover without clearing or replaying its transition", async () => {
+    vi.useFakeTimers();
+    const target = createTarget();
+    target.isArtworkCurrent.mockReturnValue(true);
+    const createImage = vi.fn();
+    const loader = new ArtworkLoader(target, createImage, vi.fn(), 150);
+
+    await loader.update(null, true);
+    await loader.update("/shared", false);
+    await vi.advanceTimersByTimeAsync(150);
+
+    expect(target.clearArtwork).not.toHaveBeenCalled();
+    expect(target.replaceArtwork).not.toHaveBeenCalled();
+    expect(createImage).not.toHaveBeenCalled();
+  });
+
+  it("shows the placeholder after the new-track grace period expires", async () => {
+    vi.useFakeTimers();
+    const target = createTarget();
+    const loader = new ArtworkLoader(target, undefined, vi.fn(), 150);
+
+    await loader.update(null, true);
+    await vi.advanceTimersByTimeAsync(149);
+    expect(target.clearArtwork).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(target.clearArtwork).toHaveBeenCalledOnce();
+  });
+
+  it("fades a different cover directly when it loads within the grace period", async () => {
+    vi.useFakeTimers();
+    const image = new FakeImage();
+    const target = createTarget();
+    const loader = new ArtworkLoader(target, asFactory(image), vi.fn(), 150);
+
+    await loader.update(null, true);
+    const update = loader.update("/different", false);
+    image.succeed();
+    await update;
+    await vi.advanceTimersByTimeAsync(150);
+
+    expect(target.clearArtwork).not.toHaveBeenCalled();
+    expect(target.replaceArtwork).toHaveBeenCalledOnce();
+    expect(target.replaceArtwork).toHaveBeenCalledWith("/different", expect.any(Function));
+  });
 });
 
 function asFactory(image: FakeImage): ArtworkImageFactory {
@@ -112,10 +160,12 @@ function asFactory(image: FakeImage): ArtworkImageFactory {
 
 function createTarget(): ArtworkTarget & {
   clearArtwork: ReturnType<typeof vi.fn>;
+  isArtworkCurrent: ReturnType<typeof vi.fn>;
   replaceArtwork: ReturnType<typeof vi.fn>;
 } {
   return {
     clearArtwork: vi.fn(),
+    isArtworkCurrent: vi.fn(() => false),
     replaceArtwork: vi.fn(async () => true),
   };
 }

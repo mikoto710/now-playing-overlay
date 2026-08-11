@@ -54,7 +54,7 @@ describe("now-playing reducer", () => {
     expect(withArtwork.view.artworkUrl).toBe(`/api/v1/artwork/${artworkIdA}`);
   });
 
-  it("clears the old cover immediately when a new track has no artwork", () => {
+  it("invalidates the old cover when a new track has no artwork", () => {
     const first = reduceSnapshot(createInitialState(), playingState());
     const second = reduceSnapshot(
       first,

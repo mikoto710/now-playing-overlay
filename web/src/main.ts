@@ -12,7 +12,7 @@ import {
 import { NowPlayingWidget } from "./ui/widget";
 
 const widget = new NowPlayingWidget();
-const artwork = new ArtworkLoader(widget);
+const artwork = new ArtworkLoader(widget, undefined, undefined, config.artworkGraceMs);
 let state = createInitialState();
 
 function commit(nextState: NowPlayingClientState): void {
@@ -24,7 +24,7 @@ function commit(nextState: NowPlayingClientState): void {
 function render(previous: WidgetViewState, next: WidgetViewState): void {
   const textChanged = previous.textRevision !== next.textRevision;
   if (previous.artworkRevision !== next.artworkRevision) {
-    // A text change denotes a new track identity, so the previous cover is cleared before load.
+    // A new track starts a short visual grace period so a shared cover can remain stable.
     void artwork.update(next.artworkUrl, textChanged);
   }
   if (textChanged) {

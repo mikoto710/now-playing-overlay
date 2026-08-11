@@ -1,5 +1,6 @@
 export interface ArtworkTarget {
   clearArtwork(): void;
+  isArtworkCurrent(url: string): boolean;
   replaceArtwork(url: string, isRequestCurrent: () => boolean): Promise<boolean>;
 }
 
@@ -62,33 +63,74 @@ export async function preloadArtwork(
 
 export class ArtworkLoader {
   private requestRevision = 0;
+  private pendingClear: ReturnType<typeof setTimeout> | null = null;
+  private awaitingTrackArtwork = false;
 
   constructor(
     private readonly target: ArtworkTarget,
     private readonly createImage: ArtworkImageFactory = () => new Image(),
     private readonly reportError: (error: unknown) => void = (error) =>
       console.warn("Artwork update failed.", error),
+    private readonly graceMs = 0,
   ) {}
 
-  async update(url: string | null, clearBeforeLoad: boolean): Promise<void> {
+  async update(url: string | null, trackChanged: boolean): Promise<void> {
     const requestRevision = ++this.requestRevision;
-    if (clearBeforeLoad || url === null) {
-      this.target.clearArtwork();
+    if (trackChanged) {
+      this.beginTrackTransition();
     }
     if (url === null) {
+      if (!trackChanged && !this.awaitingTrackArtwork) {
+        this.target.clearArtwork();
+      }
       return;
     }
 
+    if (this.target.isArtworkCurrent(url)) {
+      this.finishTrackTransition();
+      return;
+    }
+
+    const clearOnFailure = this.awaitingTrackArtwork;
     try {
       await preloadArtwork(url, this.createImage);
       if (requestRevision !== this.requestRevision) {
         return;
       }
+      this.finishTrackTransition();
       await this.target.replaceArtwork(url, () => requestRevision === this.requestRevision);
     } catch (error) {
       if (requestRevision === this.requestRevision) {
+        if (clearOnFailure || this.awaitingTrackArtwork) {
+          this.finishTrackTransition();
+          this.target.clearArtwork();
+        }
         this.reportError(error);
       }
     }
+  }
+
+  private beginTrackTransition(): void {
+    this.cancelPendingClear();
+    this.awaitingTrackArtwork = true;
+    this.pendingClear = setTimeout(() => {
+      this.pendingClear = null;
+      if (this.awaitingTrackArtwork) {
+        this.target.clearArtwork();
+      }
+    }, this.graceMs);
+  }
+
+  private finishTrackTransition(): void {
+    this.cancelPendingClear();
+    this.awaitingTrackArtwork = false;
+  }
+
+  private cancelPendingClear(): void {
+    if (this.pendingClear === null) {
+      return;
+    }
+    clearTimeout(this.pendingClear);
+    this.pendingClear = null;
   }
 }

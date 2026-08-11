@@ -70,6 +70,10 @@ export class NowPlayingWidget {
     }
   }
 
+  isArtworkCurrent(url: string): boolean {
+    return this.currentArtworkUrl === url;
+  }
+
   async replaceArtwork(url: string, isRequestCurrent: () => boolean): Promise<boolean> {
     if (this.currentArtworkUrl === url) {
       return true;

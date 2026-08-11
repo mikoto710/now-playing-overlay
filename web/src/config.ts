@@ -11,6 +11,7 @@ export const config = {
   textExitAnimationMs: 300,
   textEnterAnimationMs: 500,
   textEnterDelayMs: 100,
+  artworkGraceMs: 150,
   artworkFadeMs: 300,
   animationEasing: "ease-in-out",
   marqueeDurationMs: 20_000,

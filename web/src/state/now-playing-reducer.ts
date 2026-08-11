@@ -69,7 +69,7 @@ export function reduceSnapshot(
       track: nextTrack,
       artworkUrl: nextArtworkUrl,
       textRevision: state.view.textRevision + (textChanged ? 1 : 0),
-      // A track switch invalidates the old cover even if two tracks share the same image URL.
+      // A track switch invalidates the protocol view; the loader owns the brief visual grace.
       artworkRevision: state.view.artworkRevision + (artworkChanged ? 1 : 0),
     },
   };
