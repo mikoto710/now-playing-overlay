@@ -1,16 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img">
   <title>Now Playing Overlay</title>
-  <desc>Two overlapping media windows with a play symbol.</desc>
-  <rect x="270" y="115" width="655" height="660" rx="90" fill="#00B8C8"/>
-  <rect x="95" y="275" width="720" height="650" rx="90" fill="#061F46"/>
+  <desc>Two overlapping media windows separated by transparent space, with a play symbol.</desc>
+  <defs>
+    <mask id="rear-window" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="#000000"/>
+      <rect x="270" y="132" width="646" height="568" rx="82" fill="#FFFFFF"/>
+      <rect x="96" y="240" width="728" height="636" rx="106" fill="#000000"/>
+    </mask>
+  </defs>
+  <rect x="270" y="132" width="646" height="568" rx="82" fill="#00B8C8" mask="url(#rear-window)"/>
+  <rect x="120" y="264" width="680" height="588" rx="82" fill="#061F46"/>
   <path
-    d="M 398.7 433
-       Q 360 410 360 455
-       L 360 745
-       Q 360 790 398.7 767
-       L 641.3 623
-       Q 680 600 641.3 577
+    d="M 365 422
+       L 365 694
+       Q 365 726 389.1 711.8
+       L 620.7 575.3
+       Q 650 558 620.7 540.7
+       L 389.1 404.2
+       Q 365 390 365 422
        Z"
     fill="#FFFFFF"/>
 </svg>
