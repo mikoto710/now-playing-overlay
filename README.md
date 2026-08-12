@@ -4,14 +4,14 @@
   <img src="host/Assets/NowPlayingOverlay.png" width="128" alt="Now Playing Overlay application icon">
 </p>
 
-Now Playing Overlay is a lightweight local Windows application that displays the current Spotify track in a transparent `350 x 70` OBS Browser Source. It reads Spotify's Windows media session, serves the overlay on loopback, and runs from the system tray.
+Now Playing Overlay is a lightweight local Windows application that displays the current track from a user-selected Windows Media session in a transparent `350 x 70` OBS Browser Source. It serves the overlay on loopback and runs from the system tray.
 
-Playback metadata and artwork are read directly from the local Windows media session. The current version does not require a Spotify Web API login or intermediate metadata files.
+Playback metadata and artwork are read directly from the selected app's Windows GSMTC session. The current version does not require a Web API login or intermediate metadata files.
 
 ## Requirements
 
 - Windows 10 version 1809 (build 17763) or later, x64
-- Spotify for Windows: the official Win32 version or the Microsoft Store version
+- A media player that publishes a Windows GSMTC session
 - OBS Studio 31.0.1 for the currently validated Browser Source baseline (CEF 127)
 - The x64 .NET 10 Desktop Runtime
 
@@ -29,7 +29,7 @@ The .NET 10 SDK also supplies the required runtimes, but end users do not need t
 2. Optionally verify the ZIP against the published SHA-256, then extract it. Keep `README.md` and `LICENSE` for reference; the application itself only needs `NowPlayingOverlay.exe` at runtime.
 3. Place the executable in a directory where you want to keep it, then run it.
 4. Look for the Now Playing Overlay icon in the Windows notification area. The application intentionally has no main window.
-5. Start Spotify and play a track. The tray status should change from `Waiting for Spotify` to a Spotify playback status.
+5. Open **Settings...** from the tray, select an exact player ID, save, and play a track. The tray status should change to that source's playback status.
 
 Only one instance can run for the current Windows user. The current preview has no installer, automatic updater, or code signature; only run an executable obtained from a source you trust.
 
@@ -49,17 +49,17 @@ The default URL is:
 http://127.0.0.1:10598/NowPlaying.html
 ```
 
-The overlay is visible only while Spotify reports a playing track. Pausing or stopping playback hides it; resuming playback shows it again without replaying an unchanged text transition.
+The overlay is visible only while the selected player reports a playing track. Pausing or stopping playback hides it; resuming playback shows it again without replaying an unchanged text transition.
 
 ## Tray menu
 
 | Item                  | Action                                                                                       |
 | --------------------- | -------------------------------------------------------------------------------------------- |
-| Status                | Shows host startup, Spotify, Windows media-session, or fault status.                         |
+| Status                | Shows host startup, selected-source, Windows media-session, or fault status.                 |
 | **Copy OBS URL**      | Copies the URL for the current running port.                                                 |
-| **Open Overlay**      | Opens the overlay in the default browser. Double-clicking the tray icon does the same thing. |
+| **Open Overlay Preview** | Opens the overlay at a selected preview resolution. Double-click opens the default size.  |
 | **Open Logs**         | Opens the application log directory.                                                         |
-| **Configure Port...** | Moves the running loopback server to a different available port.                            |
+| **Settings...**       | Refreshes/selects a Windows Media player and configures the loopback port.                   |
 | **Exit**              | Stops the local server and exits the application.                                            |
 
 ## Connection and startup behavior
@@ -76,7 +76,7 @@ The server listens only on `127.0.0.1`; it is not exposed to other computers on 
 
 To change it:
 
-1. Select **Configure Port...** from the tray menu.
+1. Select **Settings...** from the tray menu.
 2. Choose an available port and save it.
 3. The running server starts the new port first and asks already loaded overlay pages to follow it.
 4. Copy the new OBS URL and update the saved Browser Source for future OBS reloads and restarts.
@@ -97,9 +97,9 @@ User settings are stored in `%LOCALAPPDATA%\NowPlayingOverlay\settings.json`.
 
 ### The overlay is blank
 
-- Confirm that Spotify is actively playing a track. A blank overlay while paused or stopped is expected.
-- Check the tray status. `Waiting for Spotify` means that no supported Spotify media session is currently bound.
-- Select **Open Overlay**. If it works in the default browser, verify the OBS URL and the `350 x 70` source size.
+- Confirm that the selected player is actively playing a track. A blank overlay while paused or stopped is expected.
+- Check the tray status. `Source Not Configured` means a player still needs to be selected. A missing or ambiguous status keeps the saved selection without switching to another app.
+- Select **Open Overlay Preview**. If it works in the default browser, verify the OBS URL and the `350 x 70` source size.
 - If OBS first loaded the source while the application was not running, refresh the Browser Source after starting the application.
 
 ### The application reports a missing framework
@@ -108,18 +108,18 @@ Install the x64 .NET 10 Desktop Runtime. The plain .NET Runtime alone is not suf
 
 ### The port is unavailable
 
-Use the startup prompt or **Configure Port...** to select another available loopback port. A running instance moves without restarting; a startup failure still requires restarting after saving the replacement. Replace the saved URL in OBS afterward.
+Use the startup prompt or **Settings...** to select another available loopback port. A running instance moves without restarting; a startup failure still requires restarting after saving the replacement. Replace the saved URL in OBS afterward.
 
-### Spotify is playing but the tray keeps waiting
+### The selected player is missing or ambiguous
 
-- Confirm that you are using either the official Spotify Win32 application or the Microsoft Store application.
-- Restart Spotify, begin playback, and wait for the Windows media session to reappear.
-- Browser media sessions and unsupported players are intentionally ignored.
-- Open the logs if the status does not recover.
+- Open **Settings...**, start playback in the intended player, and select **Refresh**.
+- Confirm the raw player ID still matches the saved selection. The application deliberately does not guess a replacement ID.
+- If multiple sessions have the same exact ID, leave only one active or make exactly one of them play so the source can be disambiguated.
+- Open the logs if Windows Media sessions remain unavailable.
 
 ### Artist credits are incomplete
 
-The current version uses metadata supplied by Spotify through Windows GSMTC. In some tracks, that source exposes only the first credited artist even though Spotify's own interface shows several artists. Optional Spotify Web API metadata enhancement is planned for a later milestone and is not part of the current release.
+The current version uses metadata supplied by the selected player through Windows GSMTC. Some players expose fewer artist credits or lower-resolution artwork than their own interface. The overlay preserves the selected source's values and does not merge fields from a network API.
 
 ### Collect logs
 
@@ -133,12 +133,12 @@ The current file is `NowPlayingOverlay.log`; bounded rotated logs are kept in th
 
 ## Current scope and limitations
 
-- Spotify is the only supported player in the initial release. The application icon is deliberately player-neutral so other sources can be added later.
-- Playback state and metadata come from Windows GSMTC; there is no Spotify Web API or OAuth integration yet.
+- The current source is a user-selected Windows GSMTC player ID; the application does not maintain an executable allowlist or follow the system current session automatically.
+- Playback state and metadata come from Windows GSMTC; there is no Spotify Web API or OAuth integration.
 - Windows x64 is the only release architecture. ARM64 is not currently published.
 - OBS Studio 31.0.1 with CEF 127 is the compatibility baseline. Earlier OBS/CEF versions are outside the initial compatibility target; other versions have not yet completed the same validation matrix.
-- Missing-artwork and artwork-failure fallback paths have automated coverage, but the initial validation did not have a reproducible real Spotify sample for those cases.
-- Network-loss behavior was not included in the completed manual matrix because Spotify playback could not be isolated reliably from the loss of its own streaming connection.
+- Missing-artwork and artwork-failure fallback paths have automated coverage, but the initial validation did not have a reproducible real player session for those cases.
+- Network behavior belongs to the selected player; the local overlay host itself does not poll a metadata service.
 
 ## Development
 
