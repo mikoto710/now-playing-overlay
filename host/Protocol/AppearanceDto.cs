@@ -5,7 +5,7 @@ namespace NowPlayingOverlay.Host.Protocol;
 
 internal sealed record AppearanceDto
 {
-    public const int CurrentAppearanceVersion = 2;
+    public const int CurrentAppearanceVersion = 3;
 
     [JsonPropertyName("appearanceVersion")]
     public int AppearanceVersion { get; init; } = CurrentAppearanceVersion;
@@ -42,6 +42,21 @@ internal sealed record AppearanceDto
 
     [JsonPropertyName("trackFontWeight")]
     public required int TrackFontWeight { get; init; }
+
+    [JsonPropertyName("artworkVisible")]
+    public required bool ArtworkVisible { get; init; }
+
+    [JsonPropertyName("artworkSize")]
+    public required int ArtworkSize { get; init; }
+
+    [JsonPropertyName("artworkPosition")]
+    public required string ArtworkPosition { get; init; }
+
+    [JsonPropertyName("artworkFit")]
+    public required string ArtworkFit { get; init; }
+
+    [JsonPropertyName("artworkCornerRadius")]
+    public required int ArtworkCornerRadius { get; init; }
 }
 
 internal static class AppearanceDtoMapper
@@ -67,6 +82,21 @@ internal static class AppearanceDtoMapper
             ArtistFontWeight = appearance.ArtistFontWeight,
             TrackFontSize = appearance.TrackFontSize,
             TrackFontWeight = appearance.TrackFontWeight,
+            ArtworkVisible = appearance.ArtworkVisible,
+            ArtworkSize = appearance.ArtworkSize,
+            ArtworkPosition = appearance.ArtworkPosition switch
+            {
+                Configuration.ArtworkPosition.Left => "left",
+                Configuration.ArtworkPosition.Right => "right",
+                _ => throw new ArgumentOutOfRangeException(nameof(appearance)),
+            },
+            ArtworkFit = appearance.ArtworkFit switch
+            {
+                Configuration.ArtworkFit.Contain => "contain",
+                Configuration.ArtworkFit.Cover => "cover",
+                _ => throw new ArgumentOutOfRangeException(nameof(appearance)),
+            },
+            ArtworkCornerRadius = appearance.ArtworkCornerRadius,
         };
     }
 }

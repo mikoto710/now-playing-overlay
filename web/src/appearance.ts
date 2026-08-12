@@ -1,7 +1,9 @@
 export type AppearancePreset = "default" | "custom";
+export type ArtworkPosition = "left" | "right";
+export type ArtworkFit = "contain" | "cover";
 
 export interface Appearance {
-  readonly appearanceVersion: 2;
+  readonly appearanceVersion: 3;
   readonly preset: AppearancePreset;
   readonly artistColor: string;
   readonly trackColor: string;
@@ -13,6 +15,11 @@ export interface Appearance {
   readonly artistFontWeight: number;
   readonly trackFontSize: number;
   readonly trackFontWeight: number;
+  readonly artworkVisible: boolean;
+  readonly artworkSize: number;
+  readonly artworkPosition: ArtworkPosition;
+  readonly artworkFit: ArtworkFit;
+  readonly artworkCornerRadius: number;
 }
 
 export interface StylePropertyTarget {
@@ -20,7 +27,7 @@ export interface StylePropertyTarget {
 }
 
 export const defaultAppearance: Appearance = {
-  appearanceVersion: 2,
+  appearanceVersion: 3,
   preset: "default",
   artistColor: "#25C7A0",
   trackColor: "#FFFFFF",
@@ -32,6 +39,11 @@ export const defaultAppearance: Appearance = {
   artistFontWeight: 600,
   trackFontSize: 22,
   trackFontWeight: 700,
+  artworkVisible: true,
+  artworkSize: 70,
+  artworkPosition: "left",
+  artworkFit: "contain",
+  artworkCornerRadius: 0,
 };
 
 const appearanceKeys = new Set([
@@ -47,6 +59,11 @@ const appearanceKeys = new Set([
   "artistFontWeight",
   "trackFontSize",
   "trackFontWeight",
+  "artworkVisible",
+  "artworkSize",
+  "artworkPosition",
+  "artworkFit",
+  "artworkCornerRadius",
 ]);
 const canonicalColor = /^#[0-9A-F]{6}$/;
 const supportedFontWeights = new Set([400, 500, 600, 700]);
@@ -56,7 +73,7 @@ export function parseAppearance(value: unknown): Appearance {
   if (!isRecord(value) || !hasExactKeys(value)) {
     throw new Error("Appearance must be an object with the supported fields only.");
   }
-  if (value.appearanceVersion !== 2) {
+  if (value.appearanceVersion !== 3) {
     throw new Error("Appearance version is not supported.");
   }
   if (value.preset !== "default" && value.preset !== "custom") {
@@ -100,6 +117,17 @@ export function parseAppearance(value: unknown): Appearance {
   validateFontWeight(value.artistFontWeight, "Artist font weight");
   validateIntegerRange(value.trackFontSize, 16, 24, "Track font size");
   validateFontWeight(value.trackFontWeight, "Track font weight");
+  if (typeof value.artworkVisible !== "boolean") {
+    throw new Error("Artwork visibility must be a boolean.");
+  }
+  validateIntegerRange(value.artworkSize, 40, 70, "Artwork size");
+  if (value.artworkPosition !== "left" && value.artworkPosition !== "right") {
+    throw new Error("Artwork position must be left or right.");
+  }
+  if (value.artworkFit !== "contain" && value.artworkFit !== "cover") {
+    throw new Error("Artwork fit must be contain or cover.");
+  }
+  validateIntegerRange(value.artworkCornerRadius, 0, 35, "Artwork corner radius");
 
   return value as unknown as Appearance;
 }
@@ -132,6 +160,21 @@ export function applyAppearance(target: StylePropertyTarget, appearance: Appeara
   target.setProperty("--overlay-track-font-size", `${appearance.trackFontSize}px`);
   target.setProperty("--overlay-track-font-weight", appearance.trackFontWeight.toString());
   target.setProperty("--overlay-track-line-height", `${appearance.trackFontSize + 4}px`);
+  const visibleArtworkWidth = appearance.artworkVisible ? appearance.artworkSize : 0;
+  const artworkLeft = appearance.artworkPosition === "left" ? 0 : 350 - appearance.artworkSize;
+  const detailsLeft =
+    appearance.artworkVisible && appearance.artworkPosition === "left" ? appearance.artworkSize : 0;
+  target.setProperty(
+    "--overlay-artwork-visibility",
+    appearance.artworkVisible ? "visible" : "hidden",
+  );
+  target.setProperty("--overlay-artwork-size", `${appearance.artworkSize}px`);
+  target.setProperty("--overlay-artwork-top", `${(70 - appearance.artworkSize) / 2}px`);
+  target.setProperty("--overlay-artwork-left", `${artworkLeft}px`);
+  target.setProperty("--overlay-artwork-fit", appearance.artworkFit);
+  target.setProperty("--overlay-artwork-corner-radius", `${appearance.artworkCornerRadius}px`);
+  target.setProperty("--overlay-details-left", `${detailsLeft}px`);
+  target.setProperty("--overlay-details-width", `${350 - visibleArtworkWidth}px`);
 }
 
 function validateIntegerRange(

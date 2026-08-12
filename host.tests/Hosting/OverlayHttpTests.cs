@@ -60,8 +60,8 @@ public sealed class OverlayHttpTests
         Assert.Equal(0, json.RootElement.GetProperty("snapshotRevision").GetInt64());
         Assert.Equal("unavailable", json.RootElement.GetProperty("playback").GetString());
         Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("track").ValueKind);
-        Assert.Equal(12, appearanceJson.RootElement.EnumerateObject().Count());
-        Assert.Equal(2, appearanceJson.RootElement.GetProperty("appearanceVersion").GetInt32());
+        Assert.Equal(17, appearanceJson.RootElement.EnumerateObject().Count());
+        Assert.Equal(3, appearanceJson.RootElement.GetProperty("appearanceVersion").GetInt32());
         Assert.Equal("default", appearanceJson.RootElement.GetProperty("preset").GetString());
         Assert.Equal("#25C7A0", appearanceJson.RootElement.GetProperty("artistColor").GetString());
         Assert.Equal("#FFFFFF", appearanceJson.RootElement.GetProperty("trackColor").GetString());
@@ -75,6 +75,11 @@ public sealed class OverlayHttpTests
         Assert.Equal(600, appearanceJson.RootElement.GetProperty("artistFontWeight").GetInt32());
         Assert.Equal(22, appearanceJson.RootElement.GetProperty("trackFontSize").GetInt32());
         Assert.Equal(700, appearanceJson.RootElement.GetProperty("trackFontWeight").GetInt32());
+        Assert.True(appearanceJson.RootElement.GetProperty("artworkVisible").GetBoolean());
+        Assert.Equal(70, appearanceJson.RootElement.GetProperty("artworkSize").GetInt32());
+        Assert.Equal("left", appearanceJson.RootElement.GetProperty("artworkPosition").GetString());
+        Assert.Equal("contain", appearanceJson.RootElement.GetProperty("artworkFit").GetString());
+        Assert.Equal(0, appearanceJson.RootElement.GetProperty("artworkCornerRadius").GetInt32());
 
         host.App.SetAppearance(new AppearanceSettings
         {
@@ -91,6 +96,11 @@ public sealed class OverlayHttpTests
                 ArtistFontWeight = 500,
                 TrackFontSize = 24,
                 TrackFontWeight = 600,
+                ArtworkVisible = true,
+                ArtworkSize = 48,
+                ArtworkPosition = ArtworkPosition.Right,
+                ArtworkFit = ArtworkFit.Cover,
+                ArtworkCornerRadius = 8,
             },
         });
         using var customAppearance = await host.Client.GetAsync("/api/v2/appearance");
@@ -106,6 +116,11 @@ public sealed class OverlayHttpTests
         Assert.Equal(500, customJson.RootElement.GetProperty("artistFontWeight").GetInt32());
         Assert.Equal(24, customJson.RootElement.GetProperty("trackFontSize").GetInt32());
         Assert.Equal(600, customJson.RootElement.GetProperty("trackFontWeight").GetInt32());
+        Assert.True(customJson.RootElement.GetProperty("artworkVisible").GetBoolean());
+        Assert.Equal(48, customJson.RootElement.GetProperty("artworkSize").GetInt32());
+        Assert.Equal("right", customJson.RootElement.GetProperty("artworkPosition").GetString());
+        Assert.Equal("cover", customJson.RootElement.GetProperty("artworkFit").GetString());
+        Assert.Equal(8, customJson.RootElement.GetProperty("artworkCornerRadius").GetInt32());
     }
 
     [Fact]

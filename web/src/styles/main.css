@@ -10,6 +10,14 @@
   --overlay-track-font-size: 22px;
   --overlay-track-font-weight: 700;
   --overlay-track-line-height: 26px;
+  --overlay-artwork-visibility: visible;
+  --overlay-artwork-size: 70px;
+  --overlay-artwork-top: 0px;
+  --overlay-artwork-left: 0px;
+  --overlay-artwork-fit: contain;
+  --overlay-artwork-corner-radius: 0px;
+  --overlay-details-left: 70px;
+  --overlay-details-width: 280px;
   color-scheme: dark;
   font-family: var(--overlay-font-family);
 }
@@ -49,12 +57,15 @@ body {
 
 .artwork-placeholder {
   position: absolute;
-  top: 0;
-  left: 0;
+  top: var(--overlay-artwork-top);
+  left: var(--overlay-artwork-left);
   z-index: 0;
-  width: 70px;
-  height: 70px;
+  width: var(--overlay-artwork-size);
+  height: var(--overlay-artwork-size);
+  overflow: hidden;
   background: rgb(22, 24, 27);
+  border-radius: var(--overlay-artwork-corner-radius);
+  visibility: var(--overlay-artwork-visibility);
   pointer-events: none;
 }
 
@@ -82,14 +93,16 @@ body {
 
 .artwork {
   position: absolute;
-  top: 0;
-  left: 0;
+  top: var(--overlay-artwork-top);
+  left: var(--overlay-artwork-left);
   display: block;
-  width: 70px;
-  height: 70px;
+  width: var(--overlay-artwork-size);
+  height: var(--overlay-artwork-size);
   margin: 0;
   padding: 0;
-  object-fit: contain;
+  object-fit: var(--overlay-artwork-fit);
+  border-radius: var(--overlay-artwork-corner-radius);
+  visibility: var(--overlay-artwork-visibility);
 }
 
 .artwork[hidden] {
@@ -107,9 +120,9 @@ body {
 .track-details {
   position: absolute;
   top: 7px;
-  left: 70px;
+  left: var(--overlay-details-left);
   box-sizing: border-box;
-  width: 280px;
+  width: var(--overlay-details-width);
   height: 62px;
   overflow: hidden;
   margin: 0;

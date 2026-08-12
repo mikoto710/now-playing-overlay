@@ -68,7 +68,7 @@ Appearance is a separate, low-frequency presentation contract. It is not part of
 
 ```json
 {
-  "appearanceVersion": 2,
+  "appearanceVersion": 3,
   "preset": "default",
   "artistColor": "#25C7A0",
   "trackColor": "#FFFFFF",
@@ -79,11 +79,16 @@ Appearance is a separate, low-frequency presentation contract. It is not part of
   "artistFontSize": 16,
   "artistFontWeight": 600,
   "trackFontSize": 22,
-  "trackFontWeight": 700
+  "trackFontWeight": 700,
+  "artworkVisible": true,
+  "artworkSize": 70,
+  "artworkPosition": "left",
+  "artworkFit": "contain",
+  "artworkCornerRadius": 0
 }
 ```
 
-The object contains exactly these fields. `appearanceVersion` is independent from the now-playing protocol version; version 2 adds bounded typography while retaining the same endpoint. Colors use canonical uppercase `#RRGGBB`; opacity is an integer from `0` to `100`, and corner radius is an integer from `0` to `35` logical pixels. `fontFamily` is null for the product font stack or a bounded system font name. Artist size is `12`–`18`, track size is `16`–`24`, and weights are `400`, `500`, `600`, or `700`; line heights are derived by the page and are not protocol fields. `preset` is `default` or `custom`, while all remaining fields always contain the final effective values. The page reads the endpoint once before starting the now-playing client and falls back to its built-in Default values if the request or validation fails. Saved changes therefore require a page reload and never change source or playback state.
+The object contains exactly these fields. `appearanceVersion` is independent from the now-playing protocol version; version 2 added bounded typography and version 3 adds bounded artwork composition while retaining the same endpoint. Colors use canonical uppercase `#RRGGBB`; opacity is an integer from `0` to `100`, and corner radii are integers from `0` to `35` logical pixels. `fontFamily` is null for the product font stack or a bounded system font name. Artist size is `12`–`18`, track size is `16`–`24`, and weights are `400`, `500`, `600`, or `700`; line heights are derived by the page and are not protocol fields. Artwork size is `40`–`70` logical pixels, position is `left` or `right`, and fit is `contain` or `cover`. Visibility only changes presentation: artwork acquisition, content addressing, cancellation, and latest-wins behavior are unchanged. `preset` is `default` or `custom`, while all remaining fields always contain the final effective values. The page reads the endpoint once before starting the now-playing client and falls back to its built-in Default values if the request or validation fails. Saved changes therefore require a page reload and never change source or playback state.
 
 ## Event stream
 

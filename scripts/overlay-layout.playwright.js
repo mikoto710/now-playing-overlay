@@ -105,7 +105,7 @@ async (page) => {
   await page.route("**/api/v2/appearance", (route) =>
     route.fulfill({
       body: JSON.stringify({
-        appearanceVersion: 2,
+        appearanceVersion: 3,
         preset: "default",
         artistColor: "#25C7A0",
         trackColor: "#FFFFFF",
@@ -117,6 +117,11 @@ async (page) => {
         artistFontWeight: 600,
         trackFontSize: 22,
         trackFontWeight: 700,
+        artworkVisible: true,
+        artworkSize: 70,
+        artworkPosition: "left",
+        artworkFit: "contain",
+        artworkCornerRadius: 0,
       }),
       contentType: "application/json",
       status: 200,
@@ -187,15 +192,30 @@ async (page) => {
       const artist = document.getElementById("artist");
       const track = document.getElementById("track");
       const artwork = document.getElementById("artwork-base");
+      const artworkPlaceholder = document.querySelector(".artwork-placeholder");
       const root = document.getElementById("now-playing");
       const stage = document.getElementById("overlay-stage");
       const artistStyle = getComputedStyle(artist);
       const trackStyle = getComputedStyle(track);
       const artworkStyle = getComputedStyle(artwork);
+      const artworkPlaceholderStyle = getComputedStyle(artworkPlaceholder);
       const rootStyle = getComputedStyle(root);
       return {
         artwork: readBounds("artwork-base"),
+        artworkBorderRadius: artworkStyle.borderRadius,
         artworkObjectFit: artworkStyle.objectFit,
+        artworkVisibility: artworkStyle.visibility,
+        artworkPlaceholder: {
+          bounds: {
+            bottom: artworkPlaceholder.getBoundingClientRect().bottom,
+            height: artworkPlaceholder.getBoundingClientRect().height,
+            left: artworkPlaceholder.getBoundingClientRect().left,
+            right: artworkPlaceholder.getBoundingClientRect().right,
+            top: artworkPlaceholder.getBoundingClientRect().top,
+            width: artworkPlaceholder.getBoundingClientRect().width,
+          },
+          visibility: artworkPlaceholderStyle.visibility,
+        },
         artist: readBounds("artist"),
         artistColor: artistStyle.color,
         artistFontSize: artistStyle.fontSize,
@@ -275,6 +295,8 @@ async (page) => {
     defaultLayout.artworkObjectFit === "contain",
     "Artwork must retain contain composition.",
   );
+  assert(defaultLayout.artworkVisibility === "visible", "Default artwork must remain visible.");
+  assert(defaultLayout.artworkBorderRadius === "0px", "Default artwork radius changed.");
 
   await page.evaluate(() => {
     const style = document.documentElement.style;
@@ -292,6 +314,14 @@ async (page) => {
     style.setProperty("--overlay-track-font-size", "24px");
     style.setProperty("--overlay-track-font-weight", "600");
     style.setProperty("--overlay-track-line-height", "28px");
+    style.setProperty("--overlay-artwork-visibility", "visible");
+    style.setProperty("--overlay-artwork-size", "48px");
+    style.setProperty("--overlay-artwork-top", "11px");
+    style.setProperty("--overlay-artwork-left", "302px");
+    style.setProperty("--overlay-artwork-fit", "cover");
+    style.setProperty("--overlay-artwork-corner-radius", "8px");
+    style.setProperty("--overlay-details-left", "0px");
+    style.setProperty("--overlay-details-width", "302px");
   });
   const customLayout = await readLayout();
   assert(customLayout.artistColor === "rgb(18, 52, 86)", "Custom artist color was not applied.");
@@ -307,6 +337,14 @@ async (page) => {
   assert(customLayout.trackFontSize === "24px", "Custom track font size was not applied.");
   assert(customLayout.trackFontWeight === "600", "Custom track font weight was not applied.");
   assert(customLayout.trackLineHeight === "28px", "Custom track line height was not derived.");
+  assert(customLayout.artworkObjectFit === "cover", "Custom artwork fit was not applied.");
+  assert(customLayout.artworkBorderRadius === "8px", "Custom artwork radius was not applied.");
+  assertClose(customLayout.artwork.width, 48, "Custom artwork width");
+  assertClose(customLayout.artwork.height, 48, "Custom artwork height");
+  assertClose(customLayout.artwork.top, customLayout.root.top + 11, "Custom artwork top");
+  assertClose(customLayout.artwork.right, customLayout.root.right, "Right artwork position");
+  assertClose(customLayout.details.left, customLayout.root.left, "Right artwork details left");
+  assertClose(customLayout.details.right, customLayout.artwork.left, "Right artwork text boundary");
   assert(
     customLayout.artist.bottom <= customLayout.track.top,
     "Maximum supported typography overlaps the two text rows.",
@@ -330,6 +368,24 @@ async (page) => {
 
   await page.evaluate(() => {
     const style = document.documentElement.style;
+    style.setProperty("--overlay-artwork-visibility", "hidden");
+    style.setProperty("--overlay-details-left", "0px");
+    style.setProperty("--overlay-details-width", "350px");
+  });
+  const hiddenArtworkLayout = await readLayout();
+  assert(hiddenArtworkLayout.artworkVisibility === "hidden", "Artwork was not hidden.");
+  assert(
+    hiddenArtworkLayout.artworkPlaceholder.visibility === "hidden",
+    "Artwork placeholder was not hidden.",
+  );
+  assertClose(
+    hiddenArtworkLayout.details.width,
+    hiddenArtworkLayout.root.width,
+    "Hidden artwork details width",
+  );
+
+  await page.evaluate(() => {
+    const style = document.documentElement.style;
     style.setProperty("--overlay-artist-color", "#25C7A0");
     style.setProperty("--overlay-track-color", "#FFFFFF");
     style.setProperty("--overlay-background", "rgb(27, 29, 32)");
@@ -344,6 +400,14 @@ async (page) => {
     style.setProperty("--overlay-track-font-size", "22px");
     style.setProperty("--overlay-track-font-weight", "700");
     style.setProperty("--overlay-track-line-height", "26px");
+    style.setProperty("--overlay-artwork-visibility", "visible");
+    style.setProperty("--overlay-artwork-size", "70px");
+    style.setProperty("--overlay-artwork-top", "0px");
+    style.setProperty("--overlay-artwork-left", "0px");
+    style.setProperty("--overlay-artwork-fit", "contain");
+    style.setProperty("--overlay-artwork-corner-radius", "0px");
+    style.setProperty("--overlay-details-left", "70px");
+    style.setProperty("--overlay-details-width", "280px");
   });
 
   const viewports = [
