@@ -12,11 +12,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly TrayMenuController _controller;
     private readonly ILogger<TrayApplicationContext> _logger;
     private readonly ToolStripMenuItem _statusItem;
+    private readonly ToolStripMenuItem _settingsItem;
     private readonly ContextMenuStrip _menu;
     private readonly Icon _applicationIcon;
     private readonly NotifyIcon _notifyIcon;
     private readonly System.Windows.Forms.Timer _statusTimer;
     private bool _faultNotificationShown;
+    private bool _settingsOperationActive;
     private bool _disposed;
 
     public TrayApplicationContext(
@@ -26,6 +28,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _statusItem = new ToolStripMenuItem { Enabled = false };
+        _settingsItem = CreateMenuItem("Settings...", ConfigureSettings);
         _menu = new ContextMenuStrip();
         _menu.Items.AddRange(
         [
@@ -34,7 +37,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             CreateMenuItem("Copy OBS URL", CopyOverlayUrl),
             CreateOverlayPreviewMenu(),
             CreateMenuItem("Open Logs", OpenLogs),
-            CreateMenuItem("Settings...", ConfigureSettings),
+            _settingsItem,
             new ToolStripSeparator(),
             CreateMenuItem("Exit", RequestExit),
         ]);
@@ -157,34 +160,52 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private async void ConfigureSettings()
     {
-        await RunUserActionAsync(
-            "save settings",
-            async () =>
-            {
-                var discovery = await _controller.RefreshSourcesAsync();
-                using var dialog = new SettingsDialog(
-                    _controller.EffectivePort,
-                    discovery,
-                    _controller.GetAppearanceSettings(),
-                    _controller.RefreshSourcesAsync);
-                if (dialog.ShowDialog() != DialogResult.OK)
-                {
-                    return;
-                }
+        if (_settingsOperationActive)
+        {
+            return;
+        }
 
-                var result = await _controller.SaveSettingsAsync(
-                    dialog.SelectedPort,
-                    dialog.SelectedSourceAppUserModelId,
-                    dialog.SelectedAppearance);
-                if (result.PortChanged)
+        _settingsOperationActive = true;
+        _settingsItem.Enabled = false;
+        try
+        {
+            await RunUserActionAsync(
+                "save settings",
+                async () =>
                 {
-                    MessageBox.Show(
-                        $"Settings were saved and the server moved to port {dialog.SelectedPort} without restarting. Loaded overlay pages were asked to follow the new URL:\n\n{result.OverlayUrl}\n\nUpdate the saved OBS Browser Source URL so future reloads and OBS restarts use the new port.",
-                        "Settings Saved",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
-                }
-            });
+                    var discovery = await _controller.RefreshSourcesAsync();
+                    using var dialog = new SettingsDialog(
+                        _controller.EffectivePort,
+                        discovery,
+                        _controller.GetAppearanceSettings(),
+                        _controller.RefreshSourcesAsync);
+                    if (dialog.ShowDialog() != DialogResult.OK)
+                    {
+                        return;
+                    }
+
+                    var result = await _controller.SaveSettingsAsync(
+                        dialog.SelectedPort,
+                        dialog.SelectedSourceAppUserModelId,
+                        dialog.SelectedAppearance);
+                    if (result.PortChanged)
+                    {
+                        MessageBox.Show(
+                            $"Settings were saved and the server moved to port {dialog.SelectedPort} without restarting. Loaded overlay pages were asked to follow the new URL:\n\n{result.OverlayUrl}\n\nUpdate the saved OBS Browser Source URL so future reloads and OBS restarts use the new port.",
+                            "Settings Saved",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information);
+                    }
+                });
+        }
+        finally
+        {
+            _settingsOperationActive = false;
+            if (!_disposed)
+            {
+                _settingsItem.Enabled = true;
+            }
+        }
     }
 
     private void RequestExit()
