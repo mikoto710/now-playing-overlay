@@ -34,7 +34,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             CreateMenuItem("Copy OBS URL", CopyOverlayUrl),
             CreateOverlayPreviewMenu(),
             CreateMenuItem("Open Logs", OpenLogs),
-            CreateMenuItem("Configure Port...", ConfigurePort),
+            CreateMenuItem("Settings...", ConfigureSettings),
             new ToolStripSeparator(),
             CreateMenuItem("Exit", RequestExit),
         ]);
@@ -142,35 +142,33 @@ internal sealed class TrayApplicationContext : ApplicationContext
             });
     }
 
-    private async void ConfigurePort()
+    private async void ConfigureSettings()
     {
-        using var dialog = new PortConfigurationDialog(_controller.EffectivePort);
-        if (dialog.ShowDialog() != DialogResult.OK)
-        {
-            return;
-        }
-
-        var selectedPort = dialog.SelectedPort;
         await RunUserActionAsync(
-            "change the port",
+            "save settings",
             async () =>
             {
-                var result = await _controller.SavePortAsync(selectedPort);
-                if (!result.Changed)
+                var discovery = await _controller.RefreshSourcesAsync();
+                using var dialog = new SettingsDialog(
+                    _controller.EffectivePort,
+                    discovery,
+                    _controller.RefreshSourcesAsync);
+                if (dialog.ShowDialog() != DialogResult.OK)
                 {
-                    MessageBox.Show(
-                        "The selected port is already in use by this instance.",
-                        "Now Playing Overlay",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
                     return;
                 }
 
-                MessageBox.Show(
-                    $"The server moved to port {selectedPort} without restarting. Loaded overlay pages were asked to follow the new URL:\n\n{result.OverlayUrl}\n\nUpdate the saved OBS Browser Source URL so future reloads and OBS restarts use the new port.",
-                    "Port Changed",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                var result = await _controller.SaveSettingsAsync(
+                    dialog.SelectedPort,
+                    dialog.SelectedSourceAppUserModelId);
+                if (result.PortChanged)
+                {
+                    MessageBox.Show(
+                        $"Settings were saved and the server moved to port {dialog.SelectedPort} without restarting. Loaded overlay pages were asked to follow the new URL:\n\n{result.OverlayUrl}\n\nUpdate the saved OBS Browser Source URL so future reloads and OBS restarts use the new port.",
+                        "Settings Saved",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
             });
     }
 

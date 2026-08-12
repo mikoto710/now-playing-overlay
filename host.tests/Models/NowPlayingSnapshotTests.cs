@@ -1,3 +1,4 @@
+using NowPlayingOverlay.Host.Media;
 using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Tests.Models;
@@ -16,7 +17,7 @@ public sealed class NowPlayingSnapshotTests
         Assert.Equal(ServerInstanceId, snapshot.ServerInstanceId);
         Assert.Equal(0, snapshot.SnapshotRevision);
         Assert.Equal(PlaybackState.Unavailable, snapshot.Playback);
-        Assert.Equal(string.Empty, snapshot.SourceAppUserModelId);
+        Assert.Null(snapshot.Source);
         Assert.Null(snapshot.Track);
         Assert.Null(snapshot.Artwork);
         Assert.Null(snapshot.Identity);
@@ -30,7 +31,9 @@ public sealed class NowPlayingSnapshotTests
 
         var snapshot = CreateSnapshot(1, PlaybackState.Playing, track: track);
 
-        Assert.Equal(new TrackIdentity("Spotify.exe", "Title", "Artist"), snapshot.Identity);
+        Assert.Equal(
+            new TrackIdentity(SourceKey.WindowsMedia("Player.App"), "Title", "Artist"),
+            snapshot.Identity);
     }
 
     [Fact]
@@ -41,7 +44,7 @@ public sealed class NowPlayingSnapshotTests
         var second = NowPlayingSnapshot.Create(
             ServerInstanceId,
             99,
-            "Spotify.exe",
+            SourceDescriptor.WindowsMedia("Player.App"),
             PlaybackState.Playing,
             track,
             artwork: null,
@@ -75,7 +78,7 @@ public sealed class NowPlayingSnapshotTests
         var differentServer = NowPlayingSnapshot.Create(
             Guid.NewGuid(),
             1,
-            "Spotify.exe",
+            SourceDescriptor.WindowsMedia("Player.App"),
             PlaybackState.Playing,
             track,
             first.Artwork,
@@ -94,16 +97,16 @@ public sealed class NowPlayingSnapshotTests
     }
 
     [Theory]
-    [InlineData((int)PlaybackState.Playing, "", false)]
-    [InlineData((int)PlaybackState.Playing, "Spotify.exe", false)]
-    [InlineData((int)PlaybackState.Paused, "", false)]
-    [InlineData((int)PlaybackState.Stopped, "", false)]
-    [InlineData((int)PlaybackState.Idle, "", false)]
-    [InlineData((int)PlaybackState.Idle, "Spotify.exe", true)]
-    [InlineData((int)PlaybackState.Unavailable, "Spotify.exe", false)]
+    [InlineData((int)PlaybackState.Playing, false, false)]
+    [InlineData((int)PlaybackState.Playing, true, false)]
+    [InlineData((int)PlaybackState.Paused, false, false)]
+    [InlineData((int)PlaybackState.Stopped, false, false)]
+    [InlineData((int)PlaybackState.Idle, false, false)]
+    [InlineData((int)PlaybackState.Idle, true, true)]
+    [InlineData((int)PlaybackState.Unavailable, true, true)]
     public void CreateEnforcesPlaybackStateMatrix(
         int playbackValue,
-        string source,
+        bool includeSource,
         bool includeTrack)
     {
         var playback = (PlaybackState)playbackValue;
@@ -113,7 +116,7 @@ public sealed class NowPlayingSnapshotTests
             () => NowPlayingSnapshot.Create(
                 ServerInstanceId,
                 1,
-                source,
+                includeSource ? SourceDescriptor.WindowsMedia("Player.App") : null,
                 playback,
                 track,
                 artwork: null,
@@ -127,7 +130,7 @@ public sealed class NowPlayingSnapshotTests
             () => NowPlayingSnapshot.Create(
                 ServerInstanceId,
                 1,
-                "Spotify.exe",
+                SourceDescriptor.WindowsMedia("Player.App"),
                 PlaybackState.Paused,
                 track: null,
                 CreateArtwork(1),
@@ -143,7 +146,7 @@ public sealed class NowPlayingSnapshotTests
         return NowPlayingSnapshot.Create(
             ServerInstanceId,
             revision,
-            "Spotify.exe",
+            SourceDescriptor.WindowsMedia("Player.App"),
             playback,
             track,
             artwork,

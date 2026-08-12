@@ -13,15 +13,17 @@ internal sealed class HostHealthService(
     public (HealthDto Body, int StatusCode) GetHealth()
     {
         var snapshot = store.Current;
-        var faulted = coordinator.LastError is not null;
+        var sourceState = source is ISessionSourceStatus sourceStatus
+            ? sourceStatus.GetState()
+            : SourceManagerState.Unconfigured;
+        var faulted = coordinator.LastError is not null || sourceState.Status == SourceStatus.Faulted;
         var status = faulted ? "faulted" : runtime.IsReady ? "ready" : "starting";
-        var sourceStatus = source as ISessionSourceStatus;
         // Health exposes operational state without leaking media or exception details.
         var body = new HealthDto
         {
             HostStatus = status,
-            SessionManagerAvailable = sourceStatus?.IsAvailable ?? false,
-            SpotifySessionBound = snapshot.SourceAppUserModelId.Length > 0,
+            ActiveSourceProvider = sourceState.ActiveSource?.Key.Provider.ToProtocolValue(),
+            SourceStatus = sourceState.Status.ToProtocolValue(),
             ServerInstanceId = snapshot.ServerInstanceId,
             SnapshotRevision = snapshot.SnapshotRevision,
             UptimeSeconds = Math.Max(

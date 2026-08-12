@@ -75,7 +75,7 @@ internal static class Program
         NowPlayingOverlay.Host.Configuration.HostOptions? options = null;
         try
         {
-            app = OverlayApplication.Build(args, loadedSettings.Settings.Port, logFile);
+            app = OverlayApplication.Build(args, loadedSettings.Settings, logFile);
             options = app.Options;
             app.StartAsync().GetAwaiter().GetResult();
 
@@ -85,7 +85,10 @@ internal static class Program
                 app.StatusService,
                 paths.LogDirectory,
                 (port, persistPort, cancellationToken) =>
-                    app.RebindPortAsync(port, persistPort, cancellationToken));
+                    app.RebindPortAsync(port, persistPort, cancellationToken),
+                app.GetSourceState,
+                app.RefreshWindowsMediaSourcesAsync,
+                app.SelectWindowsMedia);
             var logger = new BoundedFileLoggerProvider(logFile).CreateLogger<TrayApplicationContext>();
             using var tray = new TrayApplicationContext(controller, logger);
             Application.Run(tray);
@@ -237,7 +240,7 @@ internal static class Program
 
             try
             {
-                settingsStore.Save(new ApplicationSettings { Port = selectedPort });
+                settingsStore.Update(current => current with { Port = selectedPort });
                 var overlayUrl = TrayMenuController.BuildOverlayUrl(selectedPort);
                 ShowMessage(
                     $"Port {selectedPort} was saved. Restart Now Playing Overlay, then update the OBS Browser Source URL to:\n\n{overlayUrl}",

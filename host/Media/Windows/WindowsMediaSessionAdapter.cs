@@ -73,7 +73,7 @@ internal sealed class WindowsMediaSessionAdapter : IMediaSessionAdapter
         if (playback == PlaybackState.Idle)
         {
             return SessionObservation.Create(
-                snapshot.SourceAppUserModelId,
+                SourceDescriptor.WindowsMedia(snapshot.SourceAppUserModelId),
                 PlaybackState.Idle);
         }
 
@@ -95,12 +95,12 @@ internal sealed class WindowsMediaSessionAdapter : IMediaSessionAdapter
         if (playback == PlaybackState.Playing && track is null)
         {
             return SessionObservation.Create(
-                snapshot.SourceAppUserModelId,
+                SourceDescriptor.WindowsMedia(snapshot.SourceAppUserModelId),
                 PlaybackState.Idle);
         }
 
         return SessionObservation.Create(
-            snapshot.SourceAppUserModelId,
+            SourceDescriptor.WindowsMedia(snapshot.SourceAppUserModelId),
             playback,
             track,
             track is null ? null : snapshot.ArtworkReader);

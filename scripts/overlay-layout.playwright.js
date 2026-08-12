@@ -28,10 +28,10 @@ async (page) => {
     title,
     artworkId = artworkIds.initial,
   }) => ({
-    protocolVersion: 1,
+    protocolVersion: 2,
     serverInstanceId: instanceId,
     snapshotRevision: revision,
-    source: "spotify",
+    source: { provider: "windows-media" },
     playback,
     track: {
       title,
@@ -47,7 +47,7 @@ async (page) => {
     artwork: {
       artworkRevision: revision,
       artworkId,
-      url: `/api/v1/artwork/${artworkId}`,
+      url: `/api/v2/artwork/${artworkId}`,
     },
     observedAt: "2026-08-12T00:00:00Z",
   });
@@ -95,14 +95,14 @@ async (page) => {
     };
   });
 
-  await page.route("**/api/v1/state", (route) =>
+  await page.route("**/api/v2/state", (route) =>
     route.fulfill({
       body: JSON.stringify(initialState),
       contentType: "application/json",
       status: 200,
     }),
   );
-  await page.route("**/api/v1/artwork/**", async (route) => {
+  await page.route("**/api/v2/artwork/**", async (route) => {
     const artworkId = route.request().url().split("/").at(-1);
     if (artworkId === artworkIds.delayed) {
       await page.waitForTimeout(delayedArtworkMs);

@@ -269,7 +269,7 @@ internal sealed class NowPlayingCoordinator : IAsyncDisposable
             && Equals(before.Identity, observation.Identity);
         var artwork = preserveArtwork ? before.Artwork : null;
         _store.TryCommit(
-            observation.SourceAppUserModelId,
+            observation.Source,
             observation.Playback,
             observation.Track,
             artwork,
@@ -358,7 +358,7 @@ internal sealed class NowPlayingCoordinator : IAsyncDisposable
             || !_artworkCache.TryAdd(completion.Payload, out var cacheEntry))
         {
             _store.TryCommit(
-                current.SourceAppUserModelId,
+                current.Source,
                 current.Playback,
                 current.Track,
                 artwork: null,
@@ -386,7 +386,7 @@ internal sealed class NowPlayingCoordinator : IAsyncDisposable
             cacheEntry.ContentType,
             cacheEntry.ByteLength);
         _store.TryCommit(
-            current.SourceAppUserModelId,
+            current.Source,
             current.Playback,
             current.Track,
             descriptor,

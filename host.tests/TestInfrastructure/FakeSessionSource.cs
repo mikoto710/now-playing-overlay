@@ -7,12 +7,19 @@ internal sealed class FakeSessionSource : ISessionSource, ISessionSourceStatus
 {
     private readonly object _gate = new();
     private SessionObservation _current = SessionObservation.Create(null, PlaybackState.Unavailable);
+    private SourceManagerState _state = SourceManagerState.Unconfigured;
     private Exception? _readError;
     private bool _disposed;
 
     public event EventHandler? Changed;
 
-    public bool IsAvailable => true;
+    public SourceManagerState GetState()
+    {
+        lock (_gate)
+        {
+            return _state;
+        }
+    }
 
     public void Publish(SessionObservation observation)
     {
@@ -22,6 +29,16 @@ internal sealed class FakeSessionSource : ISessionSource, ISessionSourceStatus
             ObjectDisposedException.ThrowIf(_disposed, this);
             _current = observation;
             _readError = null;
+            _state = observation.Source is null
+                ? SourceManagerState.Unconfigured
+                : new SourceManagerState(
+                    observation.Source,
+                    observation.Playback == PlaybackState.Unavailable
+                        ? SourceStatus.Unavailable
+                        : SourceStatus.Available,
+                    observation.Playback == PlaybackState.Unavailable
+                        ? SourceStatusReason.Missing
+                        : SourceStatusReason.None);
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
@@ -34,6 +51,10 @@ internal sealed class FakeSessionSource : ISessionSource, ISessionSourceStatus
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             _readError = error;
+            _state = new SourceManagerState(
+                _current.Source,
+                SourceStatus.Faulted,
+                SourceStatusReason.Faulted);
         }
 
         Changed?.Invoke(this, EventArgs.Empty);

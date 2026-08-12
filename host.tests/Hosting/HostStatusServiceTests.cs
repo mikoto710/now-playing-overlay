@@ -21,9 +21,13 @@ public sealed class HostStatusServiceTests
 
         Assert.Equal("Host Starting", service.GetCurrent().Text);
         runtime.MarkReady();
-        Assert.Equal("Waiting for Spotify", service.GetCurrent().Text);
+        Assert.Equal("Source Not Configured", service.GetCurrent().Text);
+        source.Publish(SessionObservation.Create(
+            SourceDescriptor.WindowsMedia("Player.App"),
+            PlaybackState.Playing,
+            TrackMetadata.Create("Private track title", "Private artist", albumTitle: null)));
         store.TryCommit(
-            "Spotify.exe",
+            SourceDescriptor.WindowsMedia("Player.App"),
             PlaybackState.Playing,
             TrackMetadata.Create("Private track title", "Private artist", albumTitle: null),
             artwork: null,
@@ -32,7 +36,8 @@ public sealed class HostStatusServiceTests
 
         var status = service.GetCurrent();
 
-        Assert.Equal("Spotify: Playing", status.Text);
+        Assert.Equal("Windows Media: Playing", status.Text);
+        Assert.DoesNotContain("Spotify", status.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("Private", status.Text, StringComparison.Ordinal);
         await coordinator.DisposeAsync();
     }

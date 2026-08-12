@@ -1,8 +1,12 @@
+using NowPlayingOverlay.Host.Media;
+
 namespace NowPlayingOverlay.Host.Configuration;
 
 internal sealed record ApplicationSettings
 {
     public int Port { get; init; } = HostOptions.DefaultPort;
+
+    public SourceSelectionSettings Source { get; init; } = new();
 
     public void Validate()
     {
@@ -10,5 +14,47 @@ internal sealed record ApplicationSettings
         {
             throw new InvalidDataException("The configured port must be between 1 and 65535.");
         }
+
+        if (Source is null)
+        {
+            throw new InvalidDataException("The configured source must not be null.");
+        }
+
+        Source.Validate();
+    }
+}
+
+internal sealed record SourceSelectionSettings
+{
+    public SourceProvider Provider { get; init; } = SourceProvider.WindowsMedia;
+
+    public string? SourceAppUserModelId { get; init; }
+
+    public void Validate()
+    {
+        if (Provider != SourceProvider.WindowsMedia)
+        {
+            throw new InvalidDataException("The configured source provider is not supported.");
+        }
+
+        if (SourceAppUserModelId is not null)
+        {
+            try
+            {
+                _ = SourceKey.WindowsMedia(SourceAppUserModelId);
+            }
+            catch (ArgumentException error)
+            {
+                throw new InvalidDataException("The configured Windows Media source ID is invalid.", error);
+            }
+        }
+    }
+
+    public SourceDescriptor? ToDescriptor()
+    {
+        Validate();
+        return SourceAppUserModelId is null
+            ? null
+            : SourceDescriptor.WindowsMedia(SourceAppUserModelId);
     }
 }

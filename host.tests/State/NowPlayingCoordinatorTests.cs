@@ -72,7 +72,9 @@ public sealed class NowPlayingCoordinatorTests
         var oldArtwork = new ControlledArtworkReader();
         source.Enqueue(Playing("A", oldArtwork));
         source.Enqueue(Playing("B"));
-        source.Enqueue(SessionObservation.Create(null, PlaybackState.Unavailable));
+        source.Enqueue(SessionObservation.Create(
+            SourceDescriptor.WindowsMedia("Player.App"),
+            PlaybackState.Unavailable));
         var store = CreateStore();
         await using var coordinator = CreateCoordinator(source, store);
         using var subscription = store.Subscribe();
@@ -91,6 +93,7 @@ public sealed class NowPlayingCoordinatorTests
             value => value.Playback == PlaybackState.Unavailable);
 
         Assert.Equal(3, unavailable.SnapshotRevision);
+        Assert.Equal("Player.App", unavailable.Source!.Key.InstanceId);
         Assert.Null(unavailable.Artwork);
     }
 
@@ -148,10 +151,11 @@ public sealed class NowPlayingCoordinatorTests
     {
         var source = new ControlledSessionSource();
         var track = TrackMetadata.Create("A", "Artist", null);
-        source.Enqueue(SessionObservation.Create("Spotify.exe", PlaybackState.Playing, track));
-        source.Enqueue(SessionObservation.Create("Spotify.exe", PlaybackState.Paused, track));
-        source.Enqueue(SessionObservation.Create("Spotify.exe", PlaybackState.Stopped, track));
-        source.Enqueue(SessionObservation.Create("Spotify.exe", PlaybackState.Idle));
+        var descriptor = SourceDescriptor.WindowsMedia("Player.App");
+        source.Enqueue(SessionObservation.Create(descriptor, PlaybackState.Playing, track));
+        source.Enqueue(SessionObservation.Create(descriptor, PlaybackState.Paused, track));
+        source.Enqueue(SessionObservation.Create(descriptor, PlaybackState.Stopped, track));
+        source.Enqueue(SessionObservation.Create(descriptor, PlaybackState.Idle));
         source.Enqueue(SessionObservation.Create(null, PlaybackState.Unavailable));
         var store = CreateStore();
         await using var coordinator = CreateCoordinator(source, store);
@@ -178,7 +182,7 @@ public sealed class NowPlayingCoordinatorTests
     }
 
     [Fact]
-    public async Task SourceFailureIsReportedWithoutPretendingSpotifyIsUnavailable()
+    public async Task UnexpectedSourceFailureIsReportedWithoutReplacingTheSnapshot()
     {
         var source = new ControlledSessionSource();
         source.EnqueueException(new InvalidOperationException("read failed"));
@@ -218,7 +222,7 @@ public sealed class NowPlayingCoordinatorTests
     private static SessionObservation Playing(string title, IArtworkReader? artworkReader = null)
     {
         return SessionObservation.Create(
-            "Spotify.exe",
+            SourceDescriptor.WindowsMedia("Player.App"),
             PlaybackState.Playing,
             TrackMetadata.Create(title, "Artist", null),
             artworkReader);

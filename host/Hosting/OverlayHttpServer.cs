@@ -301,7 +301,7 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
             return;
         }
 
-        if (string.Equals(path, "/api/v1/state", StringComparison.Ordinal))
+        if (string.Equals(path, "/api/v2/state", StringComparison.Ordinal))
         {
             var bytes = JsonSerializer.SerializeToUtf8Bytes(
                 NowPlayingStateMapper.Map(_store.Current),
@@ -315,14 +315,14 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
             return;
         }
 
-        const string artworkPrefix = "/api/v1/artwork/";
+        const string artworkPrefix = "/api/v2/artwork/";
         if (path.StartsWith(artworkPrefix, StringComparison.Ordinal))
         {
             await WriteArtworkAsync(context, path[artworkPrefix.Length..], cancellationToken);
             return;
         }
 
-        if (string.Equals(path, "/api/v1/events", StringComparison.Ordinal))
+        if (string.Equals(path, "/api/v2/events", StringComparison.Ordinal))
         {
             if (!IsMethod(request, "GET"))
             {

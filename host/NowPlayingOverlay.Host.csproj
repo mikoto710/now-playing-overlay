@@ -4,7 +4,7 @@
     <AssemblyName>NowPlayingOverlay</AssemblyName>
     <AssemblyTitle>Now Playing Overlay</AssemblyTitle>
     <Product>Now Playing Overlay</Product>
-    <Description>Local Spotify now-playing overlay host for OBS.</Description>
+    <Description>Local Windows Media now-playing overlay host for OBS.</Description>
     <Version>0.1.0</Version>
     <AssemblyVersion>0.1.0.0</AssemblyVersion>
     <FileVersion>0.1.0.0</FileVersion>

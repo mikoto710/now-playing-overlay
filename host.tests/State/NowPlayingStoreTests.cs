@@ -1,3 +1,4 @@
+using NowPlayingOverlay.Host.Media;
 using NowPlayingOverlay.Host.Models;
 using NowPlayingOverlay.Host.State;
 
@@ -15,7 +16,7 @@ public sealed class NowPlayingStoreTests
 
         Assert.True(
             store.TryCommit(
-                "Spotify.exe",
+                SourceDescriptor.WindowsMedia("Player.App"),
                 PlaybackState.Playing,
                 track,
                 artwork: null,
@@ -23,7 +24,7 @@ public sealed class NowPlayingStoreTests
                 out var first));
         Assert.False(
             store.TryCommit(
-                "Spotify.exe",
+                SourceDescriptor.WindowsMedia("Player.App"),
                 PlaybackState.Playing,
                 TrackMetadata.Create("Title", "Artist", null),
                 artwork: null,
@@ -42,14 +43,14 @@ public sealed class NowPlayingStoreTests
         using var subscription = store.Subscribe();
 
         store.TryCommit(
-            "Spotify.exe",
+            SourceDescriptor.WindowsMedia("Player.App"),
             PlaybackState.Playing,
             TrackMetadata.Create("A", "Artist", null),
             null,
             DateTimeOffset.UtcNow,
             out _);
         store.TryCommit(
-            "Spotify.exe",
+            SourceDescriptor.WindowsMedia("Player.App"),
             PlaybackState.Playing,
             TrackMetadata.Create("B", "Artist", null),
             null,
@@ -67,7 +68,7 @@ public sealed class NowPlayingStoreTests
     {
         var firstStore = CreateStore(ServerInstanceId);
         firstStore.TryCommit(
-            "Spotify.exe",
+            SourceDescriptor.WindowsMedia("Player.App"),
             PlaybackState.Playing,
             TrackMetadata.Create("Title", "Artist", null),
             null,

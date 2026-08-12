@@ -1,4 +1,4 @@
-export const protocolVersion = 1 as const;
+export const protocolVersion = 2 as const;
 
 export type PlaybackState = "playing" | "paused" | "stopped" | "idle" | "unavailable";
 
@@ -22,11 +22,17 @@ export interface ArtworkDto {
   url: string;
 }
 
+export type SourceProvider = "windows-media" | "spotify-api";
+
+export interface SourceDto {
+  provider: SourceProvider;
+}
+
 export interface NowPlayingStateDto {
   protocolVersion: typeof protocolVersion;
   serverInstanceId: string;
   snapshotRevision: number;
-  source: "spotify" | null;
+  source: SourceDto | null;
   playback: PlaybackState;
   track: TrackDto | null;
   artwork: ArtworkDto | null;
@@ -41,6 +47,7 @@ const playbackStates = new Set<PlaybackState>([
   "unavailable",
 ]);
 const playbackKinds = new Set<MediaPlaybackKind>(["unknown", "music", "video", "image"]);
+const sourceProviders = new Set<SourceProvider>(["windows-media", "spotify-api"]);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const artworkIdPattern = /^[0-9a-f]{64}$/;
 
@@ -53,7 +60,7 @@ export function parseNowPlayingState(value: unknown): NowPlayingStateDto {
     typeof value.serverInstanceId !== "string" ||
     !uuidPattern.test(value.serverInstanceId) ||
     !isNonNegativeInteger(value.snapshotRevision) ||
-    (value.source !== null && value.source !== "spotify") ||
+    !isSource(value.source) ||
     !playbackStates.has(value.playback as PlaybackState) ||
     !isTrack(value.track) ||
     !isArtwork(value.artwork) ||
@@ -79,15 +86,27 @@ function hasValidStateMatrix(state: NowPlayingStateDto): boolean {
 
   switch (state.playback) {
     case "playing":
-      return state.source === "spotify" && state.track !== null;
+      return state.source !== null && state.track !== null;
     case "paused":
     case "stopped":
-      return state.source === "spotify";
+      return state.source !== null;
     case "idle":
-      return state.source === "spotify" && state.track === null && state.artwork === null;
+      return state.source !== null && state.track === null && state.artwork === null;
     case "unavailable":
-      return state.source === null && state.track === null && state.artwork === null;
+      return state.track === null && state.artwork === null;
   }
+}
+
+function isSource(value: unknown): value is SourceDto | null {
+  if (value === null) {
+    return true;
+  }
+
+  return (
+    isRecord(value) &&
+    Object.keys(value).length === 1 &&
+    sourceProviders.has(value.provider as SourceProvider)
+  );
 }
 
 function isTrack(value: unknown): value is TrackDto | null {
@@ -120,7 +139,7 @@ function isArtwork(value: unknown): value is ArtworkDto | null {
     isPositiveInteger(value.artworkRevision) &&
     typeof value.artworkId === "string" &&
     artworkIdPattern.test(value.artworkId) &&
-    value.url === `/api/v1/artwork/${value.artworkId}`
+    value.url === `/api/v2/artwork/${value.artworkId}`
   );
 }
 

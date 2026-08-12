@@ -7,11 +7,11 @@ internal sealed record HealthDto
     [JsonPropertyName("hostStatus")]
     public required string HostStatus { get; init; }
 
-    [JsonPropertyName("sessionManagerAvailable")]
-    public required bool SessionManagerAvailable { get; init; }
+    [JsonPropertyName("activeSourceProvider")]
+    public string? ActiveSourceProvider { get; init; }
 
-    [JsonPropertyName("spotifySessionBound")]
-    public required bool SpotifySessionBound { get; init; }
+    [JsonPropertyName("sourceStatus")]
+    public required string SourceStatus { get; init; }
 
     [JsonPropertyName("serverInstanceId")]
     public required Guid ServerInstanceId { get; init; }

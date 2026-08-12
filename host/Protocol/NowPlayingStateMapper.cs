@@ -1,3 +1,4 @@
+using NowPlayingOverlay.Host.Media;
 using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Protocol;
@@ -12,7 +13,12 @@ internal static class NowPlayingStateMapper
         {
             ServerInstanceId = snapshot.ServerInstanceId,
             SnapshotRevision = snapshot.SnapshotRevision,
-            Source = snapshot.SourceAppUserModelId.Length == 0 ? null : "spotify",
+            Source = snapshot.Source is null
+                ? null
+                : new SourceDto
+                {
+                    Provider = snapshot.Source.Key.Provider.ToProtocolValue(),
+                },
             Playback = MapPlayback(snapshot.Playback),
             Track = snapshot.Track is null ? null : MapTrack(snapshot.Track),
             Artwork = snapshot.Artwork is null ? null : MapArtwork(snapshot.Artwork),
@@ -70,7 +76,7 @@ internal static class NowPlayingStateMapper
         {
             ArtworkRevision = artwork.ArtworkRevision,
             ArtworkId = artwork.ArtworkId,
-            Url = $"/api/v1/artwork/{artwork.ArtworkId}",
+            Url = $"/api/v2/artwork/{artwork.ArtworkId}",
         };
     }
 }

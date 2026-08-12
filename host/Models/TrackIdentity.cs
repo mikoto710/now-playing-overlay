@@ -1,6 +1,8 @@
+using NowPlayingOverlay.Host.Media;
+
 namespace NowPlayingOverlay.Host.Models;
 
 internal sealed record TrackIdentity(
-    string SourceAppUserModelId,
+    SourceKey Source,
     string Title,
     string Artist);

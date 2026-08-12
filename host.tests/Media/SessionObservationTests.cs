@@ -7,18 +7,20 @@ namespace NowPlayingOverlay.Host.Tests.Media;
 public sealed class SessionObservationTests
 {
     [Fact]
-    public void CreateNormalizesSourceAndBuildsIdentity()
+    public void CreatePreservesExactSourceKeyAndBuildsIdentity()
     {
         var track = TrackMetadata.Create("Title", "Artist", null);
 
         var observation = SessionObservation.Create(
-            " Spotify.exe ",
+            SourceDescriptor.WindowsMedia("Player.App"),
             PlaybackState.Playing,
             track,
             new StubArtworkReader());
 
-        Assert.Equal("Spotify.exe", observation.SourceAppUserModelId);
-        Assert.Equal(new TrackIdentity("Spotify.exe", "Title", "Artist"), observation.Identity);
+        Assert.Equal("Player.App", observation.Source!.Key.InstanceId);
+        Assert.Equal(
+            new TrackIdentity(SourceKey.WindowsMedia("Player.App"), "Title", "Artist"),
+            observation.Identity);
     }
 
     [Fact]
@@ -26,7 +28,7 @@ public sealed class SessionObservationTests
     {
         var observation = SessionObservation.Create(null, PlaybackState.Unavailable);
 
-        Assert.Equal(string.Empty, observation.SourceAppUserModelId);
+        Assert.Null(observation.Source);
         Assert.Null(observation.Track);
         Assert.Null(observation.ArtworkReader);
     }
@@ -36,7 +38,7 @@ public sealed class SessionObservationTests
     {
         Assert.Throws<ArgumentException>(
             () => SessionObservation.Create(
-                "Spotify.exe",
+                SourceDescriptor.WindowsMedia("Player.App"),
                 PlaybackState.Paused,
                 artworkReader: new StubArtworkReader()));
     }

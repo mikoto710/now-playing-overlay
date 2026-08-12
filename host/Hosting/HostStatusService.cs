@@ -21,17 +21,40 @@ internal sealed class HostStatusService(
             return new HostStatus("Host Starting", IsFaulted: false);
         }
 
-        if (source is not ISessionSourceStatus status || !status.IsAvailable)
+        if (source is not ISessionSourceStatus status)
         {
-            return new HostStatus("Windows Media Sessions Unavailable", IsFaulted: false);
+            return new HostStatus("Source Status Unavailable", IsFaulted: false);
         }
 
-        var snapshot = store.Current;
-        if (snapshot.SourceAppUserModelId.Length == 0)
+        var state = status.GetState();
+        if (state.Status == SourceStatus.Faulted)
         {
-            return new HostStatus("Waiting for Spotify", IsFaulted: false);
+            return new HostStatus("Source Faulted - Open Logs For Details", IsFaulted: true);
         }
 
-        return new HostStatus($"Spotify: {snapshot.Playback}", IsFaulted: false);
+        if (state.Status == SourceStatus.Unconfigured)
+        {
+            return new HostStatus("Source Not Configured", IsFaulted: false);
+        }
+
+        var provider = state.ActiveSource?.Key.Provider.ToDisplayName() ?? "Source";
+        if (state.Status == SourceStatus.Starting)
+        {
+            return new HostStatus($"{provider}: Starting", IsFaulted: false);
+        }
+
+        if (state.Status == SourceStatus.Unavailable)
+        {
+            var detail = state.Reason switch
+            {
+                SourceStatusReason.Missing => "Selected Player Not Available",
+                SourceStatusReason.Ambiguous => "Selected Player Is Ambiguous",
+                SourceStatusReason.PlatformUnavailable => "Sessions Unavailable",
+                _ => "Unavailable",
+            };
+            return new HostStatus($"{provider}: {detail}", IsFaulted: false);
+        }
+
+        return new HostStatus($"{provider}: {store.Current.Playback}", IsFaulted: false);
     }
 }

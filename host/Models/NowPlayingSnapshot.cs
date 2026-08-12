@@ -1,4 +1,4 @@
-using System.Text;
+using NowPlayingOverlay.Host.Media;
 
 namespace NowPlayingOverlay.Host.Models;
 
@@ -7,7 +7,7 @@ internal sealed record NowPlayingSnapshot
     private NowPlayingSnapshot(
         Guid serverInstanceId,
         long snapshotRevision,
-        string sourceAppUserModelId,
+        SourceDescriptor? source,
         PlaybackState playback,
         TrackMetadata? track,
         ArtworkDescriptor? artwork,
@@ -15,7 +15,7 @@ internal sealed record NowPlayingSnapshot
     {
         ServerInstanceId = serverInstanceId;
         SnapshotRevision = snapshotRevision;
-        SourceAppUserModelId = sourceAppUserModelId;
+        Source = source;
         Playback = playback;
         Track = track;
         Artwork = artwork;
@@ -26,7 +26,7 @@ internal sealed record NowPlayingSnapshot
 
     public long SnapshotRevision { get; }
 
-    public string SourceAppUserModelId { get; }
+    public SourceDescriptor? Source { get; }
 
     public PlaybackState Playback { get; }
 
@@ -37,7 +37,7 @@ internal sealed record NowPlayingSnapshot
     public DateTimeOffset ObservedAt { get; }
 
     public TrackIdentity? Identity =>
-        Track is null ? null : new TrackIdentity(SourceAppUserModelId, Track.Title, Track.Artist);
+        Track is null ? null : new TrackIdentity(Source!.Key, Track.Title, Track.Artist);
 
     public static NowPlayingSnapshot CreateInitial(
         Guid serverInstanceId,
@@ -46,7 +46,7 @@ internal sealed record NowPlayingSnapshot
         return Create(
             serverInstanceId,
             snapshotRevision: 0,
-            sourceAppUserModelId: string.Empty,
+            source: null,
             PlaybackState.Unavailable,
             track: null,
             artwork: null,
@@ -56,7 +56,7 @@ internal sealed record NowPlayingSnapshot
     public static NowPlayingSnapshot Create(
         Guid serverInstanceId,
         long snapshotRevision,
-        string? sourceAppUserModelId,
+        SourceDescriptor? source,
         PlaybackState playback,
         TrackMetadata? track,
         ArtworkDescriptor? artwork,
@@ -75,7 +75,6 @@ internal sealed record NowPlayingSnapshot
                 "Snapshot revision must not be negative.");
         }
 
-        var source = NormalizeSource(sourceAppUserModelId);
         ValidateState(playback, source, track, artwork);
         return new NowPlayingSnapshot(
             serverInstanceId,
@@ -93,22 +92,15 @@ internal sealed record NowPlayingSnapshot
 
         // Revision and observation time describe a commit, not the user-visible state.
         return ServerInstanceId == other.ServerInstanceId
-            && string.Equals(SourceAppUserModelId, other.SourceAppUserModelId, StringComparison.Ordinal)
+            && Equals(Source?.Key, other.Source?.Key)
             && Playback == other.Playback
             && Equals(Track, other.Track)
             && Artwork == other.Artwork;
     }
 
-    private static string NormalizeSource(string? sourceAppUserModelId)
-    {
-        return string.IsNullOrWhiteSpace(sourceAppUserModelId)
-            ? string.Empty
-            : sourceAppUserModelId.Trim().Normalize(NormalizationForm.FormC);
-    }
-
     private static void ValidateState(
         PlaybackState playback,
-        string source,
+        SourceDescriptor? source,
         TrackMetadata? track,
         ArtworkDescriptor? artwork)
     {
@@ -119,14 +111,14 @@ internal sealed record NowPlayingSnapshot
 
         switch (playback)
         {
-            case PlaybackState.Playing when source.Length == 0 || track is null:
+            case PlaybackState.Playing when source is null || track is null:
                 throw new ArgumentException("Playing requires a source and track metadata.");
-            case PlaybackState.Paused or PlaybackState.Stopped when source.Length == 0:
+            case PlaybackState.Paused or PlaybackState.Stopped when source is null:
                 throw new ArgumentException($"{playback} requires a source.");
-            case PlaybackState.Idle when source.Length == 0 || track is not null || artwork is not null:
+            case PlaybackState.Idle when source is null || track is not null || artwork is not null:
                 throw new ArgumentException("Idle requires a source without track metadata or artwork.");
-            case PlaybackState.Unavailable when source.Length != 0 || track is not null || artwork is not null:
-                throw new ArgumentException("Unavailable must not contain a source, track, or artwork.");
+            case PlaybackState.Unavailable when track is not null || artwork is not null:
+                throw new ArgumentException("Unavailable must not contain track metadata or artwork.");
             case < PlaybackState.Playing or > PlaybackState.Unavailable:
                 throw new ArgumentOutOfRangeException(nameof(playback), playback, "Playback state is invalid.");
         }

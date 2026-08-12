@@ -4,8 +4,8 @@ export const overlaySize = {
 } as const;
 
 export const config = {
-  stateUrl: "/api/v1/state",
-  eventsUrl: "/api/v1/events",
+  stateUrl: "/api/v2/state",
+  eventsUrl: "/api/v2/events",
   connectionStaleAfterMs: 5_000,
   widgetAnimationMs: 500,
   textExitAnimationMs: 300,

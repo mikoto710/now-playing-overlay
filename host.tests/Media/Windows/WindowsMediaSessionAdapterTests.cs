@@ -31,7 +31,7 @@ public sealed class WindowsMediaSessionAdapterTests
         var observation = WindowsMediaSessionAdapter.MapSnapshot(snapshot);
 
         Assert.Equal(PlaybackState.Playing, observation.Playback);
-        Assert.Equal("Spotify.exe", observation.SourceAppUserModelId);
+        Assert.Equal("Spotify.exe", observation.Source!.Key.InstanceId);
         Assert.NotNull(observation.Track);
         Assert.Equal("Title", observation.Track.Title);
         Assert.Equal("Artist", observation.Track.Artist);

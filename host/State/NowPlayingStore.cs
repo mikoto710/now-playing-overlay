@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
+using NowPlayingOverlay.Host.Media;
 using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.State;
@@ -38,7 +39,7 @@ internal sealed class NowPlayingStore
     }
 
     public bool TryCommit(
-        string? sourceAppUserModelId,
+        SourceDescriptor? source,
         PlaybackState playback,
         TrackMetadata? track,
         ArtworkDescriptor? artwork,
@@ -55,7 +56,7 @@ internal sealed class NowPlayingStore
             var candidate = NowPlayingSnapshot.Create(
                 _current.ServerInstanceId,
                 _current.SnapshotRevision + 1,
-                sourceAppUserModelId,
+                source,
                 playback,
                 track,
                 artwork,

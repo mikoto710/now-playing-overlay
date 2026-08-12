@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Hosting;
+using NowPlayingOverlay.Host.Media;
 using NowPlayingOverlay.Host.Shell;
 using NowPlayingOverlay.Host.Tests.TestInfrastructure;
 
@@ -34,7 +35,7 @@ public sealed class TrayMenuControllerTests
         var controller = new TrayMenuController(
             () => effectivePort,
             new ApplicationSettingsStore(settingsPath),
-            () => new HostStatus("Waiting for Spotify", IsFaulted: false),
+            () => new HostStatus("Source Not Configured", IsFaulted: false),
             Path.Combine(directory.Path, "logs"),
             (port, persistPort, _) =>
             {
@@ -53,7 +54,7 @@ public sealed class TrayMenuControllerTests
         Assert.True(changed.Changed);
         Assert.Equal("http://127.0.0.1:13001/NowPlaying.html", changed.OverlayUrl);
         Assert.Equal(13001, new ApplicationSettingsStore(settingsPath).Load().Settings.Port);
-        Assert.Equal("Waiting for Spotify", controller.GetStatus().Text);
+        Assert.Equal("Source Not Configured", controller.GetStatus().Text);
     }
 
     [Theory]
@@ -89,6 +90,61 @@ public sealed class TrayMenuControllerTests
 
         Assert.Contains("unavailable", error.Message, StringComparison.Ordinal);
         Assert.False(File.Exists(settingsPath));
+    }
+
+    [Fact]
+    public async Task SavingPortPreservesTheExactSourceSelection()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var store = new ApplicationSettingsStore(path);
+        store.Save(new ApplicationSettings
+        {
+            Port = 13000,
+            Source = new SourceSelectionSettings { SourceAppUserModelId = "Player.App" },
+        });
+        var effectivePort = 13000;
+        var controller = new TrayMenuController(
+            () => effectivePort,
+            store,
+            () => new HostStatus("Windows Media: Playing", IsFaulted: false),
+            directory.Path,
+            (port, persistPort, _) =>
+            {
+                persistPort();
+                effectivePort = port;
+                return Task.CompletedTask;
+            });
+
+        await controller.SavePortAsync(13001);
+
+        var saved = store.Load().Settings;
+        Assert.Equal(13001, saved.Port);
+        Assert.Equal("Player.App", saved.Source.SourceAppUserModelId);
+    }
+
+    [Fact]
+    public void SavingSourcePreservesPortAndActivatesTheExactAumid()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var store = new ApplicationSettingsStore(path);
+        store.Save(new ApplicationSettings { Port = 13000 });
+        string? activated = null;
+        var controller = new TrayMenuController(
+            () => 13000,
+            store,
+            () => new HostStatus("Source Not Configured", IsFaulted: false),
+            directory.Path,
+            (_, _, _) => Task.CompletedTask,
+            selectWindowsMedia: value => activated = value);
+
+        controller.SaveSource("Player.App!Exact");
+
+        var saved = store.Load().Settings;
+        Assert.Equal(13000, saved.Port);
+        Assert.Equal("Player.App!Exact", saved.Source.SourceAppUserModelId);
+        Assert.Equal("Player.App!Exact", activated);
     }
 
     [Fact]

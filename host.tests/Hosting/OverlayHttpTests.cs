@@ -38,7 +38,7 @@ public sealed class OverlayHttpTests
         await using var host = await TestOverlayHost.StartAsync();
 
         using var page = await host.Client.GetAsync("/NowPlaying.html");
-        using var state = await host.Client.GetAsync("/api/v1/state");
+        using var state = await host.Client.GetAsync("/api/v2/state");
         var html = await page.Content.ReadAsStringAsync();
         using var json = JsonDocument.Parse(await state.Content.ReadAsStringAsync());
 
@@ -53,7 +53,7 @@ public sealed class OverlayHttpTests
             StringComparison.Ordinal);
         Assert.Equal("nosniff", page.Headers.GetValues("X-Content-Type-Options").Single());
         Assert.Equal("no-store", state.Headers.CacheControl!.ToString());
-        Assert.Equal(1, json.RootElement.GetProperty("protocolVersion").GetInt32());
+        Assert.Equal(2, json.RootElement.GetProperty("protocolVersion").GetInt32());
         Assert.Equal(0, json.RootElement.GetProperty("snapshotRevision").GetInt64());
         Assert.Equal("unavailable", json.RootElement.GetProperty("playback").GetString());
         Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("track").ValueKind);
@@ -73,6 +73,20 @@ public sealed class OverlayHttpTests
     }
 
     [Fact]
+    public async Task VersionOneRoutesNoLongerExist()
+    {
+        await using var host = await TestOverlayHost.StartAsync();
+
+        using var state = await host.Client.GetAsync("/api/v1/state");
+        using var events = await host.Client.GetAsync("/api/v1/events");
+        using var artwork = await host.Client.GetAsync($"/api/v1/artwork/{new string('a', 64)}");
+
+        Assert.Equal(HttpStatusCode.NotFound, state.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, events.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, artwork.StatusCode);
+    }
+
+    [Fact]
     public async Task HealthReportsReadyAvailabilityBindingAndFaultsWithoutMetadata()
     {
         await using var host = await TestOverlayHost.StartAsync();
@@ -82,15 +96,28 @@ public sealed class OverlayHttpTests
         await host.WaitForRevisionAsync(1);
         using var bound = await host.Client.GetAsync("/health");
         using var boundJson = JsonDocument.Parse(await bound.Content.ReadAsStringAsync());
+        host.Source.Publish(SessionObservation.Create(
+            SourceDescriptor.WindowsMedia("Player.App"),
+            PlaybackState.Unavailable));
+        await host.WaitForRevisionAsync(2);
+        using var unavailable = await host.Client.GetAsync("/health");
+        using var unavailableJson = JsonDocument.Parse(await unavailable.Content.ReadAsStringAsync());
 
         host.Source.PublishError(new InvalidOperationException("fake source failure"));
         using var faulted = await host.WaitForHealthAsync(HttpStatusCode.ServiceUnavailable);
         var faultedText = await faulted.Content.ReadAsStringAsync();
 
         Assert.Equal("ready", initialJson.RootElement.GetProperty("hostStatus").GetString());
-        Assert.True(initialJson.RootElement.GetProperty("sessionManagerAvailable").GetBoolean());
-        Assert.False(initialJson.RootElement.GetProperty("spotifySessionBound").GetBoolean());
-        Assert.True(boundJson.RootElement.GetProperty("spotifySessionBound").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, initialJson.RootElement.GetProperty("activeSourceProvider").ValueKind);
+        Assert.Equal("unconfigured", initialJson.RootElement.GetProperty("sourceStatus").GetString());
+        Assert.Equal(
+            "windows-media",
+            boundJson.RootElement.GetProperty("activeSourceProvider").GetString());
+        Assert.Equal("available", boundJson.RootElement.GetProperty("sourceStatus").GetString());
+        Assert.Equal(
+            "windows-media",
+            unavailableJson.RootElement.GetProperty("activeSourceProvider").GetString());
+        Assert.Equal("unavailable", unavailableJson.RootElement.GetProperty("sourceStatus").GetString());
         Assert.Contains("\"hostStatus\":\"faulted\"", faultedText, StringComparison.Ordinal);
         Assert.DoesNotContain("fake source failure", faultedText, StringComparison.Ordinal);
         Assert.DoesNotContain("Bound track", faultedText, StringComparison.Ordinal);
@@ -110,14 +137,14 @@ public sealed class OverlayHttpTests
 
         using var response = await host.Client.GetAsync(url);
         var bytes = await response.Content.ReadAsByteArrayAsync();
-        using var invalid = await host.Client.GetAsync("/api/v1/artwork/not-a-hash");
-        using var missing = await host.Client.GetAsync($"/api/v1/artwork/{new string('0', 64)}");
+        using var invalid = await host.Client.GetAsync("/api/v2/artwork/not-a-hash");
+        using var missing = await host.Client.GetAsync($"/api/v2/artwork/{new string('0', 64)}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("image/png", response.Content.Headers.ContentType!.MediaType);
         Assert.Equal("public, max-age=31536000, immutable", response.Headers.CacheControl!.ToString());
         Assert.Equal(OnePixelPng, bytes);
-        Assert.Equal($"/api/v1/artwork/{artworkId}", url);
+        Assert.Equal($"/api/v2/artwork/{artworkId}", url);
         Assert.Equal(HttpStatusCode.NotFound, invalid.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
     }
@@ -126,7 +153,7 @@ public sealed class OverlayHttpTests
     public async Task SseImmediatelySendsFullStateAndThenOnlyNewRevisions()
     {
         await using var host = await TestOverlayHost.StartAsync(heartbeatMilliseconds: 50);
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v1/events");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/v2/events");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
         request.Headers.TryAddWithoutValidation("Last-Event-ID", "old-instance:999");
         using var response = await host.Client.SendAsync(
@@ -154,10 +181,10 @@ public sealed class OverlayHttpTests
     {
         await using var host = await TestOverlayHost.StartAsync(maximumSseConnections: 1);
         using var first = await host.Client.GetAsync(
-            "/api/v1/events",
+            "/api/v2/events",
             HttpCompletionOption.ResponseHeadersRead);
         using var second = await host.Client.GetAsync(
-            "/api/v1/events",
+            "/api/v2/events",
             HttpCompletionOption.ResponseHeadersRead);
 
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
@@ -172,7 +199,7 @@ public sealed class OverlayHttpTests
             maximumSseConnections: 1,
             maximumConcurrentConnections: 1);
         using var stream = await host.Client.GetAsync(
-            "/api/v1/events",
+            "/api/v2/events",
             HttpCompletionOption.ResponseHeadersRead);
 
         using var rejected = await host.Client.GetAsync("/health");
@@ -193,10 +220,10 @@ public sealed class OverlayHttpTests
         var artworkUrl = state.RootElement.GetProperty("artwork").GetProperty("url").GetString()!;
 
         using var pageHead = await SendHeadAsync(host.Client, "/NowPlaying.html");
-        using var stateHead = await SendHeadAsync(host.Client, "/api/v1/state");
+        using var stateHead = await SendHeadAsync(host.Client, "/api/v2/state");
         using var artworkHead = await SendHeadAsync(host.Client, artworkUrl);
         using var healthHead = await SendHeadAsync(host.Client, "/health");
-        using var post = await host.Client.PostAsync("/api/v1/state", content: null);
+        using var post = await host.Client.PostAsync("/api/v2/state", content: null);
 
         AssertHead(pageHead, "text/html", "no-store");
         AssertHead(stateHead, "application/json", "no-store");
@@ -260,7 +287,7 @@ public sealed class OverlayHttpTests
     {
         await using var host = await TestOverlayHost.StartAsync(rebindGraceMilliseconds: 300);
         using var events = await host.Client.GetAsync(
-            "/api/v1/events",
+            "/api/v2/events",
             HttpCompletionOption.ResponseHeadersRead);
         await using var eventStream = await events.Content.ReadAsStreamAsync();
         using var reader = new StreamReader(eventStream);
@@ -329,7 +356,7 @@ public sealed class OverlayHttpTests
     private static SessionObservation Playing(string title, IArtworkReader? artworkReader = null)
     {
         return SessionObservation.Create(
-            "Spotify.exe",
+            SourceDescriptor.WindowsMedia("Player.App"),
             PlaybackState.Playing,
             TrackMetadata.Create(title, "Artist", "Album"),
             artworkReader);
@@ -496,7 +523,7 @@ public sealed class OverlayHttpTests
         {
             for (var attempt = 0; attempt < 100; attempt++)
             {
-                using var response = await Client.GetAsync("/api/v1/state");
+                using var response = await Client.GetAsync("/api/v2/state");
                 var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
                 if (predicate(document.RootElement))
                 {

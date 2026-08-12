@@ -4,7 +4,6 @@ using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Media;
-using NowPlayingOverlay.Host.Media.Spotify;
 using NowPlayingOverlay.Host.Media.Windows;
 using NowPlayingOverlay.Host.Models;
 using NowPlayingOverlay.Host.State;
@@ -14,6 +13,7 @@ namespace NowPlayingOverlay.Host.Hosting;
 internal sealed class OverlayApplication : IAsyncDisposable
 {
     private readonly NowPlayingCoordinator _coordinator;
+    private readonly ActiveSourceManager? _activeSourceManager;
     private readonly HostRuntimeState _runtimeState;
     private readonly OverlayHttpServer _httpServer;
     private bool _started;
@@ -23,12 +23,14 @@ internal sealed class OverlayApplication : IAsyncDisposable
         HostOptions options,
         HostStatusService statusService,
         NowPlayingCoordinator coordinator,
+        ActiveSourceManager? activeSourceManager,
         HostRuntimeState runtimeState,
         OverlayHttpServer httpServer)
     {
         Options = options;
         StatusService = statusService;
         _coordinator = coordinator;
+        _activeSourceManager = activeSourceManager;
         _runtimeState = runtimeState;
         _httpServer = httpServer;
     }
@@ -41,22 +43,26 @@ internal sealed class OverlayApplication : IAsyncDisposable
 
     public static OverlayApplication Build(
         string[] args,
-        int? persistedPort = null,
+        ApplicationSettings settings,
         BoundedLogFile? applicationLog = null)
     {
-        var options = HostOptionsLoader.Load(args, persistedPort);
+        ArgumentNullException.ThrowIfNull(settings);
+        settings.Validate();
+        var options = HostOptionsLoader.Load(args, settings.Port);
         var loggerProvider = applicationLog is null
             ? null
             : new BoundedFileLoggerProvider(applicationLog);
-        var sessionSource = new SpotifySessionMonitor(
+        var sessionSource = new ActiveSourceManager(
             new WindowsMediaSessionManagerFactory(),
-            new SpotifySessionMatcher(),
-            CreateLogger<SpotifySessionMonitor>(loggerProvider));
+            new WindowsMediaSessionMatcher(),
+            settings.Source.ToDescriptor(),
+            CreateLogger<ActiveSourceManager>(loggerProvider));
         return Build(
             options,
             sessionSource,
             OverlayPageAsset.LoadEmbedded(typeof(OverlayPageAsset).Assembly),
-            loggerProvider);
+            loggerProvider,
+            sessionSource);
     }
 
     internal static OverlayApplication Build(
@@ -64,14 +70,20 @@ internal sealed class OverlayApplication : IAsyncDisposable
         ISessionSource sessionSource,
         OverlayPageAsset pageAsset)
     {
-        return Build(options, sessionSource, pageAsset, loggerProvider: null);
+        return Build(
+            options,
+            sessionSource,
+            pageAsset,
+            loggerProvider: null,
+            activeSourceManager: null);
     }
 
     private static OverlayApplication Build(
         HostOptions options,
         ISessionSource sessionSource,
         OverlayPageAsset pageAsset,
-        BoundedFileLoggerProvider? loggerProvider)
+        BoundedFileLoggerProvider? loggerProvider,
+        ActiveSourceManager? activeSourceManager)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(sessionSource);
@@ -116,8 +128,38 @@ internal sealed class OverlayApplication : IAsyncDisposable
             options,
             statusService,
             coordinator,
+            activeSourceManager,
             runtimeState,
             httpServer);
+    }
+
+    public SourceManagerState GetSourceState()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _activeSourceManager?.GetState() ?? SourceManagerState.Unconfigured;
+    }
+
+    public Task<SourceDiscoveryResult> RefreshWindowsMediaSourcesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_activeSourceManager is null)
+        {
+            throw new InvalidOperationException("This host does not have a configurable source manager.");
+        }
+
+        return _activeSourceManager.RefreshWindowsMediaSourcesAsync(cancellationToken);
+    }
+
+    public void SelectWindowsMedia(string? sourceAppUserModelId)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_activeSourceManager is null)
+        {
+            throw new InvalidOperationException("This host does not have a configurable source manager.");
+        }
+
+        _activeSourceManager.SelectWindowsMedia(sourceAppUserModelId);
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
