@@ -86,6 +86,11 @@ public sealed class ApplicationSettingsStoreTests
                     ArtistFontWeight = 500,
                     TrackFontSize = 24,
                     TrackFontWeight = 600,
+                    ArtworkVisible = true,
+                    ArtworkSize = 48,
+                    ArtworkPosition = ArtworkPosition.Right,
+                    ArtworkFit = ArtworkFit.Cover,
+                    ArtworkCornerRadius = 8,
                 },
             },
         });
@@ -101,6 +106,11 @@ public sealed class ApplicationSettingsStoreTests
         Assert.Equal(500, result.Settings.Appearance.Custom.ArtistFontWeight);
         Assert.Equal(24, result.Settings.Appearance.Custom.TrackFontSize);
         Assert.Equal(600, result.Settings.Appearance.Custom.TrackFontWeight);
+        Assert.True(result.Settings.Appearance.Custom.ArtworkVisible);
+        Assert.Equal(48, result.Settings.Appearance.Custom.ArtworkSize);
+        Assert.Equal(ArtworkPosition.Right, result.Settings.Appearance.Custom.ArtworkPosition);
+        Assert.Equal(ArtworkFit.Cover, result.Settings.Appearance.Custom.ArtworkFit);
+        Assert.Equal(8, result.Settings.Appearance.Custom.ArtworkCornerRadius);
         var json = File.ReadAllText(path);
         Assert.Contains("\"provider\": \"windows-media\"", json, StringComparison.Ordinal);
         Assert.Contains("\"sourceAppUserModelId\": \"Player.App!Exact\"", json, StringComparison.Ordinal);
@@ -146,6 +156,21 @@ public sealed class ApplicationSettingsStoreTests
         Assert.Equal(
             CustomAppearanceSettings.DefaultTrackFontWeight,
             result.Settings.Appearance.Custom.TrackFontWeight);
+        Assert.Equal(
+            CustomAppearanceSettings.DefaultArtworkVisible,
+            result.Settings.Appearance.Custom.ArtworkVisible);
+        Assert.Equal(
+            CustomAppearanceSettings.DefaultArtworkSize,
+            result.Settings.Appearance.Custom.ArtworkSize);
+        Assert.Equal(
+            CustomAppearanceSettings.DefaultArtworkPosition,
+            result.Settings.Appearance.Custom.ArtworkPosition);
+        Assert.Equal(
+            CustomAppearanceSettings.DefaultArtworkFit,
+            result.Settings.Appearance.Custom.ArtworkFit);
+        Assert.Equal(
+            CustomAppearanceSettings.DefaultArtworkCornerRadius,
+            result.Settings.Appearance.Custom.ArtworkCornerRadius);
         Assert.Null(result.Warning);
     }
 

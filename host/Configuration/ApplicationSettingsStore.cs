@@ -19,6 +19,12 @@ internal sealed class ApplicationSettingsStore
             new JsonStringEnumConverter<AppearancePreset>(
                 JsonNamingPolicy.KebabCaseLower,
                 allowIntegerValues: false),
+            new JsonStringEnumConverter<ArtworkPosition>(
+                JsonNamingPolicy.KebabCaseLower,
+                allowIntegerValues: false),
+            new JsonStringEnumConverter<ArtworkFit>(
+                JsonNamingPolicy.KebabCaseLower,
+                allowIntegerValues: false),
         },
     };
     private readonly object _gate = new();

@@ -6,6 +6,18 @@ internal enum AppearancePreset
     Custom,
 }
 
+internal enum ArtworkPosition
+{
+    Left,
+    Right,
+}
+
+internal enum ArtworkFit
+{
+    Contain,
+    Cover,
+}
+
 internal sealed record AppearanceSettings
 {
     public AppearancePreset Preset { get; init; } = AppearancePreset.Default;
@@ -44,7 +56,12 @@ internal sealed record AppearanceSettings
             values.ArtistFontSize,
             values.ArtistFontWeight,
             values.TrackFontSize,
-            values.TrackFontWeight);
+            values.TrackFontWeight,
+            values.ArtworkVisible,
+            values.ArtworkSize,
+            values.ArtworkPosition,
+            values.ArtworkFit,
+            values.ArtworkCornerRadius);
     }
 }
 
@@ -65,6 +82,13 @@ internal sealed record CustomAppearanceSettings
     public const int MinimumTrackFontSize = 16;
     public const int MaximumTrackFontSize = 24;
     public const int MaximumFontFamilyLength = 128;
+    public const bool DefaultArtworkVisible = true;
+    public const int DefaultArtworkSize = 70;
+    public const ArtworkPosition DefaultArtworkPosition = ArtworkPosition.Left;
+    public const ArtworkFit DefaultArtworkFit = ArtworkFit.Contain;
+    public const int DefaultArtworkCornerRadius = 0;
+    public const int MinimumArtworkSize = 40;
+    public const int MaximumArtworkSize = 70;
 
     public string ArtistColor { get; init; } = DefaultArtistColor;
 
@@ -85,6 +109,16 @@ internal sealed record CustomAppearanceSettings
     public int TrackFontSize { get; init; } = DefaultTrackFontSize;
 
     public int TrackFontWeight { get; init; } = DefaultTrackFontWeight;
+
+    public bool ArtworkVisible { get; init; } = DefaultArtworkVisible;
+
+    public int ArtworkSize { get; init; } = DefaultArtworkSize;
+
+    public ArtworkPosition ArtworkPosition { get; init; } = DefaultArtworkPosition;
+
+    public ArtworkFit ArtworkFit { get; init; } = DefaultArtworkFit;
+
+    public int ArtworkCornerRadius { get; init; } = DefaultArtworkCornerRadius;
 
     public void Validate()
     {
@@ -116,6 +150,27 @@ internal sealed record CustomAppearanceSettings
             MaximumTrackFontSize,
             "track");
         ValidateFontWeight(TrackFontWeight, "track");
+        if (ArtworkSize is < MinimumArtworkSize or > MaximumArtworkSize)
+        {
+            throw new InvalidDataException(
+                $"The configured artwork size must be between {MinimumArtworkSize} and {MaximumArtworkSize} logical pixels.");
+        }
+
+        if (!Enum.IsDefined(ArtworkPosition))
+        {
+            throw new InvalidDataException("The configured artwork position is invalid.");
+        }
+
+        if (!Enum.IsDefined(ArtworkFit))
+        {
+            throw new InvalidDataException("The configured artwork fit is invalid.");
+        }
+
+        if (ArtworkCornerRadius is < 0 or > 35)
+        {
+            throw new InvalidDataException(
+                "The configured artwork corner radius must be between 0 and 35 logical pixels.");
+        }
     }
 
     private static void ValidateFontFamily(string? value)
@@ -192,4 +247,9 @@ internal sealed record EffectiveAppearanceSettings(
     int ArtistFontSize,
     int ArtistFontWeight,
     int TrackFontSize,
-    int TrackFontWeight);
+    int TrackFontWeight,
+    bool ArtworkVisible,
+    int ArtworkSize,
+    ArtworkPosition ArtworkPosition,
+    ArtworkFit ArtworkFit,
+    int ArtworkCornerRadius);
