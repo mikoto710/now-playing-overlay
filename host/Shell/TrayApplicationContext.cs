@@ -32,7 +32,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             _statusItem,
             new ToolStripSeparator(),
             CreateMenuItem("Copy OBS URL", CopyOverlayUrl),
-            CreateMenuItem("Open Overlay", OpenOverlay),
+            CreateOverlayPreviewMenu(),
             CreateMenuItem("Open Logs", OpenLogs),
             CreateMenuItem("Configure Port...", ConfigurePort),
             new ToolStripSeparator(),
@@ -46,7 +46,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             Text = "Now Playing Overlay",
             Visible = true,
         };
-        _notifyIcon.DoubleClick += (_, _) => OpenOverlay();
+        _notifyIcon.DoubleClick += (_, _) =>
+            OpenOverlayPreview(TrayMenuController.OverlayPreviewOptions[0]);
         SystemEvents.SessionEnding += OnSessionEnding;
         _statusTimer = new System.Windows.Forms.Timer { Interval = 1000 };
         _statusTimer.Tick += (_, _) => RefreshStatus();
@@ -74,6 +75,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         var item = new ToolStripMenuItem(text);
         item.Click += (_, _) => action();
+        return item;
+    }
+
+    private ToolStripMenuItem CreateOverlayPreviewMenu()
+    {
+        var item = new ToolStripMenuItem("Open Overlay Preview");
+        foreach (var option in TrayMenuController.OverlayPreviewOptions)
+        {
+            item.DropDownItems.Add(
+                CreateMenuItem(option.MenuText, () => OpenOverlayPreview(option)));
+        }
+
         return item;
     }
 
@@ -111,11 +124,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
             });
     }
 
-    private void OpenOverlay()
+    private void OpenOverlayPreview(OverlayPreviewOption option)
     {
         RunUserAction(
-            "open the overlay",
-            () => OpenWithShell(_controller.OverlayUrl));
+            $"open the {option.MenuText} overlay preview",
+            () => OpenWithShell(_controller.BuildOverlayPreviewUrl(option.Scale)));
     }
 
     private void OpenLogs()

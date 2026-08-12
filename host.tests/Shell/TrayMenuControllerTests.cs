@@ -10,6 +10,22 @@ namespace NowPlayingOverlay.Host.Tests.Shell;
 public sealed class TrayMenuControllerTests
 {
     [Fact]
+    public void ExposesSupportedOverlayPreviewSizesAndBuildsTheirUrls()
+    {
+        Assert.Collection(
+            TrayMenuController.OverlayPreviewOptions,
+            option => Assert.Equal(new OverlayPreviewOption(1, 350, 70), option),
+            option => Assert.Equal(new OverlayPreviewOption(2, 700, 140), option),
+            option => Assert.Equal(new OverlayPreviewOption(3, 1050, 210), option),
+            option => Assert.Equal(new OverlayPreviewOption(4, 1400, 280), option),
+            option => Assert.Equal(new OverlayPreviewOption(5, 1750, 350), option));
+
+        Assert.Equal(
+            "http://127.0.0.1:13000/NowPlaying.html?previewScale=3",
+            TrayMenuController.BuildOverlayPreviewUrl(13000, previewScale: 3));
+    }
+
+    [Fact]
     public async Task UsesLiveEffectivePortAndPersistsOnlyAChangedPort()
     {
         using var directory = new TemporaryDirectory();

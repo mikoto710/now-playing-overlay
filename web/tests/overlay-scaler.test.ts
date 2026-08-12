@@ -3,6 +3,8 @@ import {
   bindOverlayScaler,
   calculateLogicalLength,
   calculateOverlayScale,
+  parseOverlayPreviewScale,
+  preserveOverlayPreviewUrl,
 } from "../src/ui/overlay-scaler";
 
 describe("calculateOverlayScale", () => {
@@ -22,6 +24,11 @@ describe("calculateOverlayScale", () => {
     expect(calculateOverlayScale(1000, 140)).toBe(2);
   });
 
+  it("caps a preview at its selected scale without changing contain behavior", () => {
+    expect(calculateOverlayScale(1920, 1080, 2)).toBe(2);
+    expect(calculateOverlayScale(350, 70, 2)).toBe(1);
+  });
+
   it.each([
     [-1, 70],
     [350, -1],
@@ -34,6 +41,32 @@ describe("calculateOverlayScale", () => {
 
     expect(Number.isFinite(scale)).toBe(true);
     expect(scale).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("overlay preview query", () => {
+  it.each([1, 2, 3, 4, 5])("accepts supported preview scale %d", (scale) => {
+    expect(parseOverlayPreviewScale(`?previewScale=${scale}`)).toBe(scale);
+  });
+
+  it.each(["?previewScale=6", "?previewScale=1&previewScale=2"])(
+    "rejects unsupported or ambiguous query %s",
+    (search) => {
+      expect(parseOverlayPreviewScale(search)).toBeNull();
+    },
+  );
+
+  it("preserves a valid preview scale across a server endpoint change", () => {
+    expect(
+      preserveOverlayPreviewUrl("http://127.0.0.1:13130/NowPlaying.html", "?previewScale=4"),
+    ).toBe("http://127.0.0.1:13130/NowPlaying.html?previewScale=4");
+  });
+
+  it("keeps the production endpoint unchanged outside preview mode", () => {
+    const overlayUrl = "http://127.0.0.1:13130/NowPlaying.html";
+
+    expect(preserveOverlayPreviewUrl(overlayUrl, "")).toBe(overlayUrl);
+    expect(preserveOverlayPreviewUrl(overlayUrl, "?previewScale=invalid")).toBe(overlayUrl);
   });
 });
 

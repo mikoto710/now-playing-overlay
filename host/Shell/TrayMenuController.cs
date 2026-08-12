@@ -6,6 +6,17 @@ namespace NowPlayingOverlay.Host.Shell;
 
 internal sealed class TrayMenuController
 {
+    internal static IReadOnlyList<OverlayPreviewOption> OverlayPreviewOptions { get; } =
+        Array.AsReadOnly(
+            new OverlayPreviewOption[]
+            {
+                new(Scale: 1, Width: 350, Height: 70),
+                new(Scale: 2, Width: 700, Height: 140),
+                new(Scale: 3, Width: 1050, Height: 210),
+                new(Scale: 4, Width: 1400, Height: 280),
+                new(Scale: 5, Width: 1750, Height: 350),
+            });
+
     private readonly ApplicationSettingsStore _settingsStore;
     private readonly Func<HostStatus> _getStatus;
     private readonly Func<int> _getEffectivePort;
@@ -47,6 +58,11 @@ internal sealed class TrayMenuController
 
     public string OverlayUrl => BuildOverlayUrl(EffectivePort);
 
+    public string BuildOverlayPreviewUrl(int previewScale)
+    {
+        return BuildOverlayPreviewUrl(EffectivePort, previewScale);
+    }
+
     public string LogDirectory { get; }
 
     public HostStatus GetStatus()
@@ -83,6 +99,21 @@ internal sealed class TrayMenuController
 
         return $"http://{OverlayHostOptions.AllowedHost}:{port}/NowPlaying.html";
     }
+
+    internal static string BuildOverlayPreviewUrl(int port, int previewScale)
+    {
+        if (previewScale is < 1 or > 5)
+        {
+            throw new ArgumentOutOfRangeException(nameof(previewScale));
+        }
+
+        return $"{BuildOverlayUrl(port)}?previewScale={previewScale}";
+    }
+}
+
+internal sealed record OverlayPreviewOption(int Scale, int Width, int Height)
+{
+    public string MenuText => $"{Width} x {Height}";
 }
 
 internal sealed record PortChangeResult(

@@ -9,7 +9,11 @@ import {
   type NowPlayingClientState,
   type WidgetViewState,
 } from "./state/now-playing-reducer";
-import { bindOverlayScaler } from "./ui/overlay-scaler";
+import {
+  bindOverlayScaler,
+  parseOverlayPreviewScale,
+  preserveOverlayPreviewUrl,
+} from "./ui/overlay-scaler";
 import { NowPlayingWidget } from "./ui/widget";
 
 const overlayStage = document.getElementById("overlay-stage");
@@ -17,7 +21,8 @@ if (!(overlayStage instanceof HTMLElement)) {
   throw new Error("Missing required element: #overlay-stage");
 }
 
-const stopOverlayScaler = bindOverlayScaler(overlayStage, window);
+const previewScale = parseOverlayPreviewScale(window.location.search);
+const stopOverlayScaler = bindOverlayScaler(overlayStage, window, previewScale ?? undefined);
 const widget = new NowPlayingWidget();
 const artwork = new ArtworkLoader(widget, undefined, undefined, config.artworkGraceMs);
 let state = createInitialState();
@@ -57,7 +62,8 @@ const client = new OverlayClient(
     onStale: () => commit(markConnectionStale(state)),
     onProtocolError: (error) => console.error("Unsupported now-playing protocol state.", error),
     onDiagnostic: (message, error) => console.warn(message, error),
-    onServerEndpointChange: (overlayUrl) => window.location.replace(overlayUrl),
+    onServerEndpointChange: (overlayUrl) =>
+      window.location.replace(preserveOverlayPreviewUrl(overlayUrl, window.location.search)),
   },
 );
 

@@ -1,6 +1,14 @@
 import { overlaySize } from "../config";
 
 const overlayScaleProperty = "--overlay-scale";
+const overlayPreviewScaleParameter = "previewScale";
+const supportedOverlayPreviewScales = new Map([
+  ["1", 1],
+  ["2", 2],
+  ["3", 3],
+  ["4", 4],
+  ["5", 5],
+]);
 
 interface OverlayScaleTarget {
   style: Pick<CSSStyleDeclaration, "setProperty">;
@@ -13,10 +21,37 @@ interface OverlayViewport {
   removeEventListener(type: "resize", listener: () => void): void;
 }
 
-export function calculateOverlayScale(viewportWidth: number, viewportHeight: number): number {
+export function calculateOverlayScale(
+  viewportWidth: number,
+  viewportHeight: number,
+  maximumScale = Number.POSITIVE_INFINITY,
+): number {
   const width = normalizeLength(viewportWidth);
   const height = normalizeLength(viewportHeight);
-  return Math.min(width / overlaySize.width, height / overlaySize.height);
+  const normalizedMaximumScale = Number.isFinite(maximumScale)
+    ? Math.max(0, maximumScale)
+    : Number.POSITIVE_INFINITY;
+  return Math.min(width / overlaySize.width, height / overlaySize.height, normalizedMaximumScale);
+}
+
+export function parseOverlayPreviewScale(search: string): number | null {
+  const values = new URLSearchParams(search).getAll(overlayPreviewScaleParameter);
+  if (values.length !== 1) {
+    return null;
+  }
+
+  return supportedOverlayPreviewScales.get(values[0] ?? "") ?? null;
+}
+
+export function preserveOverlayPreviewUrl(overlayUrl: string, currentSearch: string): string {
+  const previewScale = parseOverlayPreviewScale(currentSearch);
+  if (previewScale === null) {
+    return overlayUrl;
+  }
+
+  const redirectUrl = new URL(overlayUrl);
+  redirectUrl.searchParams.set(overlayPreviewScaleParameter, previewScale.toString());
+  return redirectUrl.href;
 }
 
 export function calculateLogicalLength(
@@ -37,9 +72,10 @@ export function calculateLogicalLength(
 export function bindOverlayScaler(
   target: OverlayScaleTarget,
   viewport: OverlayViewport,
+  maximumScale = Number.POSITIVE_INFINITY,
 ): () => void {
   const updateScale = (): void => {
-    const scale = calculateOverlayScale(viewport.innerWidth, viewport.innerHeight);
+    const scale = calculateOverlayScale(viewport.innerWidth, viewport.innerHeight, maximumScale);
     target.style.setProperty(overlayScaleProperty, scale.toString());
   };
 
