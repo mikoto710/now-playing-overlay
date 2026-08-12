@@ -4,7 +4,7 @@
   <img src="host/Assets/NowPlayingOverlay.png" width="128" alt="Now Playing Overlay application icon">
 </p>
 
-Now Playing Overlay is a lightweight local Windows application that displays the current track from a user-selected Windows Media session in a transparent `350 x 70` OBS Browser Source. It serves the overlay on loopback and runs from the system tray.
+Now Playing Overlay is a lightweight local Windows application that displays the current track from a user-selected Windows Media session in a transparent OBS Browser Source. It serves the overlay on loopback and runs from the system tray.
 
 Playback metadata and artwork are read directly from the selected app's Windows GSMTC session. The current version does not require a Web API login or intermediate metadata files.
 
@@ -46,7 +46,7 @@ Only one instance can run for the current Windows user. The current preview has 
 The default URL is:
 
 ```text
-http://127.0.0.1:10598/NowPlaying.html
+http://127.0.0.1:13130/NowPlaying.html
 ```
 
 The overlay is visible only while the selected player reports a playing track. Pausing or stopping playback hides it; resuming playback shows it again without replaying an unchanged text transition.
@@ -78,7 +78,7 @@ If OBS appears to retain an old page despite the correct URL, refresh the Browse
 
 ## Change the port
 
-The server listens only on `127.0.0.1`; it is not exposed to other computers on the network. The default port is `10598`.
+The server listens only on `127.0.0.1`; it is not exposed to other computers on the network. The default port is `13130`.
 
 To change it:
 
@@ -94,7 +94,7 @@ If the saved port is occupied during startup, the application offers to save ano
 For a temporary one-run override, start the executable from PowerShell with:
 
 ```powershell
-.\NowPlayingOverlay.exe --Host:Port=13130
+.\NowPlayingOverlay.exe --Host:Port=14130
 ```
 
 User settings are stored in `%LOCALAPPDATA%\NowPlayingOverlay\settings.json`.
@@ -115,6 +115,8 @@ Install the x64 .NET 10 Desktop Runtime. The plain .NET Runtime alone is not suf
 ### The port is unavailable
 
 Use the startup prompt or **Settings...** to select another available loopback port. A running instance moves without restarting; a startup failure still requires restarting after saving the replacement. Replace the saved URL in OBS afterward.
+
+Windows may reserve a port even when no ordinary process is listening on it. The startup prompt treats supported TCP and HTTP.sys conflict results as an unavailable port and lets the user choose a replacement.
 
 ### The selected player is missing or ambiguous
 

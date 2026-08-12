@@ -1,6 +1,6 @@
 # Local protocol version 2
 
-This document freezes the local contract shared by the host and browser client. The service listens only on `127.0.0.1`; the default port is `10598`.
+This document freezes the local contract shared by the host and browser client. The service listens only on `127.0.0.1`; the default port is `13130`.
 
 ## Endpoints
 

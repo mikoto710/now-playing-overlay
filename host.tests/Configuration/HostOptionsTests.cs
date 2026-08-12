@@ -4,6 +4,13 @@ namespace NowPlayingOverlay.Host.Tests.Configuration;
 
 public sealed class HostOptionsTests
 {
+    [Fact]
+    public void UsesDocumentedDefaultPort()
+    {
+        Assert.Equal(13130, HostOptions.DefaultPort);
+        Assert.Equal(13130, HostOptionsLoader.Load([]).Port);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(65536)]
@@ -19,11 +26,11 @@ public sealed class HostOptionsTests
     {
         var options = HostOptionsLoader.Load(
         [
-            "--Host:Port=13130",
+            "--Host:Port=14130",
             "--Logging:LogLevel:Default=Warning",
         ], persistedPort: 12000);
 
-        Assert.Equal(13130, options.Port);
+        Assert.Equal(14130, options.Port);
     }
 
     [Fact]

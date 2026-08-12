@@ -262,12 +262,12 @@ internal static class Program
         }
     }
 
-    private static bool IsAddressInUse(Exception error)
+    internal static bool IsAddressInUse(Exception error)
     {
         for (Exception? current = error; current is not null; current = current.InnerException)
         {
             if (current is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse }
-                || current is HttpListenerException { NativeErrorCode: 183 or 10048 })
+                || current is HttpListenerException { NativeErrorCode: 32 or 183 or 10048 })
             {
                 return true;
             }
