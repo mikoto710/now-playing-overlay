@@ -1,5 +1,6 @@
 import { config } from "../config";
 import { delay, finishAnimation } from "./animations";
+import { calculateLogicalLength } from "./overlay-scaler";
 
 export interface TrackText {
   artist: string;
@@ -199,7 +200,11 @@ export class NowPlayingWidget {
     copy: HTMLSpanElement,
     revision: number,
   ): Promise<void> {
-    const textWidth = text.getBoundingClientRect().width;
+    const textWidth = calculateLogicalLength(
+      text.getBoundingClientRect().width,
+      this.details.getBoundingClientRect().width,
+      this.details.clientWidth,
+    );
     const isWide = textWidth > this.details.clientWidth - config.marqueeThresholdOffsetPx;
     if (isWide) {
       await this.enterMarquee(element, text, copy, textWidth, revision);

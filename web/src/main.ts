@@ -9,8 +9,15 @@ import {
   type NowPlayingClientState,
   type WidgetViewState,
 } from "./state/now-playing-reducer";
+import { bindOverlayScaler } from "./ui/overlay-scaler";
 import { NowPlayingWidget } from "./ui/widget";
 
+const overlayStage = document.getElementById("overlay-stage");
+if (!(overlayStage instanceof HTMLElement)) {
+  throw new Error("Missing required element: #overlay-stage");
+}
+
+const stopOverlayScaler = bindOverlayScaler(overlayStage, window);
 const widget = new NowPlayingWidget();
 const artwork = new ArtworkLoader(widget, undefined, undefined, config.artworkGraceMs);
 let state = createInitialState();
@@ -55,4 +62,11 @@ const client = new OverlayClient(
 );
 
 client.start();
-window.addEventListener("pagehide", () => client.stop(), { once: true });
+window.addEventListener(
+  "pagehide",
+  () => {
+    stopOverlayScaler();
+    client.stop();
+  },
+  { once: true },
+);

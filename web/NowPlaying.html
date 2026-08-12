@@ -6,27 +6,29 @@
     <title>Now Playing</title>
   </head>
   <body>
-    <main id="now-playing" class="now-playing" aria-live="polite" aria-label="Now playing">
-      <svg class="artwork-placeholder" viewBox="0 0 70 70" aria-hidden="true" focusable="false">
-        <circle class="artwork-placeholder-disc" cx="35" cy="35" r="18" />
-        <circle class="artwork-placeholder-groove" cx="35" cy="35" r="12" />
-        <circle class="artwork-placeholder-label" cx="35" cy="35" r="5" />
-        <circle class="artwork-placeholder-hole" cx="35" cy="35" r="1.75" />
-      </svg>
-      <img id="artwork-base" class="artwork" alt="" hidden />
-      <img id="artwork-overlay" class="artwork" alt="" hidden />
-      <section id="track-details" class="track-details">
-        <p id="artist" class="artist">
-          <span id="artist-text" class="marquee-text"></span
-          ><span id="artist-copy" class="marquee-text marquee-copy" aria-hidden="true"></span>
-        </p>
-        <br aria-hidden="true" />
-        <p id="track" class="track">
-          <span id="track-text" class="marquee-text"></span
-          ><span id="track-copy" class="marquee-text marquee-copy" aria-hidden="true"></span>
-        </p>
-      </section>
-    </main>
+    <div id="overlay-stage" class="overlay-stage">
+      <main id="now-playing" class="now-playing" aria-live="polite" aria-label="Now playing">
+        <svg class="artwork-placeholder" viewBox="0 0 70 70" aria-hidden="true" focusable="false">
+          <circle class="artwork-placeholder-disc" cx="35" cy="35" r="18" />
+          <circle class="artwork-placeholder-groove" cx="35" cy="35" r="12" />
+          <circle class="artwork-placeholder-label" cx="35" cy="35" r="5" />
+          <circle class="artwork-placeholder-hole" cx="35" cy="35" r="1.75" />
+        </svg>
+        <img id="artwork-base" class="artwork" alt="" hidden />
+        <img id="artwork-overlay" class="artwork" alt="" hidden />
+        <section id="track-details" class="track-details">
+          <p id="artist" class="artist">
+            <span id="artist-text" class="marquee-text"></span
+            ><span id="artist-copy" class="marquee-text marquee-copy" aria-hidden="true"></span>
+          </p>
+          <br aria-hidden="true" />
+          <p id="track" class="track">
+            <span id="track-text" class="marquee-text"></span
+            ><span id="track-copy" class="marquee-text marquee-copy" aria-hidden="true"></span>
+          </p>
+        </section>
+      </main>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
