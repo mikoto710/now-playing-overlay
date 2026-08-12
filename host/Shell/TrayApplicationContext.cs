@@ -87,6 +87,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 CreateMenuItem(option.MenuText, () => OpenOverlayPreview(option)));
         }
 
+        ((ToolStripDropDownMenu)item.DropDown).ShowImageMargin = false;
         return item;
     }
 
