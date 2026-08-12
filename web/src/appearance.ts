@@ -1,13 +1,18 @@
 export type AppearancePreset = "default" | "custom";
 
 export interface Appearance {
-  readonly appearanceVersion: 1;
+  readonly appearanceVersion: 2;
   readonly preset: AppearancePreset;
   readonly artistColor: string;
   readonly trackColor: string;
   readonly backgroundColor: string;
   readonly backgroundOpacityPercent: number;
   readonly cornerRadius: number;
+  readonly fontFamily: string | null;
+  readonly artistFontSize: number;
+  readonly artistFontWeight: number;
+  readonly trackFontSize: number;
+  readonly trackFontWeight: number;
 }
 
 export interface StylePropertyTarget {
@@ -15,13 +20,18 @@ export interface StylePropertyTarget {
 }
 
 export const defaultAppearance: Appearance = {
-  appearanceVersion: 1,
+  appearanceVersion: 2,
   preset: "default",
   artistColor: "#25C7A0",
   trackColor: "#FFFFFF",
   backgroundColor: "#1B1D20",
   backgroundOpacityPercent: 100,
   cornerRadius: 0,
+  fontFamily: null,
+  artistFontSize: 16,
+  artistFontWeight: 600,
+  trackFontSize: 22,
+  trackFontWeight: 700,
 };
 
 const appearanceKeys = new Set([
@@ -32,14 +42,21 @@ const appearanceKeys = new Set([
   "backgroundColor",
   "backgroundOpacityPercent",
   "cornerRadius",
+  "fontFamily",
+  "artistFontSize",
+  "artistFontWeight",
+  "trackFontSize",
+  "trackFontWeight",
 ]);
 const canonicalColor = /^#[0-9A-F]{6}$/;
+const supportedFontWeights = new Set([400, 500, 600, 700]);
+const productFontStack = '"SF Pro Display", "Segoe UI", Helvetica, Arial, sans-serif';
 
 export function parseAppearance(value: unknown): Appearance {
   if (!isRecord(value) || !hasExactKeys(value)) {
     throw new Error("Appearance must be an object with the supported fields only.");
   }
-  if (value.appearanceVersion !== 1) {
+  if (value.appearanceVersion !== 2) {
     throw new Error("Appearance version is not supported.");
   }
   if (value.preset !== "default" && value.preset !== "custom") {
@@ -68,6 +85,21 @@ export function parseAppearance(value: unknown): Appearance {
   ) {
     throw new Error("Corner radius must be an integer from 0 to 35.");
   }
+  const fontFamily = value.fontFamily;
+  if (
+    fontFamily !== null &&
+    (typeof fontFamily !== "string" ||
+      fontFamily.length === 0 ||
+      fontFamily.length > 128 ||
+      fontFamily.trim() !== fontFamily ||
+      hasControlCharacter(fontFamily))
+  ) {
+    throw new Error("Font family must be null or a supported system font name.");
+  }
+  validateIntegerRange(value.artistFontSize, 12, 18, "Artist font size");
+  validateFontWeight(value.artistFontWeight, "Artist font weight");
+  validateIntegerRange(value.trackFontSize, 16, 24, "Track font size");
+  validateFontWeight(value.trackFontWeight, "Track font weight");
 
   return value as unknown as Appearance;
 }
@@ -93,6 +125,37 @@ export function applyAppearance(target: StylePropertyTarget, appearance: Appeara
     toCssBackground(appearance.backgroundColor, appearance.backgroundOpacityPercent),
   );
   target.setProperty("--overlay-corner-radius", `${appearance.cornerRadius}px`);
+  target.setProperty("--overlay-font-family", toCssFontFamily(appearance.fontFamily));
+  target.setProperty("--overlay-artist-font-size", `${appearance.artistFontSize}px`);
+  target.setProperty("--overlay-artist-font-weight", appearance.artistFontWeight.toString());
+  target.setProperty("--overlay-artist-line-height", `${appearance.artistFontSize + 3}px`);
+  target.setProperty("--overlay-track-font-size", `${appearance.trackFontSize}px`);
+  target.setProperty("--overlay-track-font-weight", appearance.trackFontWeight.toString());
+  target.setProperty("--overlay-track-line-height", `${appearance.trackFontSize + 4}px`);
+}
+
+function validateIntegerRange(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+  name: string,
+): void {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be an integer from ${minimum} to ${maximum}.`);
+  }
+}
+
+function validateFontWeight(value: unknown, name: string): void {
+  if (typeof value !== "number" || !supportedFontWeights.has(value)) {
+    throw new Error(`${name} must be 400, 500, 600, or 700.`);
+  }
+}
+
+function hasControlCharacter(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
+  });
 }
 
 function hasExactKeys(value: Record<string, unknown>): boolean {
@@ -112,4 +175,13 @@ function toCssBackground(color: string, opacityPercent: number): string {
     return `rgb(${red}, ${green}, ${blue})`;
   }
   return `rgba(${red}, ${green}, ${blue}, ${opacityPercent / 100})`;
+}
+
+function toCssFontFamily(fontFamily: string | null): string {
+  if (fontFamily === null) {
+    return productFontStack;
+  }
+
+  const escaped = fontFamily.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"');
+  return `"${escaped}", ${productFontStack}`;
 }

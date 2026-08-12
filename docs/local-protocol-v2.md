@@ -68,17 +68,22 @@ Appearance is a separate, low-frequency presentation contract. It is not part of
 
 ```json
 {
-  "appearanceVersion": 1,
+  "appearanceVersion": 2,
   "preset": "default",
   "artistColor": "#25C7A0",
   "trackColor": "#FFFFFF",
   "backgroundColor": "#1B1D20",
   "backgroundOpacityPercent": 100,
-  "cornerRadius": 0
+  "cornerRadius": 0,
+  "fontFamily": null,
+  "artistFontSize": 16,
+  "artistFontWeight": 600,
+  "trackFontSize": 22,
+  "trackFontWeight": 700
 }
 ```
 
-The object contains exactly these fields. Colors use canonical uppercase `#RRGGBB`; opacity is an integer from `0` to `100`, and corner radius is an integer from `0` to `35` logical pixels. `preset` is `default` or `custom`, while all remaining fields always contain the final effective values. The page reads the endpoint once before starting the now-playing client and falls back to its built-in Default values if the request or validation fails. Saved changes therefore require a page reload and never change source or playback state.
+The object contains exactly these fields. `appearanceVersion` is independent from the now-playing protocol version; version 2 adds bounded typography while retaining the same endpoint. Colors use canonical uppercase `#RRGGBB`; opacity is an integer from `0` to `100`, and corner radius is an integer from `0` to `35` logical pixels. `fontFamily` is null for the product font stack or a bounded system font name. Artist size is `12`–`18`, track size is `16`–`24`, and weights are `400`, `500`, `600`, or `700`; line heights are derived by the page and are not protocol fields. `preset` is `default` or `custom`, while all remaining fields always contain the final effective values. The page reads the endpoint once before starting the now-playing client and falls back to its built-in Default values if the request or validation fails. Saved changes therefore require a page reload and never change source or playback state.
 
 ## Event stream
 

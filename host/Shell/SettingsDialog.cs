@@ -477,6 +477,11 @@ internal sealed class SettingsDialog : Form
             BackgroundColor = _backgroundColor.Text,
             BackgroundOpacityPercent = decimal.ToInt32(_backgroundOpacity.Value),
             CornerRadius = decimal.ToInt32(_cornerRadius.Value),
+            FontFamily = _customAppearanceDraft.FontFamily,
+            ArtistFontSize = _customAppearanceDraft.ArtistFontSize,
+            ArtistFontWeight = _customAppearanceDraft.ArtistFontWeight,
+            TrackFontSize = _customAppearanceDraft.TrackFontSize,
+            TrackFontWeight = _customAppearanceDraft.TrackFontWeight,
         };
     }
 

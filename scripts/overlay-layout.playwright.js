@@ -105,13 +105,18 @@ async (page) => {
   await page.route("**/api/v2/appearance", (route) =>
     route.fulfill({
       body: JSON.stringify({
-        appearanceVersion: 1,
+        appearanceVersion: 2,
         preset: "default",
         artistColor: "#25C7A0",
         trackColor: "#FFFFFF",
         backgroundColor: "#1B1D20",
         backgroundOpacityPercent: 100,
         cornerRadius: 0,
+        fontFamily: null,
+        artistFontSize: 16,
+        artistFontWeight: 600,
+        trackFontSize: 22,
+        trackFontWeight: 700,
       }),
       contentType: "application/json",
       status: 200,
@@ -277,6 +282,16 @@ async (page) => {
     style.setProperty("--overlay-track-color", "#ABCDEF");
     style.setProperty("--overlay-background", "rgba(16, 32, 48, 0.65)");
     style.setProperty("--overlay-corner-radius", "12px");
+    style.setProperty(
+      "--overlay-font-family",
+      '"Segoe UI", "SF Pro Display", "Segoe UI", Helvetica, Arial, sans-serif',
+    );
+    style.setProperty("--overlay-artist-font-size", "18px");
+    style.setProperty("--overlay-artist-font-weight", "500");
+    style.setProperty("--overlay-artist-line-height", "21px");
+    style.setProperty("--overlay-track-font-size", "24px");
+    style.setProperty("--overlay-track-font-weight", "600");
+    style.setProperty("--overlay-track-line-height", "28px");
   });
   const customLayout = await readLayout();
   assert(customLayout.artistColor === "rgb(18, 52, 86)", "Custom artist color was not applied.");
@@ -286,6 +301,20 @@ async (page) => {
     "Custom background color and opacity were not applied.",
   );
   assert(customLayout.rootBorderRadius === "12px", "Custom corner radius was not applied.");
+  assert(customLayout.artistFontSize === "18px", "Custom artist font size was not applied.");
+  assert(customLayout.artistFontWeight === "500", "Custom artist font weight was not applied.");
+  assert(customLayout.artistLineHeight === "21px", "Custom artist line height was not derived.");
+  assert(customLayout.trackFontSize === "24px", "Custom track font size was not applied.");
+  assert(customLayout.trackFontWeight === "600", "Custom track font weight was not applied.");
+  assert(customLayout.trackLineHeight === "28px", "Custom track line height was not derived.");
+  assert(
+    customLayout.artist.bottom <= customLayout.track.top,
+    "Maximum supported typography overlaps the two text rows.",
+  );
+  assert(
+    customLayout.track.bottom <= customLayout.root.bottom,
+    "Maximum supported typography escapes the logical canvas.",
+  );
   assert(
     !(await page
       .locator("#artist")
@@ -298,6 +327,24 @@ async (page) => {
       .evaluate((element) => element.classList.contains("is-marquee"))),
     "Short track text unexpectedly entered marquee mode.",
   );
+
+  await page.evaluate(() => {
+    const style = document.documentElement.style;
+    style.setProperty("--overlay-artist-color", "#25C7A0");
+    style.setProperty("--overlay-track-color", "#FFFFFF");
+    style.setProperty("--overlay-background", "rgb(27, 29, 32)");
+    style.setProperty("--overlay-corner-radius", "0px");
+    style.setProperty(
+      "--overlay-font-family",
+      '"SF Pro Display", "Segoe UI", Helvetica, Arial, sans-serif',
+    );
+    style.setProperty("--overlay-artist-font-size", "16px");
+    style.setProperty("--overlay-artist-font-weight", "600");
+    style.setProperty("--overlay-artist-line-height", "19px");
+    style.setProperty("--overlay-track-font-size", "22px");
+    style.setProperty("--overlay-track-font-weight", "700");
+    style.setProperty("--overlay-track-line-height", "26px");
+  });
 
   const viewports = [
     { height: 70, name: "350x70", scale: 1, width: 350 },

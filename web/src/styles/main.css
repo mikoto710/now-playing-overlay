@@ -3,8 +3,15 @@
   --overlay-track-color: #ffffff;
   --overlay-background: rgb(27, 29, 32);
   --overlay-corner-radius: 0;
+  --overlay-font-family: "SF Pro Display", "Segoe UI", Helvetica, Arial, sans-serif;
+  --overlay-artist-font-size: 16px;
+  --overlay-artist-font-weight: 600;
+  --overlay-artist-line-height: 19px;
+  --overlay-track-font-size: 22px;
+  --overlay-track-font-weight: 700;
+  --overlay-track-line-height: 26px;
   color-scheme: dark;
-  font-family: "SF Pro Display", "Segoe UI", Helvetica, Arial, sans-serif;
+  font-family: var(--overlay-font-family);
 }
 
 html,
@@ -112,9 +119,9 @@ body {
 .artist {
   color: var(--overlay-artist-color);
   font-family: inherit;
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 19px;
+  font-size: var(--overlay-artist-font-size);
+  font-weight: var(--overlay-artist-font-weight);
+  line-height: var(--overlay-artist-line-height);
   display: inline-block;
   margin-top: 3px;
   margin-bottom: 8px;
@@ -126,9 +133,9 @@ body {
 .track {
   color: var(--overlay-track-color);
   font-family: inherit;
-  font-size: 22px;
-  font-weight: 700;
-  line-height: 26px;
+  font-size: var(--overlay-track-font-size);
+  font-weight: var(--overlay-track-font-weight);
+  line-height: var(--overlay-track-line-height);
   display: inline-block;
   margin-top: -2px;
   margin-left: 9px;

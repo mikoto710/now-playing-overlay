@@ -60,8 +60,8 @@ public sealed class OverlayHttpTests
         Assert.Equal(0, json.RootElement.GetProperty("snapshotRevision").GetInt64());
         Assert.Equal("unavailable", json.RootElement.GetProperty("playback").GetString());
         Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("track").ValueKind);
-        Assert.Equal(7, appearanceJson.RootElement.EnumerateObject().Count());
-        Assert.Equal(1, appearanceJson.RootElement.GetProperty("appearanceVersion").GetInt32());
+        Assert.Equal(12, appearanceJson.RootElement.EnumerateObject().Count());
+        Assert.Equal(2, appearanceJson.RootElement.GetProperty("appearanceVersion").GetInt32());
         Assert.Equal("default", appearanceJson.RootElement.GetProperty("preset").GetString());
         Assert.Equal("#25C7A0", appearanceJson.RootElement.GetProperty("artistColor").GetString());
         Assert.Equal("#FFFFFF", appearanceJson.RootElement.GetProperty("trackColor").GetString());
@@ -70,6 +70,11 @@ public sealed class OverlayHttpTests
             100,
             appearanceJson.RootElement.GetProperty("backgroundOpacityPercent").GetInt32());
         Assert.Equal(0, appearanceJson.RootElement.GetProperty("cornerRadius").GetInt32());
+        Assert.Equal(JsonValueKind.Null, appearanceJson.RootElement.GetProperty("fontFamily").ValueKind);
+        Assert.Equal(16, appearanceJson.RootElement.GetProperty("artistFontSize").GetInt32());
+        Assert.Equal(600, appearanceJson.RootElement.GetProperty("artistFontWeight").GetInt32());
+        Assert.Equal(22, appearanceJson.RootElement.GetProperty("trackFontSize").GetInt32());
+        Assert.Equal(700, appearanceJson.RootElement.GetProperty("trackFontWeight").GetInt32());
 
         host.App.SetAppearance(new AppearanceSettings
         {
@@ -81,6 +86,11 @@ public sealed class OverlayHttpTests
                 BackgroundColor = "#102030",
                 BackgroundOpacityPercent = 65,
                 CornerRadius = 12,
+                FontFamily = "Segoe UI",
+                ArtistFontSize = 18,
+                ArtistFontWeight = 500,
+                TrackFontSize = 24,
+                TrackFontWeight = 600,
             },
         });
         using var customAppearance = await host.Client.GetAsync("/api/v2/appearance");
@@ -91,6 +101,11 @@ public sealed class OverlayHttpTests
             65,
             customJson.RootElement.GetProperty("backgroundOpacityPercent").GetInt32());
         Assert.Equal(12, customJson.RootElement.GetProperty("cornerRadius").GetInt32());
+        Assert.Equal("Segoe UI", customJson.RootElement.GetProperty("fontFamily").GetString());
+        Assert.Equal(18, customJson.RootElement.GetProperty("artistFontSize").GetInt32());
+        Assert.Equal(500, customJson.RootElement.GetProperty("artistFontWeight").GetInt32());
+        Assert.Equal(24, customJson.RootElement.GetProperty("trackFontSize").GetInt32());
+        Assert.Equal(600, customJson.RootElement.GetProperty("trackFontWeight").GetInt32());
     }
 
     [Fact]

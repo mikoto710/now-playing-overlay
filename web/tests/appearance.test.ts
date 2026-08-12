@@ -4,13 +4,18 @@ import { applyAppearance, parseAppearance } from "../src/appearance";
 describe("appearance", () => {
   it("parses one representative custom appearance and applies only fixed CSS properties", () => {
     const appearance = parseAppearance({
-      appearanceVersion: 1,
+      appearanceVersion: 2,
       preset: "custom",
       artistColor: "#123456",
       trackColor: "#ABCDEF",
       backgroundColor: "#102030",
       backgroundOpacityPercent: 65,
       cornerRadius: 12,
+      fontFamily: "Segoe UI",
+      artistFontSize: 18,
+      artistFontWeight: 500,
+      trackFontSize: 24,
+      trackFontWeight: 600,
     });
     const properties = new Map<string, string>();
 
@@ -27,6 +32,16 @@ describe("appearance", () => {
         ["--overlay-track-color", "#ABCDEF"],
         ["--overlay-background", "rgba(16, 32, 48, 0.65)"],
         ["--overlay-corner-radius", "12px"],
+        [
+          "--overlay-font-family",
+          '"Segoe UI", "SF Pro Display", "Segoe UI", Helvetica, Arial, sans-serif',
+        ],
+        ["--overlay-artist-font-size", "18px"],
+        ["--overlay-artist-font-weight", "500"],
+        ["--overlay-artist-line-height", "21px"],
+        ["--overlay-track-font-size", "24px"],
+        ["--overlay-track-font-weight", "600"],
+        ["--overlay-track-line-height", "28px"],
       ]),
     );
   });
@@ -34,14 +49,19 @@ describe("appearance", () => {
   it("rejects an out-of-range appearance as one invalid configuration", () => {
     expect(() =>
       parseAppearance({
-        appearanceVersion: 1,
+        appearanceVersion: 2,
         preset: "custom",
         artistColor: "#123456",
         trackColor: "#ABCDEF",
         backgroundColor: "#102030",
         backgroundOpacityPercent: 65,
-        cornerRadius: 36,
+        cornerRadius: 12,
+        fontFamily: null,
+        artistFontSize: 19,
+        artistFontWeight: 600,
+        trackFontSize: 22,
+        trackFontWeight: 700,
       }),
-    ).toThrow("Corner radius");
+    ).toThrow("Artist font size");
   });
 });

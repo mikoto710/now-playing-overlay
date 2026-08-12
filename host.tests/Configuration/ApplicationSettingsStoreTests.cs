@@ -81,6 +81,11 @@ public sealed class ApplicationSettingsStoreTests
                     BackgroundColor = "#102030",
                     BackgroundOpacityPercent = 65,
                     CornerRadius = 12,
+                    FontFamily = "Segoe UI",
+                    ArtistFontSize = 18,
+                    ArtistFontWeight = 500,
+                    TrackFontSize = 24,
+                    TrackFontWeight = 600,
                 },
             },
         });
@@ -91,10 +96,57 @@ public sealed class ApplicationSettingsStoreTests
         Assert.Equal("#123456", result.Settings.Appearance.Custom.ArtistColor);
         Assert.Equal(65, result.Settings.Appearance.Custom.BackgroundOpacityPercent);
         Assert.Equal(12, result.Settings.Appearance.Custom.CornerRadius);
+        Assert.Equal("Segoe UI", result.Settings.Appearance.Custom.FontFamily);
+        Assert.Equal(18, result.Settings.Appearance.Custom.ArtistFontSize);
+        Assert.Equal(500, result.Settings.Appearance.Custom.ArtistFontWeight);
+        Assert.Equal(24, result.Settings.Appearance.Custom.TrackFontSize);
+        Assert.Equal(600, result.Settings.Appearance.Custom.TrackFontWeight);
         var json = File.ReadAllText(path);
         Assert.Contains("\"provider\": \"windows-media\"", json, StringComparison.Ordinal);
         Assert.Contains("\"sourceAppUserModelId\": \"Player.App!Exact\"", json, StringComparison.Ordinal);
         Assert.Contains("\"preset\": \"custom\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void StyleOneCustomAppearanceKeepsColorsAndReceivesTypographyDefaults()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        File.WriteAllText(
+            path,
+            """
+            {
+              "port": 13130,
+              "source": {
+                "provider": "windows-media",
+                "sourceAppUserModelId": "Player.App!Exact"
+              },
+              "appearance": {
+                "preset": "custom",
+                "custom": {
+                  "artistColor": "#123456",
+                  "trackColor": "#ABCDEF",
+                  "backgroundColor": "#102030",
+                  "backgroundOpacityPercent": 65,
+                  "cornerRadius": 12
+                }
+              }
+            }
+            """);
+        var store = new ApplicationSettingsStore(path);
+
+        var result = store.Load();
+
+        Assert.Equal(AppearancePreset.Custom, result.Settings.Appearance.Preset);
+        Assert.Equal("#123456", result.Settings.Appearance.Custom.ArtistColor);
+        Assert.Null(result.Settings.Appearance.Custom.FontFamily);
+        Assert.Equal(
+            CustomAppearanceSettings.DefaultArtistFontSize,
+            result.Settings.Appearance.Custom.ArtistFontSize);
+        Assert.Equal(
+            CustomAppearanceSettings.DefaultTrackFontWeight,
+            result.Settings.Appearance.Custom.TrackFontWeight);
+        Assert.Null(result.Warning);
     }
 
     [Fact]

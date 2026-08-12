@@ -5,7 +5,7 @@ namespace NowPlayingOverlay.Host.Protocol;
 
 internal sealed record AppearanceDto
 {
-    public const int CurrentAppearanceVersion = 1;
+    public const int CurrentAppearanceVersion = 2;
 
     [JsonPropertyName("appearanceVersion")]
     public int AppearanceVersion { get; init; } = CurrentAppearanceVersion;
@@ -27,6 +27,21 @@ internal sealed record AppearanceDto
 
     [JsonPropertyName("cornerRadius")]
     public required int CornerRadius { get; init; }
+
+    [JsonPropertyName("fontFamily")]
+    public string? FontFamily { get; init; }
+
+    [JsonPropertyName("artistFontSize")]
+    public required int ArtistFontSize { get; init; }
+
+    [JsonPropertyName("artistFontWeight")]
+    public required int ArtistFontWeight { get; init; }
+
+    [JsonPropertyName("trackFontSize")]
+    public required int TrackFontSize { get; init; }
+
+    [JsonPropertyName("trackFontWeight")]
+    public required int TrackFontWeight { get; init; }
 }
 
 internal static class AppearanceDtoMapper
@@ -47,6 +62,11 @@ internal static class AppearanceDtoMapper
             BackgroundColor = appearance.BackgroundColor,
             BackgroundOpacityPercent = appearance.BackgroundOpacityPercent,
             CornerRadius = appearance.CornerRadius,
+            FontFamily = appearance.FontFamily,
+            ArtistFontSize = appearance.ArtistFontSize,
+            ArtistFontWeight = appearance.ArtistFontWeight,
+            TrackFontSize = appearance.TrackFontSize,
+            TrackFontWeight = appearance.TrackFontWeight,
         };
     }
 }
