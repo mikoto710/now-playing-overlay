@@ -24,6 +24,11 @@ internal sealed class SettingsDialog : Form
     private readonly ComboBox _artistFontWeight;
     private readonly NumericUpDown _trackFontSize;
     private readonly ComboBox _trackFontWeight;
+    private readonly CheckBox _artworkVisible;
+    private readonly NumericUpDown _artworkSize;
+    private readonly ComboBox _artworkPosition;
+    private readonly ComboBox _artworkFit;
+    private readonly NumericUpDown _artworkCornerRadius;
     private readonly CancellationTokenSource _shutdown = new();
     private CustomAppearanceSettings _customAppearanceDraft;
     private string? _selectedSourceAppUserModelId;
@@ -42,7 +47,7 @@ internal sealed class SettingsDialog : Form
         _refreshSources = refreshSources ?? throw new ArgumentNullException(nameof(refreshSources));
         Text = "Now Playing Overlay Settings";
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(800, 700);
+        ClientSize = new Size(800, 760);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -131,7 +136,7 @@ internal sealed class SettingsDialog : Form
             AutoSize = true,
             Margin = new Padding(0, 0, 0, 12),
             MaximumSize = new Size(680, 0),
-            Text = "Choose Default to preserve the product style, or Custom to change supported colors and typography.",
+            Text = "Choose Default to preserve the product style, or Custom to change supported colors, typography, and artwork.",
         };
         _defaultAppearance = new RadioButton
         {
@@ -206,25 +211,49 @@ internal sealed class SettingsDialog : Form
         };
         _fontFamily.DropDown += (_, _) => UpdateFontFamilyDropDownWidth();
         PopulateFontFamilies(_customAppearanceDraft.FontFamily);
-        _artistFontSize = CreateFontSizeControl(
+        _artistFontSize = CreateNumericControl(
             CustomAppearanceSettings.MinimumArtistFontSize,
             CustomAppearanceSettings.MaximumArtistFontSize,
             _customAppearanceDraft.ArtistFontSize);
         _artistFontWeight = CreateFontWeightControl(_customAppearanceDraft.ArtistFontWeight);
-        _trackFontSize = CreateFontSizeControl(
+        _trackFontSize = CreateNumericControl(
             CustomAppearanceSettings.MinimumTrackFontSize,
             CustomAppearanceSettings.MaximumTrackFontSize,
             _customAppearanceDraft.TrackFontSize);
         _trackFontWeight = CreateFontWeightControl(_customAppearanceDraft.TrackFontWeight);
-
-        var appearanceRowHeights = new[]
+        _artworkVisible = new CheckBox
         {
-            GetAppearanceRowHeight(_artistColor, _fontFamily),
-            GetAppearanceRowHeight(_trackColor, _artistFontSize),
-            GetAppearanceRowHeight(_backgroundColor, _artistFontWeight),
-            GetAppearanceRowHeight(_backgroundOpacity, _trackFontSize),
-            GetAppearanceRowHeight(_cornerRadius, _trackFontWeight),
+            Anchor = AnchorStyles.Left,
+            AutoSize = true,
+            Checked = _customAppearanceDraft.ArtworkVisible,
+            Margin = Padding.Empty,
+            Text = "Show",
         };
+        _artworkSize = CreateNumericControl(
+            CustomAppearanceSettings.MinimumArtworkSize,
+            CustomAppearanceSettings.MaximumArtworkSize,
+            _customAppearanceDraft.ArtworkSize);
+        _artworkPosition = CreateEnumChoiceControl(_customAppearanceDraft.ArtworkPosition);
+        _artworkFit = CreateEnumChoiceControl(_customAppearanceDraft.ArtworkFit);
+        _artworkCornerRadius = CreateNumericControl(
+            0,
+            35,
+            _customAppearanceDraft.ArtworkCornerRadius);
+        _artworkVisible.CheckedChanged += (_, _) => SetArtworkDetailControlsEnabled(
+            _customAppearance.Checked && _artworkVisible.Checked);
+
+        var appearanceRowHeight = GetAppearanceRowHeight(
+            _artistColor,
+            _trackColor,
+            _backgroundColor,
+            _backgroundOpacity,
+            _cornerRadius,
+            _fontFamily,
+            _artistFontSize,
+            _artistFontWeight,
+            _trackFontSize,
+            _trackFontWeight);
+        var appearanceRowHeights = Enumerable.Repeat(appearanceRowHeight, 5).ToArray();
 
         var colorsLayout = CreateAppearanceGroupLayout(appearanceRowHeights);
         AddAppearanceRow(colorsLayout, 0, "Artist color:", _artistColor);
@@ -255,24 +284,46 @@ internal sealed class SettingsDialog : Form
         appearanceGroups.Controls.Add(CreateAppearanceGroup("Colors", colorsLayout), 0, 0);
         appearanceGroups.Controls.Add(CreateAppearanceGroup("Typography", typographyLayout), 1, 0);
 
-        var artworkPlanned = new GroupBox
+        var artworkRowHeight = GetAppearanceRowHeight(
+            _artworkVisible,
+            _artworkSize,
+            _artworkPosition,
+            _artworkFit,
+            _artworkCornerRadius);
+        var artworkLayout = new TableLayoutPanel
         {
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            AutoSize = false,
+            ColumnCount = 9,
             Dock = DockStyle.Top,
-            Enabled = false,
-            Margin = new Padding(0, 12, 0, 0),
-            Padding = new Padding(10, 8, 10, 10),
-            Text = "Artwork (Coming next)",
-        };
-        artworkPlanned.Controls.Add(new Label
-        {
-            AutoSize = true,
-            Dock = DockStyle.Top,
+            GrowStyle = TableLayoutPanelGrowStyle.FixedSize,
+            Height = artworkRowHeight * 2,
             Margin = Padding.Empty,
-            MaximumSize = new Size(660, 0),
-            Text = "Visibility, size, position, fit, and radius will be added after this layout is approved.",
-        });
+            RowCount = 2,
+        };
+        artworkLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        artworkLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / 3));
+        artworkLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        artworkLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        artworkLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / 3));
+        artworkLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        artworkLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        artworkLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / 3));
+        artworkLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        artworkLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, artworkRowHeight));
+        artworkLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, artworkRowHeight));
+        AddArtworkField(artworkLayout, 0, 0, "Visible:", _artworkVisible);
+        AddArtworkField(artworkLayout, 1, 0, "Position:", _artworkPosition);
+        AddArtworkField(artworkLayout, 2, 0, "Fit:", _artworkFit);
+        AddArtworkField(artworkLayout, 0, 1, "Size:", _artworkSize, "px");
+        AddArtworkField(
+            artworkLayout,
+            1,
+            1,
+            "Radius:",
+            _artworkCornerRadius,
+            "px");
+        var artworkGroup = CreateAppearanceGroup("Artwork", artworkLayout);
+        artworkGroup.Margin = new Padding(0, 12, 0, 0);
 
         var resetAppearance = new Button
         {
@@ -336,7 +387,7 @@ internal sealed class SettingsDialog : Form
         appearanceLayout.Controls.Add(appearanceExplanation, 0, 0);
         appearanceLayout.Controls.Add(styleLayout, 0, 1);
         appearanceLayout.Controls.Add(appearanceGroups, 0, 2);
-        appearanceLayout.Controls.Add(artworkPlanned, 0, 3);
+        appearanceLayout.Controls.Add(artworkGroup, 0, 3);
         appearanceLayout.Controls.Add(appearanceFooter, 0, 4);
 
         var tabs = new TabControl
@@ -609,6 +660,11 @@ internal sealed class SettingsDialog : Form
             ArtistFontWeight = GetSelectedFontWeight(_artistFontWeight),
             TrackFontSize = decimal.ToInt32(_trackFontSize.Value),
             TrackFontWeight = GetSelectedFontWeight(_trackFontWeight),
+            ArtworkVisible = _artworkVisible.Checked,
+            ArtworkSize = decimal.ToInt32(_artworkSize.Value),
+            ArtworkPosition = GetSelectedEnum<ArtworkPosition>(_artworkPosition),
+            ArtworkFit = GetSelectedEnum<ArtworkFit>(_artworkFit),
+            ArtworkCornerRadius = decimal.ToInt32(_artworkCornerRadius.Value),
         };
     }
 
@@ -625,6 +681,11 @@ internal sealed class SettingsDialog : Form
         SelectFontWeight(_artistFontWeight, appearance.ArtistFontWeight);
         _trackFontSize.Value = appearance.TrackFontSize;
         SelectFontWeight(_trackFontWeight, appearance.TrackFontWeight);
+        _artworkVisible.Checked = appearance.ArtworkVisible;
+        _artworkSize.Value = appearance.ArtworkSize;
+        SelectEnum(_artworkPosition, appearance.ArtworkPosition);
+        SelectEnum(_artworkFit, appearance.ArtworkFit);
+        _artworkCornerRadius.Value = appearance.ArtworkCornerRadius;
     }
 
     private void SetAppearanceControlsEnabled(bool enabled)
@@ -639,6 +700,16 @@ internal sealed class SettingsDialog : Form
         _artistFontWeight.Enabled = enabled;
         _trackFontSize.Enabled = enabled;
         _trackFontWeight.Enabled = enabled;
+        _artworkVisible.Enabled = enabled;
+        SetArtworkDetailControlsEnabled(enabled && _artworkVisible.Checked);
+    }
+
+    private void SetArtworkDetailControlsEnabled(bool enabled)
+    {
+        _artworkSize.Enabled = enabled;
+        _artworkPosition.Enabled = enabled;
+        _artworkFit.Enabled = enabled;
+        _artworkCornerRadius.Enabled = enabled;
     }
 
     private void SetRefreshState(bool refreshing)
@@ -668,11 +739,10 @@ internal sealed class SettingsDialog : Form
         var button = new Button
         {
             Anchor = AnchorStyles.Left,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            AutoSize = false,
             Margin = Padding.Empty,
             MinimumSize = new Size(120, 0),
-            Padding = new Padding(8, 2, 8, 2),
+            Padding = new Padding(8, 0, 8, 0),
             UseVisualStyleBackColor = false,
         };
         SetColorButton(button, color);
@@ -727,7 +797,7 @@ internal sealed class SettingsDialog : Form
         return group;
     }
 
-    private static NumericUpDown CreateFontSizeControl(int minimum, int maximum, int value)
+    private static NumericUpDown CreateNumericControl(int minimum, int maximum, int value)
     {
         return new NumericUpDown
         {
@@ -752,6 +822,22 @@ internal sealed class SettingsDialog : Form
         };
         control.Items.AddRange([400, 500, 600, 700]);
         SelectFontWeight(control, value);
+        return control;
+    }
+
+    private static ComboBox CreateEnumChoiceControl<TEnum>(TEnum value)
+        where TEnum : struct, Enum
+    {
+        var control = new ComboBox
+        {
+            Anchor = AnchorStyles.Left,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            FormattingEnabled = true,
+            Margin = Padding.Empty,
+            MinimumSize = new Size(100, 0),
+        };
+        control.Items.AddRange(Enum.GetValues<TEnum>().Cast<object>().ToArray());
+        SelectEnum(control, value);
         return control;
     }
 
@@ -877,6 +963,26 @@ internal sealed class SettingsDialog : Form
         control.SelectedIndex = index;
     }
 
+    private static TEnum GetSelectedEnum<TEnum>(ComboBox control)
+        where TEnum : struct, Enum
+    {
+        return control.SelectedItem is TEnum value
+            ? value
+            : throw new InvalidOperationException($"A {typeof(TEnum).Name} value must be selected.");
+    }
+
+    private static void SelectEnum<TEnum>(ComboBox control, TEnum value)
+        where TEnum : struct, Enum
+    {
+        var index = control.Items.IndexOf(value);
+        if (index < 0)
+        {
+            throw new InvalidOperationException($"Unsupported {typeof(TEnum).Name} value {value}.");
+        }
+
+        control.SelectedIndex = index;
+    }
+
     private static void SetColorButton(Button button, string color)
     {
         var parsed = ColorTranslator.FromHtml(color);
@@ -890,6 +996,37 @@ internal sealed class SettingsDialog : Form
         return $"#{color.R:X2}{color.G:X2}{color.B:X2}";
     }
 
+    private static void AddArtworkField(
+        TableLayoutPanel layout,
+        int field,
+        int row,
+        string label,
+        Control control,
+        string? suffix = null)
+    {
+        var column = field * 3;
+        var labelControl = CreateLabel(label);
+        labelControl.Margin = new Padding(0, 2, 8, 4);
+        control.Margin = new Padding(0, 0, 0, 4);
+        if (control is CheckBox)
+        {
+            control.Anchor = AnchorStyles.Left;
+        }
+        else
+        {
+            control.Dock = DockStyle.Fill;
+        }
+
+        layout.Controls.Add(labelControl, column, row);
+        layout.Controls.Add(control, column + 1, row);
+        if (suffix is not null)
+        {
+            var suffixControl = CreateLabel(suffix);
+            suffixControl.Margin = new Padding(6, 2, 0, 4);
+            layout.Controls.Add(suffixControl, column + 2, row);
+        }
+    }
+
     private static void AddAppearanceRow(
         TableLayoutPanel layout,
         int row,
@@ -899,6 +1036,7 @@ internal sealed class SettingsDialog : Form
     {
         var labelControl = CreateLabel(label);
         labelControl.Margin = new Padding(0, 2, 8, 4);
+        control.Dock = DockStyle.Fill;
         control.Margin = new Padding(
             control.Margin.Left,
             control.Margin.Top,
