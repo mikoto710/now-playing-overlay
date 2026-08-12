@@ -195,12 +195,16 @@ internal sealed class SettingsDialog : Form
         _fontFamily = new ComboBox
         {
             Anchor = AnchorStyles.Left | AnchorStyles.Right,
+            AutoCompleteMode = AutoCompleteMode.SuggestAppend,
+            AutoCompleteSource = AutoCompleteSource.ListItems,
             DisplayMember = nameof(FontFamilyOption.Label),
-            DropDownStyle = ComboBoxStyle.DropDownList,
+            DropDownStyle = ComboBoxStyle.DropDown,
             FormattingEnabled = true,
             Margin = Padding.Empty,
+            MaxLength = CustomAppearanceSettings.MaximumFontFamilyLength,
             MinimumSize = new Size(170, 0),
         };
+        _fontFamily.DropDown += (_, _) => UpdateFontFamilyDropDownWidth();
         PopulateFontFamilies(_customAppearanceDraft.FontFamily);
         _artistFontSize = CreateFontSizeControl(
             CustomAppearanceSettings.MinimumArtistFontSize,
@@ -353,12 +357,12 @@ internal sealed class SettingsDialog : Form
         {
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            DialogResult = DialogResult.OK,
             Margin = Padding.Empty,
             MinimumSize = new Size(75, 0),
             Padding = new Padding(8, 2, 8, 2),
             Text = "Save",
         };
+        _save.Click += SaveClicked;
         var cancel = new Button
         {
             AutoSize = true,
@@ -460,6 +464,25 @@ internal sealed class SettingsDialog : Form
                 SetRefreshState(refreshing: false);
             }
         }
+    }
+
+    private void SaveClicked(object? sender, EventArgs args)
+    {
+        if (_customAppearance.Checked && !TrySelectEnteredFontFamily())
+        {
+            MessageBox.Show(
+                this,
+                "Type to search, then choose an installed font from the list.",
+                "Choose a Font",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            _fontFamily.Focus();
+            _fontFamily.DroppedDown = true;
+            return;
+        }
+
+        DialogResult = DialogResult.OK;
+        Close();
     }
 
     private void ApplyDiscovery(SourceDiscoveryResult discovery)
@@ -581,7 +604,7 @@ internal sealed class SettingsDialog : Form
             BackgroundColor = _backgroundColor.Text,
             BackgroundOpacityPercent = decimal.ToInt32(_backgroundOpacity.Value),
             CornerRadius = decimal.ToInt32(_cornerRadius.Value),
-            FontFamily = (_fontFamily.SelectedItem as FontFamilyOption)?.FontFamily,
+            FontFamily = ReadEnteredFontFamily(),
             ArtistFontSize = decimal.ToInt32(_artistFontSize.Value),
             ArtistFontWeight = GetSelectedFontWeight(_artistFontWeight),
             TrackFontSize = decimal.ToInt32(_trackFontSize.Value),
@@ -768,6 +791,54 @@ internal sealed class SettingsDialog : Form
 
         _fontFamily.Items.AddRange(options.Cast<object>().ToArray());
         SelectFontFamily(selectedFontFamily);
+    }
+
+    private void UpdateFontFamilyDropDownWidth()
+    {
+        var contentWidth = _fontFamily.Items
+            .Cast<object>()
+            .Select(item => TextRenderer.MeasureText(
+                _fontFamily.GetItemText(item),
+                _fontFamily.Font).Width)
+            .DefaultIfEmpty(_fontFamily.Width)
+            .Max();
+        var desiredWidth = Math.Max(
+            _fontFamily.Width,
+            contentWidth + SystemInformation.VerticalScrollBarWidth + 24);
+        var workingAreaWidth = Screen.FromControl(_fontFamily).WorkingArea.Width;
+        var maximumWidth = Math.Max(_fontFamily.Width, workingAreaWidth - 32);
+        _fontFamily.DropDownWidth = Math.Min(desiredWidth, maximumWidth);
+    }
+
+    private string? ReadEnteredFontFamily()
+    {
+        var option = FindEnteredFontFamily();
+        return option is null ? _customAppearanceDraft.FontFamily : option.FontFamily;
+    }
+
+    private bool TrySelectEnteredFontFamily()
+    {
+        var option = FindEnteredFontFamily();
+        if (option is null)
+        {
+            return false;
+        }
+
+        _fontFamily.SelectedItem = option;
+        return true;
+    }
+
+    private FontFamilyOption? FindEnteredFontFamily()
+    {
+        var entered = _fontFamily.Text.Trim();
+        return _fontFamily.Items
+            .OfType<FontFamilyOption>()
+            .FirstOrDefault(option =>
+                string.Equals(option.Label, entered, StringComparison.CurrentCultureIgnoreCase)
+                || string.Equals(
+                    option.FontFamily,
+                    entered,
+                    StringComparison.CurrentCultureIgnoreCase));
     }
 
     private void SelectFontFamily(string? fontFamily)
