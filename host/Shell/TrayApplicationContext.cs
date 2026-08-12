@@ -87,7 +87,19 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 CreateMenuItem(option.MenuText, () => OpenOverlayPreview(option)));
         }
 
-        ((ToolStripDropDownMenu)item.DropDown).ShowImageMargin = false;
+        var dropDown = (ToolStripDropDownMenu)item.DropDown;
+        dropDown.ShowImageMargin = false;
+        dropDown.ShowCheckMargin = false;
+        item.DropDownOpening += (_, _) =>
+        {
+            // Nested WinForms drop-downs can calculate a taller preferred item size at high DPI.
+            // The visible parent item is already scaled correctly, so use its actual height.
+            foreach (ToolStripItem previewItem in item.DropDownItems)
+            {
+                previewItem.AutoSize = false;
+                previewItem.Height = item.Height;
+            }
+        };
         return item;
     }
 
