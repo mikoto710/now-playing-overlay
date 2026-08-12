@@ -23,6 +23,7 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
     private readonly NowPlayingStore _store;
     private readonly ArtworkCache _artworkCache;
     private readonly HostHealthService _healthService;
+    private readonly AppearanceState _appearanceState;
     private readonly ConnectionLimiter _sseLimiter;
     private readonly ConnectionLimiter _requestLimiter;
     private readonly ServerEndpointChangeBroadcaster _endpointChanges;
@@ -41,6 +42,7 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
         NowPlayingStore store,
         ArtworkCache artworkCache,
         HostHealthService healthService,
+        AppearanceState appearanceState,
         ConnectionLimiter sseLimiter,
         ConnectionLimiter requestLimiter,
         ServerEndpointChangeBroadcaster endpointChanges,
@@ -51,6 +53,7 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _artworkCache = artworkCache ?? throw new ArgumentNullException(nameof(artworkCache));
         _healthService = healthService ?? throw new ArgumentNullException(nameof(healthService));
+        _appearanceState = appearanceState ?? throw new ArgumentNullException(nameof(appearanceState));
         _sseLimiter = sseLimiter ?? throw new ArgumentNullException(nameof(sseLimiter));
         _requestLimiter = requestLimiter ?? throw new ArgumentNullException(nameof(requestLimiter));
         _endpointChanges = endpointChanges ?? throw new ArgumentNullException(nameof(endpointChanges));
@@ -305,6 +308,20 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
         {
             var bytes = JsonSerializer.SerializeToUtf8Bytes(
                 NowPlayingStateMapper.Map(_store.Current),
+                ProtocolJson.Options);
+            await HandleGetAndHeadAsync(
+                context,
+                "application/json; charset=utf-8",
+                "no-store",
+                bytes,
+                cancellationToken);
+            return;
+        }
+
+        if (string.Equals(path, "/api/v2/appearance", StringComparison.Ordinal))
+        {
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(
+                AppearanceDtoMapper.Map(_appearanceState.GetCurrent()),
                 ProtocolJson.Options);
             await HandleGetAndHeadAsync(
                 context,

@@ -25,6 +25,7 @@ internal sealed class TrayMenuController
     private readonly Func<SourceManagerState> _getSourceState;
     private readonly Func<CancellationToken, Task<SourceDiscoveryResult>> _refreshSources;
     private readonly Action<string?> _selectWindowsMedia;
+    private readonly Action<AppearanceSettings> _setAppearance;
 
     public TrayMenuController(
         Func<int> getEffectivePort,
@@ -34,7 +35,8 @@ internal sealed class TrayMenuController
         Func<int, Action, CancellationToken, Task> rebindPort,
         Func<SourceManagerState> getSourceState,
         Func<CancellationToken, Task<SourceDiscoveryResult>> refreshSources,
-        Action<string?> selectWindowsMedia)
+        Action<string?> selectWindowsMedia,
+        Action<AppearanceSettings> setAppearance)
         : this(
             getEffectivePort,
             settingsStore,
@@ -45,7 +47,8 @@ internal sealed class TrayMenuController
             rebindPort,
             getSourceState,
             refreshSources,
-            selectWindowsMedia)
+            selectWindowsMedia,
+            setAppearance)
     {
     }
 
@@ -57,7 +60,8 @@ internal sealed class TrayMenuController
         Func<int, Action, CancellationToken, Task> rebindPort,
         Func<SourceManagerState>? getSourceState = null,
         Func<CancellationToken, Task<SourceDiscoveryResult>>? refreshSources = null,
-        Action<string?>? selectWindowsMedia = null)
+        Action<string?>? selectWindowsMedia = null,
+        Action<AppearanceSettings>? setAppearance = null)
     {
         _getEffectivePort = getEffectivePort ?? throw new ArgumentNullException(nameof(getEffectivePort));
         _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
@@ -67,6 +71,7 @@ internal sealed class TrayMenuController
         _refreshSources = refreshSources ?? (_ => Task.FromResult(
             new SourceDiscoveryResult([], _getSourceState())));
         _selectWindowsMedia = selectWindowsMedia ?? (_ => { });
+        _setAppearance = setAppearance ?? (_ => { });
         LogDirectory = Path.GetFullPath(
             logDirectory ?? throw new ArgumentNullException(nameof(logDirectory)));
     }
@@ -96,6 +101,11 @@ internal sealed class TrayMenuController
         CancellationToken cancellationToken = default)
     {
         return _refreshSources(cancellationToken);
+    }
+
+    public AppearanceSettings GetAppearanceSettings()
+    {
+        return _settingsStore.Load().Settings.Appearance;
     }
 
     public async Task<PortChangeResult> SavePortAsync(
@@ -136,8 +146,10 @@ internal sealed class TrayMenuController
     public async Task<SettingsChangeResult> SaveSettingsAsync(
         int port,
         string? sourceAppUserModelId,
+        AppearanceSettings appearance,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(appearance);
         var source = new SourceSelectionSettings
         {
             Provider = SourceProvider.WindowsMedia,
@@ -147,6 +159,7 @@ internal sealed class TrayMenuController
         {
             Port = port,
             Source = source,
+            Appearance = appearance,
         };
         settings.Validate();
 
@@ -159,6 +172,7 @@ internal sealed class TrayMenuController
                 {
                     Port = port,
                     Source = source,
+                    Appearance = appearance,
                 }),
                 cancellationToken);
         }
@@ -168,6 +182,7 @@ internal sealed class TrayMenuController
             {
                 Port = port,
                 Source = source,
+                Appearance = appearance,
             });
         }
 
@@ -180,7 +195,9 @@ internal sealed class TrayMenuController
             _selectWindowsMedia(sourceAppUserModelId);
         }
 
-        return new SettingsChangeResult(portChanged, sourceChanged, OverlayUrl);
+        _setAppearance(appearance);
+
+        return new SettingsChangeResult(portChanged, OverlayUrl);
     }
 
     internal static string BuildOverlayUrl(int port)
@@ -215,5 +232,4 @@ internal sealed record PortChangeResult(
 
 internal sealed record SettingsChangeResult(
     bool PortChanged,
-    bool SourceChanged,
     string OverlayUrl);

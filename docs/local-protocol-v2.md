@@ -8,6 +8,7 @@ This document freezes the local contract shared by the host and browser client. 
 | --- | --- | --- | --- |
 | `GET`, `HEAD` | `/NowPlaying.html` | `no-store` | Embedded production overlay page |
 | `GET`, `HEAD` | `/api/v2/state` | `no-store` | Latest complete state snapshot |
+| `GET`, `HEAD` | `/api/v2/appearance` | `no-store` | Complete effective presentation configuration read once at page load |
 | `GET` | `/api/v2/events` | `no-store` | Server-Sent Events containing complete state snapshots |
 | `GET`, `HEAD` | `/api/v2/artwork/{artworkId}` | one year, `immutable` | Content-addressed PNG, JPEG, or WebP bytes |
 | `GET`, `HEAD` | `/health` | `no-store` | Host and media-source readiness without track metadata |
@@ -60,6 +61,24 @@ The state matrix is:
 Optional track fields are explicit nulls, while `genres` is always an array. Playback values are `playing`, `paused`, `stopped`, `idle`, or `unavailable`; playback types are `unknown`, `music`, `video`, `image`, or null.
 
 `serverInstanceId` changes on each host start. A client compares `snapshotRevision` only within the same instance and resets its baseline when the instance changes.
+
+## Appearance shape
+
+Appearance is a separate, low-frequency presentation contract. It is not part of the state DTO, does not increment `snapshotRevision`, and is not sent over SSE:
+
+```json
+{
+  "appearanceVersion": 1,
+  "preset": "default",
+  "artistColor": "#25C7A0",
+  "trackColor": "#FFFFFF",
+  "backgroundColor": "#1B1D20",
+  "backgroundOpacityPercent": 100,
+  "cornerRadius": 0
+}
+```
+
+The object contains exactly these fields. Colors use canonical uppercase `#RRGGBB`; opacity is an integer from `0` to `100`, and corner radius is an integer from `0` to `35` logical pixels. `preset` is `default` or `custom`, while all remaining fields always contain the final effective values. The page reads the endpoint once before starting the now-playing client and falls back to its built-in Default values if the request or validation fails. Saved changes therefore require a page reload and never change source or playback state.
 
 ## Event stream
 

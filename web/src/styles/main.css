@@ -1,4 +1,8 @@
 :root {
+  --overlay-artist-color: rgb(37, 199, 160);
+  --overlay-track-color: #ffffff;
+  --overlay-background: rgb(27, 29, 32);
+  --overlay-corner-radius: 0;
   color-scheme: dark;
   font-family: "SF Pro Display", "Segoe UI", Helvetica, Arial, sans-serif;
 }
@@ -31,7 +35,8 @@ body {
   height: 70px;
   padding: 0;
   overflow: hidden;
-  background: rgb(27, 29, 32);
+  background: var(--overlay-background);
+  border-radius: var(--overlay-corner-radius);
   transform: translateX(-500px);
 }
 
@@ -105,7 +110,7 @@ body {
 }
 
 .artist {
-  color: rgb(37, 199, 160);
+  color: var(--overlay-artist-color);
   font-family: inherit;
   font-size: 16px;
   font-weight: 600;
@@ -119,7 +124,7 @@ body {
 }
 
 .track {
-  color: #ffffff;
+  color: var(--overlay-track-color);
   font-family: inherit;
   font-size: 22px;
   font-weight: 700;

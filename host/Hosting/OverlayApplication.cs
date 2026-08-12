@@ -15,6 +15,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
     private readonly NowPlayingCoordinator _coordinator;
     private readonly ActiveSourceManager? _activeSourceManager;
     private readonly HostRuntimeState _runtimeState;
+    private readonly AppearanceState _appearanceState;
     private readonly OverlayHttpServer _httpServer;
     private bool _started;
     private bool _disposed;
@@ -25,6 +26,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
         NowPlayingCoordinator coordinator,
         ActiveSourceManager? activeSourceManager,
         HostRuntimeState runtimeState,
+        AppearanceState appearanceState,
         OverlayHttpServer httpServer)
     {
         Options = options;
@@ -32,6 +34,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
         _coordinator = coordinator;
         _activeSourceManager = activeSourceManager;
         _runtimeState = runtimeState;
+        _appearanceState = appearanceState;
         _httpServer = httpServer;
     }
 
@@ -62,7 +65,8 @@ internal sealed class OverlayApplication : IAsyncDisposable
             sessionSource,
             OverlayPageAsset.LoadEmbedded(typeof(OverlayPageAsset).Assembly),
             loggerProvider,
-            sessionSource);
+            sessionSource,
+            settings.Appearance);
     }
 
     internal static OverlayApplication Build(
@@ -75,7 +79,8 @@ internal sealed class OverlayApplication : IAsyncDisposable
             sessionSource,
             pageAsset,
             loggerProvider: null,
-            activeSourceManager: null);
+            activeSourceManager: null,
+            appearance: new AppearanceSettings());
     }
 
     private static OverlayApplication Build(
@@ -83,12 +88,15 @@ internal sealed class OverlayApplication : IAsyncDisposable
         ISessionSource sessionSource,
         OverlayPageAsset pageAsset,
         BoundedFileLoggerProvider? loggerProvider,
-        ActiveSourceManager? activeSourceManager)
+        ActiveSourceManager? activeSourceManager,
+        AppearanceSettings appearance)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(sessionSource);
         ArgumentNullException.ThrowIfNull(pageAsset);
+        ArgumentNullException.ThrowIfNull(appearance);
         options.Validate();
+        appearance.Validate();
 
         var timeProvider = TimeProvider.System;
         var runtimeState = new HostRuntimeState(timeProvider);
@@ -113,12 +121,14 @@ internal sealed class OverlayApplication : IAsyncDisposable
             coordinator,
             sessionSource,
             store);
+        var appearanceState = new AppearanceState(appearance);
         var httpServer = new OverlayHttpServer(
             options,
             pageAsset,
             store,
             artworkCache,
             healthService,
+            appearanceState,
             new ConnectionLimiter(options.MaximumSseConnections),
             new ConnectionLimiter(options.MaximumConcurrentConnections),
             new ServerEndpointChangeBroadcaster(),
@@ -130,6 +140,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
             coordinator,
             activeSourceManager,
             runtimeState,
+            appearanceState,
             httpServer);
     }
 
@@ -160,6 +171,12 @@ internal sealed class OverlayApplication : IAsyncDisposable
         }
 
         _activeSourceManager.SelectWindowsMedia(sourceAppUserModelId);
+    }
+
+    public void SetAppearance(AppearanceSettings appearance)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _appearanceState.Set(appearance);
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)

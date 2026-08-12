@@ -16,6 +16,9 @@ internal sealed class ApplicationSettingsStore
             new JsonStringEnumConverter<SourceProvider>(
                 JsonNamingPolicy.KebabCaseLower,
                 allowIntegerValues: false),
+            new JsonStringEnumConverter<AppearancePreset>(
+                JsonNamingPolicy.KebabCaseLower,
+                allowIntegerValues: false),
         },
     };
     private readonly object _gate = new();
@@ -66,11 +69,19 @@ internal sealed class ApplicationSettingsStore
 
         try
         {
-            var settings = JsonSerializer.Deserialize<ApplicationSettings>(
+            var document = JsonSerializer.Deserialize<ApplicationSettingsDocument>(
                 File.ReadAllText(_filePath),
                 JsonOptions) ?? throw new InvalidDataException("The settings file is empty.");
+            var appearance = ReadAppearance(document.Appearance, out var appearanceWarning);
+            var settings = new ApplicationSettings
+            {
+                Port = document.Port,
+                Source = document.Source
+                    ?? throw new InvalidDataException("The configured source must not be null."),
+                Appearance = appearance,
+            };
             settings.Validate();
-            return new ApplicationSettingsLoadResult(settings, Warning: null);
+            return new ApplicationSettingsLoadResult(settings, appearanceWarning);
         }
         catch (Exception error) when (error is IOException
             or UnauthorizedAccessException
@@ -80,6 +91,31 @@ internal sealed class ApplicationSettingsStore
             return new ApplicationSettingsLoadResult(
                 new ApplicationSettings(),
                 $"Could not read '{_filePath}'; the default settings will be used. {error.Message}");
+        }
+    }
+
+    private AppearanceSettings ReadAppearance(
+        JsonElement? element,
+        out string? warning)
+    {
+        warning = null;
+        if (element is null || element.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return new AppearanceSettings();
+        }
+
+        try
+        {
+            var appearance = element.Value.Deserialize<AppearanceSettings>(JsonOptions)
+                ?? throw new InvalidDataException("The configured appearance is empty.");
+            appearance.Validate();
+            return appearance;
+        }
+        catch (Exception error) when (error is JsonException or InvalidDataException)
+        {
+            warning =
+                $"Could not read the appearance in '{_filePath}'; the default appearance will be used. {error.Message}";
+            return new AppearanceSettings();
         }
     }
 
@@ -105,6 +141,15 @@ internal sealed class ApplicationSettingsStore
                 // The primary write/move result is more useful than a temporary-file cleanup failure.
             }
         }
+    }
+
+    private sealed record ApplicationSettingsDocument
+    {
+        public int Port { get; init; } = HostOptions.DefaultPort;
+
+        public SourceSelectionSettings? Source { get; init; } = new();
+
+        public JsonElement? Appearance { get; init; }
     }
 }
 

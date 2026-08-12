@@ -148,6 +148,49 @@ public sealed class TrayMenuControllerTests
     }
 
     [Fact]
+    public async Task CombinedSettingsSavePersistsAndActivatesCustomAppearance()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var store = new ApplicationSettingsStore(path);
+        store.Save(new ApplicationSettings { Port = 13000 });
+        string? activatedSource = null;
+        AppearanceSettings? activatedAppearance = null;
+        var controller = new TrayMenuController(
+            () => 13000,
+            store,
+            () => new HostStatus("Source Not Configured", IsFaulted: false),
+            directory.Path,
+            (_, _, _) => Task.CompletedTask,
+            selectWindowsMedia: value => activatedSource = value,
+            setAppearance: value => activatedAppearance = value);
+        var appearance = new AppearanceSettings
+        {
+            Preset = AppearancePreset.Custom,
+            Custom = new CustomAppearanceSettings
+            {
+                ArtistColor = "#123456",
+                TrackColor = "#ABCDEF",
+                BackgroundColor = "#102030",
+                BackgroundOpacityPercent = 65,
+                CornerRadius = 12,
+            },
+        };
+
+        var result = await controller.SaveSettingsAsync(
+            13000,
+            "Player.App!Exact",
+            appearance);
+
+        var saved = store.Load().Settings;
+        Assert.False(result.PortChanged);
+        Assert.Equal("Player.App!Exact", saved.Source.SourceAppUserModelId);
+        Assert.Equal(appearance, saved.Appearance);
+        Assert.Equal("Player.App!Exact", activatedSource);
+        Assert.Equal(appearance, activatedAppearance);
+    }
+
+    [Fact]
     public void LoopbackProbeRejectsAnOccupiedPort()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);

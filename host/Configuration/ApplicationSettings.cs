@@ -8,6 +8,8 @@ internal sealed record ApplicationSettings
 
     public SourceSelectionSettings Source { get; init; } = new();
 
+    public AppearanceSettings Appearance { get; init; } = new();
+
     public void Validate()
     {
         if (Port is < 1 or > 65535)
@@ -21,6 +23,13 @@ internal sealed record ApplicationSettings
         }
 
         Source.Validate();
+
+        if (Appearance is null)
+        {
+            throw new InvalidDataException("The configured appearance must not be null.");
+        }
+
+        Appearance.Validate();
     }
 }
 

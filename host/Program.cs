@@ -88,7 +88,8 @@ internal static class Program
                     app.RebindPortAsync(port, persistPort, cancellationToken),
                 app.GetSourceState,
                 app.RefreshWindowsMediaSourcesAsync,
-                app.SelectWindowsMedia);
+                app.SelectWindowsMedia,
+                app.SetAppearance);
             var logger = new BoundedFileLoggerProvider(logFile).CreateLogger<TrayApplicationContext>();
             using var tray = new TrayApplicationContext(controller, logger);
             Application.Run(tray);

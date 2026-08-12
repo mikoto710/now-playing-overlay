@@ -102,6 +102,21 @@ async (page) => {
       status: 200,
     }),
   );
+  await page.route("**/api/v2/appearance", (route) =>
+    route.fulfill({
+      body: JSON.stringify({
+        appearanceVersion: 1,
+        preset: "default",
+        artistColor: "#25C7A0",
+        trackColor: "#FFFFFF",
+        backgroundColor: "#1B1D20",
+        backgroundOpacityPercent: 100,
+        cornerRadius: 0,
+      }),
+      contentType: "application/json",
+      status: 200,
+    }),
+  );
   await page.route("**/api/v2/artwork/**", async (route) => {
     const artworkId = route.request().url().split("/").at(-1);
     if (artworkId === artworkIds.delayed) {
@@ -255,6 +270,22 @@ async (page) => {
     defaultLayout.artworkObjectFit === "contain",
     "Artwork must retain contain composition.",
   );
+
+  await page.evaluate(() => {
+    const style = document.documentElement.style;
+    style.setProperty("--overlay-artist-color", "#123456");
+    style.setProperty("--overlay-track-color", "#ABCDEF");
+    style.setProperty("--overlay-background", "rgba(16, 32, 48, 0.65)");
+    style.setProperty("--overlay-corner-radius", "12px");
+  });
+  const customLayout = await readLayout();
+  assert(customLayout.artistColor === "rgb(18, 52, 86)", "Custom artist color was not applied.");
+  assert(customLayout.trackColor === "rgb(171, 205, 239)", "Custom track color was not applied.");
+  assert(
+    customLayout.rootBackground === "rgba(16, 32, 48, 0.65)",
+    "Custom background color and opacity were not applied.",
+  );
+  assert(customLayout.rootBorderRadius === "12px", "Custom corner radius was not applied.");
   assert(
     !(await page
       .locator("#artist")

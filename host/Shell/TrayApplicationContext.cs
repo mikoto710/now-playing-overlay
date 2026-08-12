@@ -153,6 +153,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 using var dialog = new SettingsDialog(
                     _controller.EffectivePort,
                     discovery,
+                    _controller.GetAppearanceSettings(),
                     _controller.RefreshSourcesAsync);
                 if (dialog.ShowDialog() != DialogResult.OK)
                 {
@@ -161,7 +162,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
                 var result = await _controller.SaveSettingsAsync(
                     dialog.SelectedPort,
-                    dialog.SelectedSourceAppUserModelId);
+                    dialog.SelectedSourceAppUserModelId,
+                    dialog.SelectedAppearance);
                 if (result.PortChanged)
                 {
                     MessageBox.Show(

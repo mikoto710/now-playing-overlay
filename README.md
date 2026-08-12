@@ -29,7 +29,7 @@ The .NET 10 SDK also supplies the required runtimes, but end users do not need t
 2. Optionally verify the ZIP against the published SHA-256, then extract it. Keep `README.md` and `LICENSE` for reference; the application itself only needs `NowPlayingOverlay.exe` at runtime.
 3. Place the executable in a directory where you want to keep it, then run it.
 4. Look for the Now Playing Overlay icon in the Windows notification area. The application intentionally has no main window.
-5. Open **Settings...** from the tray, select an exact player ID, save, and play a track. The tray status should change to that source's playback status.
+5. Open **Settings...** from the tray. On **General**, select an exact player ID; optionally use **Appearance** to choose the Default style or configure the supported colors, background opacity, and corner radius. Save, then play a track.
 
 Only one instance can run for the current Windows user. The current preview has no installer, automatic updater, or code signature; only run an executable obtained from a source you trust.
 
@@ -59,8 +59,14 @@ The overlay is visible only while the selected player reports a playing track. P
 | **Copy OBS URL**      | Copies the URL for the current running port.                                                 |
 | **Open Overlay Preview** | Opens the overlay at a selected preview resolution. Double-click opens the default size.  |
 | **Open Logs**         | Opens the application log directory.                                                         |
-| **Settings...**       | Refreshes/selects a Windows Media player and configures the loopback port.                   |
+| **Settings...**       | Opens General source/port settings and the Appearance tab.                                  |
 | **Exit**              | Stops the local server and exits the application.                                            |
+
+## Customize the appearance
+
+Open **Settings...**, then select the **Appearance** tab. **Default** preserves the original green-artist, white-track, opaque dark-background style. **Custom** supports artist color, track color, background color, background opacity from `0` to `100` percent, and an overall corner radius from `0` to `35` logical pixels. **Reset to Default** restores all five values and selects Default.
+
+Appearance is saved together with the General settings. **Cancel** discards all pending changes. A newly opened Preview or OBS page uses the saved appearance; refresh an already loaded page to apply a change.
 
 ## Connection and startup behavior
 

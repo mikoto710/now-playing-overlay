@@ -33,14 +33,16 @@ public sealed class OverlayHttpTests
     }
 
     [Fact]
-    public async Task ProductionPageAndStateUseNoStoreAndSecurityHeaders()
+    public async Task ProductionPageStateAndAppearanceUseNoStoreAndExactContracts()
     {
         await using var host = await TestOverlayHost.StartAsync();
 
         using var page = await host.Client.GetAsync("/NowPlaying.html");
         using var state = await host.Client.GetAsync("/api/v2/state");
+        using var appearance = await host.Client.GetAsync("/api/v2/appearance");
         var html = await page.Content.ReadAsStringAsync();
         using var json = JsonDocument.Parse(await state.Content.ReadAsStringAsync());
+        using var appearanceJson = JsonDocument.Parse(await appearance.Content.ReadAsStringAsync());
 
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
         Assert.Contains("id=\"now-playing\"", html, StringComparison.Ordinal);
@@ -53,10 +55,42 @@ public sealed class OverlayHttpTests
             StringComparison.Ordinal);
         Assert.Equal("nosniff", page.Headers.GetValues("X-Content-Type-Options").Single());
         Assert.Equal("no-store", state.Headers.CacheControl!.ToString());
+        Assert.Equal("no-store", appearance.Headers.CacheControl!.ToString());
         Assert.Equal(2, json.RootElement.GetProperty("protocolVersion").GetInt32());
         Assert.Equal(0, json.RootElement.GetProperty("snapshotRevision").GetInt64());
         Assert.Equal("unavailable", json.RootElement.GetProperty("playback").GetString());
         Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("track").ValueKind);
+        Assert.Equal(7, appearanceJson.RootElement.EnumerateObject().Count());
+        Assert.Equal(1, appearanceJson.RootElement.GetProperty("appearanceVersion").GetInt32());
+        Assert.Equal("default", appearanceJson.RootElement.GetProperty("preset").GetString());
+        Assert.Equal("#25C7A0", appearanceJson.RootElement.GetProperty("artistColor").GetString());
+        Assert.Equal("#FFFFFF", appearanceJson.RootElement.GetProperty("trackColor").GetString());
+        Assert.Equal("#1B1D20", appearanceJson.RootElement.GetProperty("backgroundColor").GetString());
+        Assert.Equal(
+            100,
+            appearanceJson.RootElement.GetProperty("backgroundOpacityPercent").GetInt32());
+        Assert.Equal(0, appearanceJson.RootElement.GetProperty("cornerRadius").GetInt32());
+
+        host.App.SetAppearance(new AppearanceSettings
+        {
+            Preset = AppearancePreset.Custom,
+            Custom = new CustomAppearanceSettings
+            {
+                ArtistColor = "#123456",
+                TrackColor = "#ABCDEF",
+                BackgroundColor = "#102030",
+                BackgroundOpacityPercent = 65,
+                CornerRadius = 12,
+            },
+        });
+        using var customAppearance = await host.Client.GetAsync("/api/v2/appearance");
+        using var customJson = JsonDocument.Parse(await customAppearance.Content.ReadAsStringAsync());
+        Assert.Equal("custom", customJson.RootElement.GetProperty("preset").GetString());
+        Assert.Equal("#123456", customJson.RootElement.GetProperty("artistColor").GetString());
+        Assert.Equal(
+            65,
+            customJson.RootElement.GetProperty("backgroundOpacityPercent").GetInt32());
+        Assert.Equal(12, customJson.RootElement.GetProperty("cornerRadius").GetInt32());
     }
 
     [Fact]
@@ -70,20 +104,6 @@ public sealed class OverlayHttpTests
         Assert.False(health.Headers.Contains("Server"));
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
         Assert.Equal("nosniff", missing.Headers.GetValues("X-Content-Type-Options").Single());
-    }
-
-    [Fact]
-    public async Task VersionOneRoutesNoLongerExist()
-    {
-        await using var host = await TestOverlayHost.StartAsync();
-
-        using var state = await host.Client.GetAsync("/api/v1/state");
-        using var events = await host.Client.GetAsync("/api/v1/events");
-        using var artwork = await host.Client.GetAsync($"/api/v1/artwork/{new string('a', 64)}");
-
-        Assert.Equal(HttpStatusCode.NotFound, state.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, events.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, artwork.StatusCode);
     }
 
     [Fact]

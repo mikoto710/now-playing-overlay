@@ -17,6 +17,10 @@ public sealed class ApplicationSettingsStoreTests
         Assert.Equal(HostOptions.DefaultPort, result.Settings.Port);
         Assert.Equal(SourceProvider.WindowsMedia, result.Settings.Source.Provider);
         Assert.Null(result.Settings.Source.SourceAppUserModelId);
+        Assert.Equal(AppearancePreset.Default, result.Settings.Appearance.Preset);
+        Assert.Equal(
+            CustomAppearanceSettings.DefaultArtistColor,
+            result.Settings.Appearance.Custom.ArtistColor);
         Assert.Null(result.Warning);
     }
 
@@ -53,7 +57,7 @@ public sealed class ApplicationSettingsStoreTests
     }
 
     [Fact]
-    public void SaveAndLoadRoundTripsExactWindowsMediaSelection()
+    public void SaveAndLoadRoundTripsExactSourceAndCustomAppearance()
     {
         using var directory = new TemporaryDirectory();
         var path = Path.Combine(directory.Path, "settings.json");
@@ -67,13 +71,69 @@ public sealed class ApplicationSettingsStoreTests
                 Provider = SourceProvider.WindowsMedia,
                 SourceAppUserModelId = "Player.App!Exact",
             },
+            Appearance = new AppearanceSettings
+            {
+                Preset = AppearancePreset.Custom,
+                Custom = new CustomAppearanceSettings
+                {
+                    ArtistColor = "#123456",
+                    TrackColor = "#ABCDEF",
+                    BackgroundColor = "#102030",
+                    BackgroundOpacityPercent = 65,
+                    CornerRadius = 12,
+                },
+            },
         });
         var result = store.Load();
 
         Assert.Equal("Player.App!Exact", result.Settings.Source.SourceAppUserModelId);
+        Assert.Equal(AppearancePreset.Custom, result.Settings.Appearance.Preset);
+        Assert.Equal("#123456", result.Settings.Appearance.Custom.ArtistColor);
+        Assert.Equal(65, result.Settings.Appearance.Custom.BackgroundOpacityPercent);
+        Assert.Equal(12, result.Settings.Appearance.Custom.CornerRadius);
         var json = File.ReadAllText(path);
         Assert.Contains("\"provider\": \"windows-media\"", json, StringComparison.Ordinal);
         Assert.Contains("\"sourceAppUserModelId\": \"Player.App!Exact\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"preset\": \"custom\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InvalidAppearanceFallsBackWithoutDiscardingCoreSettings()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        File.WriteAllText(
+            path,
+            """
+            {
+              "port": 13130,
+              "source": {
+                "provider": "windows-media",
+                "sourceAppUserModelId": "Player.App!Exact"
+              },
+              "appearance": {
+                "preset": "custom",
+                "custom": {
+                  "artistColor": "#123456",
+                  "trackColor": "#ABCDEF",
+                  "backgroundColor": "#102030",
+                  "backgroundOpacityPercent": 65,
+                  "cornerRadius": 99
+                }
+              }
+            }
+            """);
+        var store = new ApplicationSettingsStore(path);
+
+        var result = store.Load();
+
+        Assert.Equal(13130, result.Settings.Port);
+        Assert.Equal("Player.App!Exact", result.Settings.Source.SourceAppUserModelId);
+        Assert.Equal(AppearancePreset.Default, result.Settings.Appearance.Preset);
+        Assert.Equal(
+            CustomAppearanceSettings.DefaultBackgroundColor,
+            result.Settings.Appearance.Custom.BackgroundColor);
+        Assert.Contains("default appearance", result.Warning, StringComparison.Ordinal);
     }
 
     [Theory]
