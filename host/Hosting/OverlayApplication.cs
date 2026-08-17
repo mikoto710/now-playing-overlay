@@ -14,6 +14,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
 {
     private readonly NowPlayingCoordinator _coordinator;
     private readonly ActiveSourceManager? _activeSourceManager;
+    private readonly WindowsMediaSource? _windowsMediaSource;
     private readonly HostRuntimeState _runtimeState;
     private readonly AppearanceState _appearanceState;
     private readonly OverlayHttpServer _httpServer;
@@ -25,6 +26,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
         HostStatusService statusService,
         NowPlayingCoordinator coordinator,
         ActiveSourceManager? activeSourceManager,
+        WindowsMediaSource? windowsMediaSource,
         HostRuntimeState runtimeState,
         AppearanceState appearanceState,
         OverlayHttpServer httpServer)
@@ -33,6 +35,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
         StatusService = statusService;
         _coordinator = coordinator;
         _activeSourceManager = activeSourceManager;
+        _windowsMediaSource = windowsMediaSource;
         _runtimeState = runtimeState;
         _appearanceState = appearanceState;
         _httpServer = httpServer;
@@ -55,17 +58,20 @@ internal sealed class OverlayApplication : IAsyncDisposable
         var loggerProvider = applicationLog is null
             ? null
             : new BoundedFileLoggerProvider(applicationLog);
-        var sessionSource = new ActiveSourceManager(
+        var windowsMediaSource = new WindowsMediaSource(
             new WindowsMediaSessionManagerFactory(),
             new WindowsMediaSessionMatcher(),
-            settings.Source.ToDescriptor(),
-            CreateLogger<ActiveSourceManager>(loggerProvider));
+            CreateLogger<WindowsMediaSource>(loggerProvider));
+        var sessionSource = new ActiveSourceManager(
+            [windowsMediaSource],
+            settings.Source.ToDescriptor());
         return Build(
             options,
             sessionSource,
             OverlayPageAsset.LoadEmbedded(typeof(OverlayPageAsset).Assembly),
             loggerProvider,
             sessionSource,
+            windowsMediaSource,
             settings.Appearance);
     }
 
@@ -80,6 +86,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
             pageAsset,
             loggerProvider: null,
             activeSourceManager: null,
+            windowsMediaSource: null,
             appearance: new AppearanceSettings());
     }
 
@@ -89,6 +96,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
         OverlayPageAsset pageAsset,
         BoundedFileLoggerProvider? loggerProvider,
         ActiveSourceManager? activeSourceManager,
+        WindowsMediaSource? windowsMediaSource,
         AppearanceSettings appearance)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -139,6 +147,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
             statusService,
             coordinator,
             activeSourceManager,
+            windowsMediaSource,
             runtimeState,
             appearanceState,
             httpServer);
@@ -154,12 +163,12 @@ internal sealed class OverlayApplication : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_activeSourceManager is null)
+        if (_windowsMediaSource is null)
         {
-            throw new InvalidOperationException("This host does not have a configurable source manager.");
+            throw new InvalidOperationException("This host does not have Windows Media discovery.");
         }
 
-        return _activeSourceManager.RefreshWindowsMediaSourcesAsync(cancellationToken);
+        return _windowsMediaSource.RefreshSourcesAsync(cancellationToken);
     }
 
     public void SelectWindowsMedia(string? sourceAppUserModelId)
@@ -170,7 +179,10 @@ internal sealed class OverlayApplication : IAsyncDisposable
             throw new InvalidOperationException("This host does not have a configurable source manager.");
         }
 
-        _activeSourceManager.SelectWindowsMedia(sourceAppUserModelId);
+        _activeSourceManager.Select(
+            string.IsNullOrWhiteSpace(sourceAppUserModelId)
+                ? null
+                : SourceDescriptor.WindowsMedia(sourceAppUserModelId));
     }
 
     public void SetAppearance(AppearanceSettings appearance)

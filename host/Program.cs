@@ -72,7 +72,7 @@ internal static class Program
         }
 
         OverlayApplication? app = null;
-        NowPlayingOverlay.Host.Configuration.HostOptions? options = null;
+        HostOptions? options = null;
         try
         {
             app = OverlayApplication.Build(args, loadedSettings.Settings, logFile);
