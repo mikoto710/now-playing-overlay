@@ -28,4 +28,9 @@ internal sealed record SourceDescriptor
             SourceKey.WindowsMedia(sourceAppUserModelId),
             string.IsNullOrWhiteSpace(displayName) ? sourceAppUserModelId : displayName);
     }
+
+    public static SourceDescriptor SpotifyApi()
+    {
+        return new SourceDescriptor(SourceKey.SpotifyApi(), SourceProvider.SpotifyApi.ToDisplayName());
+    }
 }

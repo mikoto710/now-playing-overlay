@@ -36,6 +36,13 @@ internal enum SourceStatusReason
     Missing,
     Ambiguous,
     PlatformUnavailable,
+    AuthorizationRequired,
+    Forbidden,
+    RateLimited,
+    NetworkUnavailable,
+    ServiceUnavailable,
+    Unsupported,
+    Stale,
     Faulted,
 }
 

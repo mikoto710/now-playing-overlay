@@ -2,6 +2,8 @@ namespace NowPlayingOverlay.Host.Media;
 
 internal sealed record SourceKey
 {
+    private const string SpotifyCurrentAccountInstanceId = "current-account";
+
     public SourceKey(SourceProvider provider, string instanceId)
     {
         if (!Enum.IsDefined(provider))
@@ -28,5 +30,10 @@ internal sealed record SourceKey
     public static SourceKey WindowsMedia(string sourceAppUserModelId)
     {
         return new SourceKey(SourceProvider.WindowsMedia, sourceAppUserModelId);
+    }
+
+    public static SourceKey SpotifyApi()
+    {
+        return new SourceKey(SourceProvider.SpotifyApi, SpotifyCurrentAccountInstanceId);
     }
 }

@@ -3,6 +3,7 @@ namespace NowPlayingOverlay.Host.Media;
 internal enum SourceProvider
 {
     WindowsMedia,
+    SpotifyApi,
 }
 
 internal static class SourceProviderExtensions
@@ -12,6 +13,7 @@ internal static class SourceProviderExtensions
         return provider switch
         {
             SourceProvider.WindowsMedia => "windows-media",
+            SourceProvider.SpotifyApi => "spotify-api",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(provider),
                 provider,
@@ -24,6 +26,7 @@ internal static class SourceProviderExtensions
         return provider switch
         {
             SourceProvider.WindowsMedia => "Windows Media",
+            SourceProvider.SpotifyApi => "Spotify API",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(provider),
                 provider,

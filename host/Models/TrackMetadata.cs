@@ -13,7 +13,8 @@ internal sealed class TrackMetadata : IEquatable<TrackMetadata>
         uint? trackNumber,
         uint? albumTrackCount,
         MediaPlaybackKind? playbackType,
-        IReadOnlyList<string> genres)
+        IReadOnlyList<string> genres,
+        string? providerTrackId)
     {
         Title = title;
         Artist = artist;
@@ -24,6 +25,7 @@ internal sealed class TrackMetadata : IEquatable<TrackMetadata>
         AlbumTrackCount = albumTrackCount;
         PlaybackType = playbackType;
         _genres = genres;
+        ProviderTrackId = providerTrackId;
     }
 
     public string Title { get; }
@@ -44,6 +46,8 @@ internal sealed class TrackMetadata : IEquatable<TrackMetadata>
 
     public IReadOnlyList<string> Genres => _genres;
 
+    public string? ProviderTrackId { get; }
+
     public static TrackMetadata Create(
         string? title,
         string? artist,
@@ -53,7 +57,8 @@ internal sealed class TrackMetadata : IEquatable<TrackMetadata>
         uint? trackNumber = null,
         uint? albumTrackCount = null,
         MediaPlaybackKind? playbackType = null,
-        IEnumerable<string?>? genres = null)
+        IEnumerable<string?>? genres = null,
+        string? providerTrackId = null)
     {
         var normalizedTitle = MediaTextNormalizer.Normalize(title);
         if (normalizedTitle.Length == 0)
@@ -66,6 +71,7 @@ internal sealed class TrackMetadata : IEquatable<TrackMetadata>
         var normalizedAlbumArtist = NormalizeOptional(albumArtist);
         var normalizedSubtitle = NormalizeOptional(subtitle);
         var normalizedGenres = NormalizeGenres(genres);
+        var normalizedProviderTrackId = NormalizeOptional(providerTrackId);
 
         if (playbackType is not null && !Enum.IsDefined(playbackType.Value))
         {
@@ -84,7 +90,8 @@ internal sealed class TrackMetadata : IEquatable<TrackMetadata>
             NormalizePositiveNumber(trackNumber),
             NormalizePositiveNumber(albumTrackCount),
             playbackType,
-            normalizedGenres);
+            normalizedGenres,
+            normalizedProviderTrackId);
     }
 
     public bool Equals(TrackMetadata? other)
@@ -99,6 +106,7 @@ internal sealed class TrackMetadata : IEquatable<TrackMetadata>
             && TrackNumber == other.TrackNumber
             && AlbumTrackCount == other.AlbumTrackCount
             && PlaybackType == other.PlaybackType
+            && string.Equals(ProviderTrackId, other.ProviderTrackId, StringComparison.Ordinal)
             && Genres.SequenceEqual(other.Genres, StringComparer.Ordinal);
     }
 
@@ -118,6 +126,7 @@ internal sealed class TrackMetadata : IEquatable<TrackMetadata>
         hash.Add(TrackNumber);
         hash.Add(AlbumTrackCount);
         hash.Add(PlaybackType);
+        hash.Add(ProviderTrackId, StringComparer.Ordinal);
         foreach (var genre in Genres)
         {
             hash.Add(genre, StringComparer.Ordinal);

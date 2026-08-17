@@ -88,16 +88,20 @@ internal sealed class SpotifyTokenRequestException : Exception
     public SpotifyTokenRequestException(
         HttpStatusCode statusCode,
         string? errorCode,
-        string message)
+        string message,
+        TimeSpan? retryAfter = null)
         : base(message)
     {
         StatusCode = statusCode;
         ErrorCode = errorCode;
+        RetryAfter = retryAfter;
     }
 
     public HttpStatusCode StatusCode { get; }
 
     public string? ErrorCode { get; }
+
+    public TimeSpan? RetryAfter { get; }
 
     public bool RequiresReauthorization =>
         string.Equals(ErrorCode, "invalid_grant", StringComparison.Ordinal);
