@@ -118,6 +118,29 @@ public sealed class ApplicationSettingsStoreTests
     }
 
     [Fact]
+    public void SaveAndLoadRoundTripsSpotifySelectionAndDormantWindowsSource()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var store = new ApplicationSettingsStore(path);
+        store.Save(new ApplicationSettings
+        {
+            Source = new SourceSelectionSettings
+            {
+                Provider = SourceProvider.SpotifyApi,
+                SourceAppUserModelId = "Player.App!Exact",
+            },
+            Spotify = new SpotifyConnectionSettings { ClientId = "client-id" },
+        });
+
+        var saved = store.Load().Settings;
+
+        Assert.Equal(SourceProvider.SpotifyApi, saved.Source.Provider);
+        Assert.Equal("Player.App!Exact", saved.Source.SourceAppUserModelId);
+        Assert.Equal("client-id", saved.Spotify.ClientId);
+    }
+
+    [Fact]
     public void StyleOneCustomAppearanceKeepsColorsAndReceivesTypographyDefaults()
     {
         using var directory = new TemporaryDirectory();

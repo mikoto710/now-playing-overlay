@@ -75,7 +75,7 @@ internal static class Program
         HostOptions? options = null;
         try
         {
-            app = OverlayApplication.Build(args, loadedSettings.Settings, logFile);
+            app = OverlayApplication.Build(args, loadedSettings.Settings, paths, logFile);
             options = app.Options;
             app.StartAsync().GetAwaiter().GetResult();
 
@@ -88,7 +88,12 @@ internal static class Program
                     app.RebindPortAsync(port, persistPort, cancellationToken),
                 app.GetSourceState,
                 app.RefreshWindowsMediaSourcesAsync,
-                app.SelectWindowsMedia,
+                app.SelectSource,
+                app.GetSpotifyConnectionState,
+                (clientId, reauthorize, cancellationToken) => reauthorize
+                    ? app.ReauthorizeSpotifyAsync(clientId, cancellationToken)
+                    : app.ConnectSpotifyAsync(clientId, cancellationToken),
+                app.DisconnectSpotifyAsync,
                 app.SetAppearance);
             var logger = new BoundedFileLoggerProvider(logFile).CreateLogger<TrayApplicationContext>();
             using var tray = new TrayApplicationContext(controller, logger);

@@ -1,6 +1,7 @@
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Media.Sources;
+using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using OverlayHostOptions = NowPlayingOverlay.Host.Configuration.HostOptions;
 
 namespace NowPlayingOverlay.Host.Shell;
@@ -24,7 +25,11 @@ internal sealed class TrayMenuController
     private readonly Func<int, Action, CancellationToken, Task> _rebindPort;
     private readonly Func<SourceManagerState> _getSourceState;
     private readonly Func<CancellationToken, Task<SourceDiscoveryResult>> _refreshSources;
-    private readonly Action<string?> _selectWindowsMedia;
+    private readonly Action<SourceSelectionSettings> _selectSource;
+    private readonly Func<SpotifyClientId, SpotifyConnectionState> _getSpotifyConnectionState;
+    private readonly Func<SpotifyClientId, bool, CancellationToken, Task<SpotifyConnectionState>>
+        _authorizeSpotify;
+    private readonly Func<CancellationToken, Task> _disconnectSpotify;
     private readonly Action<AppearanceSettings> _setAppearance;
 
     public TrayMenuController(
@@ -35,7 +40,10 @@ internal sealed class TrayMenuController
         Func<int, Action, CancellationToken, Task> rebindPort,
         Func<SourceManagerState> getSourceState,
         Func<CancellationToken, Task<SourceDiscoveryResult>> refreshSources,
-        Action<string?> selectWindowsMedia,
+        Action<SourceSelectionSettings> selectSource,
+        Func<SpotifyClientId, SpotifyConnectionState> getSpotifyConnectionState,
+        Func<SpotifyClientId, bool, CancellationToken, Task<SpotifyConnectionState>> authorizeSpotify,
+        Func<CancellationToken, Task> disconnectSpotify,
         Action<AppearanceSettings> setAppearance)
         : this(
             getEffectivePort,
@@ -47,7 +55,10 @@ internal sealed class TrayMenuController
             rebindPort,
             getSourceState,
             refreshSources,
-            selectWindowsMedia,
+            selectSource,
+            getSpotifyConnectionState,
+            authorizeSpotify,
+            disconnectSpotify,
             setAppearance)
     {
     }
@@ -60,7 +71,11 @@ internal sealed class TrayMenuController
         Func<int, Action, CancellationToken, Task> rebindPort,
         Func<SourceManagerState>? getSourceState = null,
         Func<CancellationToken, Task<SourceDiscoveryResult>>? refreshSources = null,
-        Action<string?>? selectWindowsMedia = null,
+        Action<SourceSelectionSettings>? selectSource = null,
+        Func<SpotifyClientId, SpotifyConnectionState>? getSpotifyConnectionState = null,
+        Func<SpotifyClientId, bool, CancellationToken, Task<SpotifyConnectionState>>?
+            authorizeSpotify = null,
+        Func<CancellationToken, Task>? disconnectSpotify = null,
         Action<AppearanceSettings>? setAppearance = null)
     {
         _getEffectivePort = getEffectivePort ?? throw new ArgumentNullException(nameof(getEffectivePort));
@@ -70,7 +85,13 @@ internal sealed class TrayMenuController
         _getSourceState = getSourceState ?? (() => SourceManagerState.Unconfigured);
         _refreshSources = refreshSources ?? (_ => Task.FromResult(
             new SourceDiscoveryResult([], _getSourceState())));
-        _selectWindowsMedia = selectWindowsMedia ?? (_ => { });
+        _selectSource = selectSource ?? (_ => { });
+        _getSpotifyConnectionState = getSpotifyConnectionState
+            ?? (_ => new SpotifyConnectionState(SpotifyConnectionStatus.Disconnected));
+        _authorizeSpotify = authorizeSpotify
+            ?? ((_, _, _) => Task.FromResult(
+                new SpotifyConnectionState(SpotifyConnectionStatus.Disconnected)));
+        _disconnectSpotify = disconnectSpotify ?? (_ => Task.CompletedTask);
         _setAppearance = setAppearance ?? (_ => { });
         LogDirectory = Path.GetFullPath(
             logDirectory ?? throw new ArgumentNullException(nameof(logDirectory)));
@@ -103,9 +124,71 @@ internal sealed class TrayMenuController
         return _refreshSources(cancellationToken);
     }
 
-    public AppearanceSettings GetAppearanceSettings()
+    public ApplicationSettings GetSettings()
     {
-        return _settingsStore.Load().Settings.Appearance;
+        return _settingsStore.Load().Settings;
+    }
+
+    public SpotifyConnectionSnapshot GetSpotifyConnection()
+    {
+        var clientId = _settingsStore.Load().Settings.Spotify.ClientId;
+        if (clientId is null)
+        {
+            return SpotifyConnectionSnapshot.Disconnected;
+        }
+
+        var typedClientId = new SpotifyClientId(clientId);
+        return new SpotifyConnectionSnapshot(clientId, _getSpotifyConnectionState(typedClientId));
+    }
+
+    public async Task<SpotifyConnectionSnapshot> AuthorizeSpotifyAsync(
+        string clientId,
+        bool reauthorize,
+        CancellationToken cancellationToken = default)
+    {
+        var typedClientId = new SpotifyClientId(clientId);
+        var state = await _authorizeSpotify(
+            typedClientId,
+            reauthorize,
+            cancellationToken);
+        if (state.Status != SpotifyConnectionStatus.Connected)
+        {
+            return new SpotifyConnectionSnapshot(typedClientId.Value, state);
+        }
+
+        _settingsStore.Update(current => current with
+        {
+            Spotify = new SpotifyConnectionSettings { ClientId = typedClientId.Value },
+        });
+        return new SpotifyConnectionSnapshot(typedClientId.Value, state);
+    }
+
+    public async Task<SpotifyConnectionSnapshot> DisconnectSpotifyAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await _disconnectSpotify(cancellationToken);
+        SourceSelectionSettings? fallback = null;
+        _settingsStore.Update(current =>
+        {
+            var source = current.Source;
+            if (source.Provider == SourceProvider.SpotifyApi)
+            {
+                source = source with { Provider = SourceProvider.WindowsMedia };
+                fallback = source;
+            }
+
+            return current with
+            {
+                Source = source,
+                Spotify = new SpotifyConnectionSettings(),
+            };
+        });
+        if (fallback is not null)
+        {
+            _selectSource(fallback);
+        }
+
+        return SpotifyConnectionSnapshot.Disconnected;
     }
 
     public async Task<PortChangeResult> SavePortAsync(
@@ -131,20 +214,9 @@ internal sealed class TrayMenuController
             OverlayUrl);
     }
 
-    public void SaveSource(string? sourceAppUserModelId)
-    {
-        var source = new SourceSelectionSettings
-        {
-            Provider = SourceProvider.WindowsMedia,
-            SourceAppUserModelId = sourceAppUserModelId,
-        };
-        source.Validate();
-        _settingsStore.Update(current => current with { Source = source });
-        _selectWindowsMedia(sourceAppUserModelId);
-    }
-
     public async Task<SettingsChangeResult> SaveSettingsAsync(
         int port,
+        SourceProvider provider,
         string? sourceAppUserModelId,
         AppearanceSettings appearance,
         CancellationToken cancellationToken = default)
@@ -152,16 +224,26 @@ internal sealed class TrayMenuController
         ArgumentNullException.ThrowIfNull(appearance);
         var source = new SourceSelectionSettings
         {
-            Provider = SourceProvider.WindowsMedia,
+            Provider = provider,
             SourceAppUserModelId = sourceAppUserModelId,
         };
-        var settings = new ApplicationSettings
+        var currentSettings = _settingsStore.Load().Settings;
+        var settings = currentSettings with
         {
             Port = port,
             Source = source,
             Appearance = appearance,
         };
         settings.Validate();
+        if (provider == SourceProvider.SpotifyApi)
+        {
+            var clientId = settings.Spotify.ToClientId()
+                ?? throw new InvalidDataException("Connect Spotify before selecting Spotify API.");
+            if (_getSpotifyConnectionState(clientId).Status != SpotifyConnectionStatus.Connected)
+            {
+                throw new InvalidDataException("Reconnect Spotify before selecting Spotify API.");
+            }
+        }
 
         var portChanged = port != EffectivePort;
         if (portChanged)
@@ -186,13 +268,13 @@ internal sealed class TrayMenuController
             });
         }
 
-        var sourceChanged = !string.Equals(
-            GetSourceState().ActiveSource?.Key.InstanceId,
-            sourceAppUserModelId,
-            StringComparison.Ordinal);
+        var selectedDescriptor = source.ToDescriptor();
+        var sourceChanged = !Equals(
+            GetSourceState().ActiveSource?.Key,
+            selectedDescriptor?.Key);
         if (sourceChanged)
         {
-            _selectWindowsMedia(sourceAppUserModelId);
+            _selectSource(source);
         }
 
         _setAppearance(appearance);
@@ -233,3 +315,12 @@ internal sealed record PortChangeResult(
 internal sealed record SettingsChangeResult(
     bool PortChanged,
     string OverlayUrl);
+
+internal sealed record SpotifyConnectionSnapshot(
+    string? ClientId,
+    SpotifyConnectionState State)
+{
+    public static SpotifyConnectionSnapshot Disconnected { get; } = new(
+        null,
+        new SpotifyConnectionState(SpotifyConnectionStatus.Disconnected));
+}

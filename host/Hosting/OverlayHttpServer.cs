@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Configuration;
+using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Models;
 using NowPlayingOverlay.Host.Protocol;
 using NowPlayingOverlay.Host.Shell;
@@ -27,6 +28,7 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
     private readonly ConnectionLimiter _sseLimiter;
     private readonly ConnectionLimiter _requestLimiter;
     private readonly ServerEndpointChangeBroadcaster _endpointChanges;
+    private readonly SpotifyAuthorizationCallbackBroker _spotifyCallbackBroker;
     private readonly ILogger<OverlayHttpServer> _logger;
     private readonly SemaphoreSlim _rebindGate = new(1, 1);
     private readonly CancellationTokenSource _shutdown = new();
@@ -46,6 +48,7 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
         ConnectionLimiter sseLimiter,
         ConnectionLimiter requestLimiter,
         ServerEndpointChangeBroadcaster endpointChanges,
+        SpotifyAuthorizationCallbackBroker spotifyCallbackBroker,
         ILogger<OverlayHttpServer> logger)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -57,6 +60,8 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
         _sseLimiter = sseLimiter ?? throw new ArgumentNullException(nameof(sseLimiter));
         _requestLimiter = requestLimiter ?? throw new ArgumentNullException(nameof(requestLimiter));
         _endpointChanges = endpointChanges ?? throw new ArgumentNullException(nameof(endpointChanges));
+        _spotifyCallbackBroker = spotifyCallbackBroker
+            ?? throw new ArgumentNullException(nameof(spotifyCallbackBroker));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -292,6 +297,15 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
     {
         var request = context.Request;
         var path = request.Url?.AbsolutePath ?? string.Empty;
+        if (string.Equals(
+            path,
+            SpotifyAuthorizationRequest.RedirectPath,
+            StringComparison.Ordinal))
+        {
+            await WriteSpotifyAuthorizationCallbackAsync(context, cancellationToken);
+            return;
+        }
+
         if (string.Equals(path, "/NowPlaying.html", StringComparison.Ordinal))
         {
             await HandleGetAndHeadAsync(
@@ -367,6 +381,44 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
 
         context.Response.StatusCode = 404;
         context.Response.ContentLength64 = 0;
+    }
+
+    private async Task WriteSpotifyAuthorizationCallbackAsync(
+        HttpListenerContext context,
+        CancellationToken cancellationToken)
+    {
+        var response = context.Response;
+        if (!_spotifyCallbackBroker.HasPendingAuthorization)
+        {
+            response.StatusCode = 404;
+            response.ContentLength64 = 0;
+            return;
+        }
+
+        if (!IsMethod(context.Request, "GET"))
+        {
+            WriteMethodNotAllowed(response, "GET");
+            return;
+        }
+
+        if (context.Request.Url is not Uri callbackUri
+            || !_spotifyCallbackBroker.TryComplete(callbackUri, out var callbackResponse))
+        {
+            response.StatusCode = 404;
+            response.ContentLength64 = 0;
+            return;
+        }
+
+        var body = Encoding.UTF8.GetBytes(
+            $"<!doctype html><html><head><meta charset=\"utf-8\"><title>Now Playing Overlay</title></head><body><p>{WebUtility.HtmlEncode(callbackResponse.Message)}</p></body></html>");
+        response.Headers["Content-Security-Policy"] = ContentSecurityPolicy;
+        response.StatusCode = (int)callbackResponse.StatusCode;
+        await WriteBodyAsync(
+            context,
+            "text/html; charset=utf-8",
+            "no-store",
+            body,
+            cancellationToken);
     }
 
     private async Task WriteArtworkAsync(

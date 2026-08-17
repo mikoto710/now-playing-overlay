@@ -84,6 +84,8 @@ internal sealed class ApplicationSettingsStore
                 Port = document.Port,
                 Source = document.Source
                     ?? throw new InvalidDataException("The configured source must not be null."),
+                Spotify = document.Spotify
+                    ?? throw new InvalidDataException("The configured Spotify connection must not be null."),
                 Appearance = appearance,
             };
             settings.Validate();
@@ -154,6 +156,8 @@ internal sealed class ApplicationSettingsStore
         public int Port { get; init; } = HostOptions.DefaultPort;
 
         public SourceSelectionSettings? Source { get; init; } = new();
+
+        public SpotifyConnectionSettings? Spotify { get; init; } = new();
 
         public JsonElement? Appearance { get; init; }
     }

@@ -50,6 +50,11 @@ internal sealed class HostStatusService(
                 SourceStatusReason.Missing => "Selected Player Not Available",
                 SourceStatusReason.Ambiguous => "Selected Player Is Ambiguous",
                 SourceStatusReason.PlatformUnavailable => "Sessions Unavailable",
+                SourceStatusReason.AuthorizationRequired => "Authorization Required",
+                SourceStatusReason.Forbidden => "Access Denied",
+                SourceStatusReason.RateLimited => "Rate Limited",
+                SourceStatusReason.NetworkUnavailable => "Network Unavailable",
+                SourceStatusReason.ServiceUnavailable => "Service Unavailable",
                 _ => "Unavailable",
             };
             return new HostStatus($"{provider}: {detail}", IsFaulted: false);

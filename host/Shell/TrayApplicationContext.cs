@@ -174,11 +174,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 async () =>
                 {
                     var discovery = await _controller.RefreshSourcesAsync();
+                    var settings = _controller.GetSettings();
                     using var dialog = new SettingsDialog(
                         _controller.EffectivePort,
                         discovery,
-                        _controller.GetAppearanceSettings(),
-                        _controller.RefreshSourcesAsync);
+                        settings.Source,
+                        _controller.GetSpotifyConnection(),
+                        settings.Appearance,
+                        _controller.RefreshSourcesAsync,
+                        _controller.AuthorizeSpotifyAsync,
+                        _controller.DisconnectSpotifyAsync);
                     if (dialog.ShowDialog() != DialogResult.OK)
                     {
                         return;
@@ -186,6 +191,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
                     var result = await _controller.SaveSettingsAsync(
                         dialog.SelectedPort,
+                        dialog.SelectedProvider,
                         dialog.SelectedSourceAppUserModelId,
                         dialog.SelectedAppearance);
                     if (result.PortChanged)

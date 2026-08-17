@@ -4,6 +4,8 @@ using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Media.Sources;
+using NowPlayingOverlay.Host.Media.Spotify.Authorization;
+using NowPlayingOverlay.Host.Media.Spotify.Playback;
 using NowPlayingOverlay.Host.Media.Windows;
 using NowPlayingOverlay.Host.Models;
 using NowPlayingOverlay.Host.State;
@@ -15,6 +17,8 @@ internal sealed class OverlayApplication : IAsyncDisposable
     private readonly NowPlayingCoordinator _coordinator;
     private readonly ActiveSourceManager? _activeSourceManager;
     private readonly WindowsMediaSource? _windowsMediaSource;
+    private readonly SpotifyApiSource? _spotifyApiSource;
+    private readonly SpotifyAuthorizationService? _spotifyAuthorizationService;
     private readonly HostRuntimeState _runtimeState;
     private readonly AppearanceState _appearanceState;
     private readonly OverlayHttpServer _httpServer;
@@ -27,6 +31,8 @@ internal sealed class OverlayApplication : IAsyncDisposable
         NowPlayingCoordinator coordinator,
         ActiveSourceManager? activeSourceManager,
         WindowsMediaSource? windowsMediaSource,
+        SpotifyApiSource? spotifyApiSource,
+        SpotifyAuthorizationService? spotifyAuthorizationService,
         HostRuntimeState runtimeState,
         AppearanceState appearanceState,
         OverlayHttpServer httpServer)
@@ -36,6 +42,8 @@ internal sealed class OverlayApplication : IAsyncDisposable
         _coordinator = coordinator;
         _activeSourceManager = activeSourceManager;
         _windowsMediaSource = windowsMediaSource;
+        _spotifyApiSource = spotifyApiSource;
+        _spotifyAuthorizationService = spotifyAuthorizationService;
         _runtimeState = runtimeState;
         _appearanceState = appearanceState;
         _httpServer = httpServer;
@@ -50,9 +58,11 @@ internal sealed class OverlayApplication : IAsyncDisposable
     public static OverlayApplication Build(
         string[] args,
         ApplicationSettings settings,
+        ApplicationPaths paths,
         BoundedLogFile? applicationLog = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(paths);
         settings.Validate();
         var options = HostOptionsLoader.Load(args, settings.Port);
         var loggerProvider = applicationLog is null
@@ -62,8 +72,16 @@ internal sealed class OverlayApplication : IAsyncDisposable
             new WindowsMediaSessionManagerFactory(),
             new WindowsMediaSessionMatcher(),
             CreateLogger<WindowsMediaSource>(loggerProvider));
+        var spotifyCallbackBroker = new SpotifyAuthorizationCallbackBroker();
+        var spotifyAuthorizationService = new SpotifyAuthorizationService(
+            paths.SpotifyCredentialsFilePath,
+            spotifyCallbackBroker);
+        var spotifyApiSource = new SpotifyApiSource(
+            new SpotifyCurrentlyPlayingClient(spotifyAuthorizationService),
+            settings.Spotify.ToClientId(),
+            logger: CreateLogger<SpotifyApiSource>(loggerProvider));
         var sessionSource = new ActiveSourceManager(
-            [windowsMediaSource],
+            [windowsMediaSource, spotifyApiSource],
             settings.Source.ToDescriptor());
         return Build(
             options,
@@ -72,13 +90,17 @@ internal sealed class OverlayApplication : IAsyncDisposable
             loggerProvider,
             sessionSource,
             windowsMediaSource,
+            spotifyApiSource,
+            spotifyAuthorizationService,
+            spotifyCallbackBroker,
             settings.Appearance);
     }
 
     internal static OverlayApplication Build(
         HostOptions options,
         ISessionSource sessionSource,
-        OverlayPageAsset pageAsset)
+        OverlayPageAsset pageAsset,
+        SpotifyAuthorizationCallbackBroker? spotifyCallbackBroker = null)
     {
         return Build(
             options,
@@ -87,6 +109,10 @@ internal sealed class OverlayApplication : IAsyncDisposable
             loggerProvider: null,
             activeSourceManager: null,
             windowsMediaSource: null,
+            spotifyApiSource: null,
+            spotifyAuthorizationService: null,
+            spotifyCallbackBroker: spotifyCallbackBroker
+                ?? new SpotifyAuthorizationCallbackBroker(),
             appearance: new AppearanceSettings());
     }
 
@@ -97,11 +123,15 @@ internal sealed class OverlayApplication : IAsyncDisposable
         BoundedFileLoggerProvider? loggerProvider,
         ActiveSourceManager? activeSourceManager,
         WindowsMediaSource? windowsMediaSource,
+        SpotifyApiSource? spotifyApiSource,
+        SpotifyAuthorizationService? spotifyAuthorizationService,
+        SpotifyAuthorizationCallbackBroker spotifyCallbackBroker,
         AppearanceSettings appearance)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(sessionSource);
         ArgumentNullException.ThrowIfNull(pageAsset);
+        ArgumentNullException.ThrowIfNull(spotifyCallbackBroker);
         ArgumentNullException.ThrowIfNull(appearance);
         options.Validate();
         appearance.Validate();
@@ -140,6 +170,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
             new ConnectionLimiter(options.MaximumSseConnections),
             new ConnectionLimiter(options.MaximumConcurrentConnections),
             new ServerEndpointChangeBroadcaster(),
+            spotifyCallbackBroker,
             CreateLogger<OverlayHttpServer>(loggerProvider));
 
         return new OverlayApplication(
@@ -148,6 +179,8 @@ internal sealed class OverlayApplication : IAsyncDisposable
             coordinator,
             activeSourceManager,
             windowsMediaSource,
+            spotifyApiSource,
+            spotifyAuthorizationService,
             runtimeState,
             appearanceState,
             httpServer);
@@ -171,18 +204,43 @@ internal sealed class OverlayApplication : IAsyncDisposable
         return _windowsMediaSource.RefreshSourcesAsync(cancellationToken);
     }
 
-    public void SelectWindowsMedia(string? sourceAppUserModelId)
+    public void SelectSource(SourceSelectionSettings source)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(source);
         if (_activeSourceManager is null)
         {
             throw new InvalidOperationException("This host does not have a configurable source manager.");
         }
 
-        _activeSourceManager.Select(
-            string.IsNullOrWhiteSpace(sourceAppUserModelId)
-                ? null
-                : SourceDescriptor.WindowsMedia(sourceAppUserModelId));
+        _activeSourceManager.Select(source.ToDescriptor());
+    }
+
+    public SpotifyConnectionState GetSpotifyConnectionState(SpotifyClientId clientId)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return GetSpotifyAuthorizationService().GetConnectionState(clientId);
+    }
+
+    public Task<SpotifyConnectionState> ConnectSpotifyAsync(
+        SpotifyClientId clientId,
+        CancellationToken cancellationToken = default)
+    {
+        return AuthorizeSpotifyAsync(clientId, reauthorize: false, cancellationToken);
+    }
+
+    public Task<SpotifyConnectionState> ReauthorizeSpotifyAsync(
+        SpotifyClientId clientId,
+        CancellationToken cancellationToken = default)
+    {
+        return AuthorizeSpotifyAsync(clientId, reauthorize: true, cancellationToken);
+    }
+
+    public async Task DisconnectSpotifyAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        await GetSpotifyAuthorizationService().DisconnectAsync(cancellationToken);
+        _spotifyApiSource?.SetClientId(null);
     }
 
     public void SetAppearance(AppearanceSettings appearance)
@@ -249,5 +307,30 @@ internal sealed class OverlayApplication : IAsyncDisposable
     private static ILogger<T> CreateLogger<T>(BoundedFileLoggerProvider? provider)
     {
         return provider?.CreateLogger<T>() ?? NullLogger<T>.Instance;
+    }
+
+    private async Task<SpotifyConnectionState> AuthorizeSpotifyAsync(
+        SpotifyClientId clientId,
+        bool reauthorize,
+        CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var service = GetSpotifyAuthorizationService();
+        var redirectUri = SpotifyAuthorizationRequest.CreateLoopbackRedirectUri(CurrentPort);
+        var state = reauthorize
+            ? await service.ReauthorizeAsync(clientId, redirectUri, cancellationToken)
+            : await service.ConnectAsync(clientId, redirectUri, cancellationToken);
+        if (state.Status == SpotifyConnectionStatus.Connected)
+        {
+            _spotifyApiSource?.SetClientId(clientId);
+        }
+
+        return state;
+    }
+
+    private SpotifyAuthorizationService GetSpotifyAuthorizationService()
+    {
+        return _spotifyAuthorizationService
+            ?? throw new InvalidOperationException("This host does not have Spotify authorization.");
     }
 }

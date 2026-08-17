@@ -1,4 +1,5 @@
 using NowPlayingOverlay.Host.Media.Sources;
+using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 
 namespace NowPlayingOverlay.Host.Configuration;
 
@@ -7,6 +8,8 @@ internal sealed record ApplicationSettings
     public int Port { get; init; } = HostOptions.DefaultPort;
 
     public SourceSelectionSettings Source { get; init; } = new();
+
+    public SpotifyConnectionSettings Spotify { get; init; } = new();
 
     public AppearanceSettings Appearance { get; init; } = new();
 
@@ -23,6 +26,17 @@ internal sealed record ApplicationSettings
         }
 
         Source.Validate();
+
+        if (Spotify is null)
+        {
+            throw new InvalidDataException("The configured Spotify connection must not be null.");
+        }
+
+        Spotify.Validate();
+        if (Source.Provider == SourceProvider.SpotifyApi && Spotify.ClientId is null)
+        {
+            throw new InvalidDataException("Spotify API cannot be selected without a Client ID.");
+        }
 
         if (Appearance is null)
         {
@@ -41,7 +55,7 @@ internal sealed record SourceSelectionSettings
 
     public void Validate()
     {
-        if (Provider != SourceProvider.WindowsMedia)
+        if (!Enum.IsDefined(Provider))
         {
             throw new InvalidDataException("The configured source provider is not supported.");
         }
@@ -62,8 +76,41 @@ internal sealed record SourceSelectionSettings
     public SourceDescriptor? ToDescriptor()
     {
         Validate();
-        return SourceAppUserModelId is null
-            ? null
-            : SourceDescriptor.WindowsMedia(SourceAppUserModelId);
+        return Provider switch
+        {
+            SourceProvider.WindowsMedia => SourceAppUserModelId is null
+                ? null
+                : SourceDescriptor.WindowsMedia(SourceAppUserModelId),
+            SourceProvider.SpotifyApi => SourceDescriptor.SpotifyApi(),
+            _ => throw new InvalidDataException("The configured source provider is not supported."),
+        };
+    }
+}
+
+internal sealed record SpotifyConnectionSettings
+{
+    public string? ClientId { get; init; }
+
+    public void Validate()
+    {
+        if (ClientId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = new SpotifyClientId(ClientId);
+        }
+        catch (ArgumentException error)
+        {
+            throw new InvalidDataException("The configured Spotify Client ID is invalid.", error);
+        }
+    }
+
+    public SpotifyClientId? ToClientId()
+    {
+        Validate();
+        return ClientId is null ? null : new SpotifyClientId(ClientId);
     }
 }

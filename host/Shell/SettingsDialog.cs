@@ -1,16 +1,27 @@
 using System.Windows.Forms;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Media.Sources;
+using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 
 namespace NowPlayingOverlay.Host.Shell;
 
 internal sealed class SettingsDialog : Form
 {
     private readonly Func<CancellationToken, Task<SourceDiscoveryResult>> _refreshSources;
+    private readonly Func<string, bool, CancellationToken, Task<SpotifyConnectionSnapshot>>
+        _authorizeSpotify;
+    private readonly Func<CancellationToken, Task<SpotifyConnectionSnapshot>> _disconnectSpotify;
+    private readonly int _effectivePort;
     private readonly NumericUpDown _port;
+    private readonly ComboBox _provider;
     private readonly ComboBox _source;
     private readonly Label _sourceStatus;
     private readonly Button _refresh;
+    private readonly GroupBox _windowsSourceGroup;
+    private readonly GroupBox _spotifySourceGroup;
+    private readonly Label _spotifyClientId;
+    private readonly Label _spotifyStatus;
+    private readonly Button _spotifyConnection;
     private readonly Button _save;
     private readonly RadioButton _defaultAppearance;
     private readonly RadioButton _customAppearance;
@@ -33,18 +44,32 @@ internal sealed class SettingsDialog : Form
     private CustomAppearanceSettings _customAppearanceDraft;
     private string? _selectedSourceAppUserModelId;
     private bool _hasPendingSourceSelection;
+    private SpotifyConnectionSnapshot _spotifyConnectionState;
 
     public SettingsDialog(
         int currentPort,
         SourceDiscoveryResult discovery,
+        SourceSelectionSettings currentSource,
+        SpotifyConnectionSnapshot spotifyConnection,
         AppearanceSettings currentAppearance,
-        Func<CancellationToken, Task<SourceDiscoveryResult>> refreshSources)
+        Func<CancellationToken, Task<SourceDiscoveryResult>> refreshSources,
+        Func<string, bool, CancellationToken, Task<SpotifyConnectionSnapshot>> authorizeSpotify,
+        Func<CancellationToken, Task<SpotifyConnectionSnapshot>> disconnectSpotify)
     {
         ArgumentNullException.ThrowIfNull(discovery);
+        ArgumentNullException.ThrowIfNull(currentSource);
+        currentSource.Validate();
+        _spotifyConnectionState = spotifyConnection
+            ?? throw new ArgumentNullException(nameof(spotifyConnection));
         ArgumentNullException.ThrowIfNull(currentAppearance);
         currentAppearance.Validate();
         _customAppearanceDraft = currentAppearance.Custom;
         _refreshSources = refreshSources ?? throw new ArgumentNullException(nameof(refreshSources));
+        _authorizeSpotify = authorizeSpotify ?? throw new ArgumentNullException(nameof(authorizeSpotify));
+        _disconnectSpotify = disconnectSpotify ?? throw new ArgumentNullException(nameof(disconnectSpotify));
+        _effectivePort = currentPort;
+        _selectedSourceAppUserModelId = currentSource.SourceAppUserModelId;
+        _hasPendingSourceSelection = true;
         Text = "Now Playing Overlay Settings";
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(800, 760);
@@ -59,12 +84,14 @@ internal sealed class SettingsDialog : Form
             ColumnCount = 3,
             Dock = DockStyle.Fill,
             Padding = new Padding(12),
-            RowCount = 5,
+            RowCount = 7,
         };
         generalLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         generalLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         generalLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         generalLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        generalLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        generalLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 10));
         generalLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         generalLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 10));
         generalLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -75,7 +102,7 @@ internal sealed class SettingsDialog : Form
             AutoSize = true,
             Margin = new Padding(0, 0, 0, 12),
             MaximumSize = new Size(680, 0),
-            Text = "Choose the loopback port and an exact Windows Media player session. Player IDs are read from Windows and saved without guessing or automatic fallback.",
+            Text = "Choose the loopback port and one complete media source. Spotify connection changes take effect immediately; Save applies the selected provider.",
         };
         var portLabel = CreateLabel("Port:");
         _port = new NumericUpDown
@@ -88,6 +115,24 @@ internal sealed class SettingsDialog : Form
             Value = currentPort,
         };
         var sourceLabel = CreateLabel("Player:");
+        _provider = new ComboBox
+        {
+            Anchor = AnchorStyles.Left,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            FormattingEnabled = true,
+            Margin = Padding.Empty,
+            MinimumSize = new Size(220, 0),
+        };
+        _provider.Items.AddRange(Enum.GetValues<SourceProvider>().Cast<object>().ToArray());
+        _provider.Format += (_, args) =>
+        {
+            if (args.ListItem is SourceProvider provider)
+            {
+                args.Value = provider.ToDisplayName();
+            }
+        };
+        _provider.SelectedItem = currentSource.Provider;
+        _provider.SelectedIndexChanged += (_, _) => UpdateProviderPanels();
         _source = new ComboBox
         {
             Anchor = AnchorStyles.Left,
@@ -120,16 +165,97 @@ internal sealed class SettingsDialog : Form
             MaximumSize = new Size(680, 0),
         };
 
+        var windowsLayout = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 3,
+            Dock = DockStyle.Top,
+            Margin = Padding.Empty,
+            Padding = new Padding(8),
+            RowCount = 2,
+        };
+        windowsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        windowsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        windowsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        windowsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        windowsLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        windowsLayout.Controls.Add(sourceLabel, 0, 0);
+        windowsLayout.Controls.Add(_source, 1, 0);
+        windowsLayout.Controls.Add(_refresh, 2, 0);
+        windowsLayout.Controls.Add(_sourceStatus, 0, 1);
+        windowsLayout.SetColumnSpan(_sourceStatus, 3);
+        _windowsSourceGroup = new GroupBox
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Top,
+            Margin = Padding.Empty,
+            Text = "Windows Media",
+        };
+        _windowsSourceGroup.Controls.Add(windowsLayout);
+
+        _spotifyClientId = new Label
+        {
+            AutoSize = true,
+            Margin = Padding.Empty,
+        };
+        _spotifyStatus = new Label
+        {
+            AutoSize = true,
+            Margin = new Padding(0, 8, 0, 0),
+            MaximumSize = new Size(520, 0),
+        };
+        _spotifyConnection = new Button
+        {
+            Anchor = AnchorStyles.Right,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(12, 0, 0, 0),
+            Padding = new Padding(8, 2, 8, 2),
+            Text = "Spotify Connection...",
+        };
+        _spotifyConnection.Click += SpotifyConnectionClicked;
+        var spotifyLayout = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            Dock = DockStyle.Top,
+            Margin = Padding.Empty,
+            Padding = new Padding(8),
+            RowCount = 2,
+        };
+        spotifyLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        spotifyLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        spotifyLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        spotifyLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        spotifyLayout.Controls.Add(_spotifyClientId, 0, 0);
+        spotifyLayout.SetColumnSpan(_spotifyClientId, 2);
+        spotifyLayout.Controls.Add(_spotifyStatus, 0, 1);
+        spotifyLayout.Controls.Add(_spotifyConnection, 1, 1);
+        _spotifySourceGroup = new GroupBox
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Top,
+            Margin = Padding.Empty,
+            Text = "Spotify API",
+        };
+        _spotifySourceGroup.Controls.Add(spotifyLayout);
+
         generalLayout.Controls.Add(generalExplanation, 0, 0);
         generalLayout.SetColumnSpan(generalExplanation, 3);
         generalLayout.Controls.Add(portLabel, 0, 1);
         generalLayout.Controls.Add(_port, 1, 1);
         generalLayout.SetColumnSpan(_port, 2);
-        generalLayout.Controls.Add(sourceLabel, 0, 3);
-        generalLayout.Controls.Add(_source, 1, 3);
-        generalLayout.Controls.Add(_refresh, 2, 3);
-        generalLayout.Controls.Add(_sourceStatus, 0, 4);
-        generalLayout.SetColumnSpan(_sourceStatus, 3);
+        generalLayout.Controls.Add(CreateLabel("Provider:"), 0, 3);
+        generalLayout.Controls.Add(_provider, 1, 3);
+        generalLayout.SetColumnSpan(_provider, 2);
+        generalLayout.Controls.Add(_windowsSourceGroup, 0, 5);
+        generalLayout.SetColumnSpan(_windowsSourceGroup, 3);
+        generalLayout.Controls.Add(_spotifySourceGroup, 0, 6);
+        generalLayout.SetColumnSpan(_spotifySourceGroup, 3);
 
         var appearanceExplanation = new Label
         {
@@ -454,9 +580,16 @@ internal sealed class SettingsDialog : Form
         _defaultAppearance.Checked = currentAppearance.Preset == AppearancePreset.Default;
         _customAppearance.Checked = currentAppearance.Preset == AppearancePreset.Custom;
         ApplyDiscovery(discovery);
+        UpdateSpotifyConnectionState();
+        UpdateProviderPanels();
     }
 
     public int SelectedPort => decimal.ToInt32(_port.Value);
+
+    public SourceProvider SelectedProvider =>
+        _provider.SelectedItem is SourceProvider provider
+            ? provider
+            : throw new InvalidOperationException("A media source provider must be selected.");
 
     public string? SelectedSourceAppUserModelId =>
         (_source.SelectedItem as SourceOption)?.SourceAppUserModelId;
@@ -519,6 +652,19 @@ internal sealed class SettingsDialog : Form
 
     private void SaveClicked(object? sender, EventArgs args)
     {
+        if (SelectedProvider == SourceProvider.SpotifyApi
+            && _spotifyConnectionState.State.Status != SpotifyConnectionStatus.Connected)
+        {
+            MessageBox.Show(
+                this,
+                "Connect Spotify before selecting Spotify API as the active provider.",
+                "Spotify Connection Required",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            _spotifyConnection.Focus();
+            return;
+        }
+
         if (_customAppearance.Checked && !TrySelectEnteredFontFamily())
         {
             MessageBox.Show(
@@ -534,6 +680,48 @@ internal sealed class SettingsDialog : Form
 
         DialogResult = DialogResult.OK;
         Close();
+    }
+
+    private void SpotifyConnectionClicked(object? sender, EventArgs args)
+    {
+        using var dialog = new SpotifyConnectionDialog(
+            _spotifyConnectionState,
+            _effectivePort,
+            _authorizeSpotify,
+            _disconnectSpotify);
+        dialog.ShowDialog(this);
+        _spotifyConnectionState = dialog.CurrentConnection;
+        UpdateSpotifyConnectionState();
+        if (dialog.ConnectionRemoved && SelectedProvider == SourceProvider.SpotifyApi)
+        {
+            _provider.SelectedItem = SourceProvider.WindowsMedia;
+        }
+    }
+
+    private void UpdateSpotifyConnectionState()
+    {
+        _spotifyClientId.Text = _spotifyConnectionState.ClientId is null
+            ? "Client ID: (Not configured)"
+            : $"Client ID: {_spotifyConnectionState.ClientId}";
+        _spotifyStatus.Text = _spotifyConnectionState.State.Status switch
+        {
+            SpotifyConnectionStatus.Disconnected => "Spotify is not connected.",
+            SpotifyConnectionStatus.Connected => "Spotify is connected and ready to use.",
+            SpotifyConnectionStatus.ClientIdMismatch =>
+                "The stored credential belongs to a different Client ID. Connect again.",
+            SpotifyConnectionStatus.CredentialUnavailable =>
+                "The stored Spotify credential cannot be read. Disconnect or connect again.",
+            _ => throw new ArgumentOutOfRangeException(nameof(_spotifyConnectionState)),
+        };
+    }
+
+    private void UpdateProviderPanels()
+    {
+        var provider = SelectedProvider;
+        _windowsSourceGroup.Visible = provider == SourceProvider.WindowsMedia;
+        _spotifySourceGroup.Visible = provider == SourceProvider.SpotifyApi;
+        _refresh.Enabled = provider == SourceProvider.WindowsMedia;
+        _source.Enabled = provider == SourceProvider.WindowsMedia;
     }
 
     private void ApplyDiscovery(SourceDiscoveryResult discovery)
@@ -714,9 +902,10 @@ internal sealed class SettingsDialog : Form
 
     private void SetRefreshState(bool refreshing)
     {
-        _refresh.Enabled = !refreshing;
+        var windowsSelected = SelectedProvider == SourceProvider.WindowsMedia;
+        _refresh.Enabled = windowsSelected && !refreshing;
         _save.Enabled = !refreshing;
-        _source.Enabled = !refreshing;
+        _source.Enabled = windowsSelected && !refreshing;
         if (refreshing)
         {
             _sourceStatus.Text = "Refreshing Windows Media players...";
