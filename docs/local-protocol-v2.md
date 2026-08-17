@@ -11,6 +11,7 @@ This document freezes the local contract shared by the host and browser client. 
 | `GET`, `HEAD` | `/api/v2/appearance` | `no-store` | Complete effective presentation configuration read once at page load |
 | `GET` | `/api/v2/events` | `no-store` | Server-Sent Events containing complete state snapshots |
 | `GET`, `HEAD` | `/api/v2/artwork/{artworkId}` | one year, `immutable` | Content-addressed PNG, JPEG, or WebP bytes |
+| `GET` | `/oauth/spotify/callback` | `no-store` | One-time callback for a pending Spotify PKCE authorization |
 | `GET`, `HEAD` | `/health` | `no-store` | Host and media-source readiness without track metadata |
 
 Only the Host header `127.0.0.1`, with an optional port, is accepted. CORS and forwarded headers are not enabled.
@@ -48,7 +49,7 @@ The C# DTOs in `host/Protocol` and TypeScript definitions in `web/src/protocol.t
 }
 ```
 
-`source` is either null or an object containing only `provider`. The host currently emits only `windows-media`; the browser parser reserves `spotify-api` for a future independently authorized source. Exact AUMIDs, friendly names, accounts, and devices never enter this DTO. Null source means no source is configured; a selected but missing or ambiguous player remains `{ "provider": "windows-media" }` with `playback: "unavailable"`.
+`source` is either null or an object containing only `provider`. The host emits `windows-media` or `spotify-api` for the active provider. Exact AUMIDs, friendly names, accounts, Client IDs, and devices never enter this DTO. Null source means no source is configured; a selected but unavailable provider keeps its provider value with `playback: "unavailable"`.
 
 The state matrix is:
 
@@ -113,6 +114,6 @@ The production client navigates only when `overlayUrl` is an absolute `http://12
 
 ## Health shape
 
-`/health` reports host lifecycle plus provider-neutral source state. It includes `activeSourceProvider` (`windows-media` or null in SRC-04) and `sourceStatus` (`unconfigured`, `starting`, `available`, `unavailable`, or `faulted`). It does not expose AUMIDs, media text, exceptions, or Spotify-specific binding fields.
+`/health` reports host lifecycle plus provider-neutral source state. It includes `activeSourceProvider` (`windows-media`, `spotify-api`, or null) and `sourceStatus` (`unconfigured`, `starting`, `available`, `unavailable`, or `faulted`). It does not expose AUMIDs, media text, exceptions, Client IDs, or Spotify credentials.
 
 The `/api/v1/*` routes do not exist. Changing this contract requires a new protocol version or a reviewed backward-compatible extension across both DTO implementations and their contract tests.
