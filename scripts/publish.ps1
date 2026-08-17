@@ -10,7 +10,6 @@ $releaseDirectory = Join-Path $repositoryRoot "artifacts\release"
 $releaseVersion = "0.2.0"
 $expectedExecutableName = "NowPlayingOverlay.exe"
 $releaseArchiveName = "NowPlayingOverlay-v$releaseVersion-win-x64.zip"
-$releaseChecksumName = "$releaseArchiveName.sha256"
 $publishArtifactsRoot = [System.IO.Path]::GetFullPath(
     (Join-Path ([System.IO.Path]::GetTempPath()) "NowPlayingOverlay-publish-$([guid]::NewGuid().ToString('N'))")
 )
@@ -261,10 +260,7 @@ function New-ReleasePackage {
         [string]$Directory,
 
         [Parameter(Mandatory)]
-        [string]$ArchiveName,
-
-        [Parameter(Mandatory)]
-        [string]$ChecksumName
+        [string]$ArchiveName
     )
 
     $readmePath = Join-Path $repositoryRoot "README.md"
@@ -306,11 +302,9 @@ function New-ReleasePackage {
     }
 
     $archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $checksumPath = Join-Path $Directory $ChecksumName
-    Set-Content -LiteralPath $checksumPath -Value "$archiveHash  $ArchiveName" -Encoding ascii -NoNewline
 
     $releaseItems = @(Get-ChildItem -LiteralPath $Directory -Force)
-    $expectedReleaseItems = @($ArchiveName, $ChecksumName)
+    $expectedReleaseItems = @($ArchiveName)
     $actualReleaseItems = @($releaseItems.Name | Sort-Object)
     if (($actualReleaseItems -join "`n") -cne (($expectedReleaseItems | Sort-Object) -join "`n")) {
         throw "Unexpected release directory entries: $($actualReleaseItems -join ', ')"
@@ -318,7 +312,6 @@ function New-ReleasePackage {
 
     return [pscustomobject]@{
         Archive = Get-Item -LiteralPath $archivePath
-        Checksum = Get-Item -LiteralPath $checksumPath
         Sha256 = $archiveHash
     }
 }
@@ -375,8 +368,7 @@ try {
     $releasePackage = New-ReleasePackage `
         -Executable $publishedExecutable `
         -Directory $releaseDirectory `
-        -ArchiveName $releaseArchiveName `
-        -ChecksumName $releaseChecksumName
+        -ArchiveName $releaseArchiveName
 
     $sizeMiB = [Math]::Round($publishedExecutable.Length / 1MB, 1)
     Write-Host "Published $($publishedExecutable.FullName) ($sizeMiB MiB)"

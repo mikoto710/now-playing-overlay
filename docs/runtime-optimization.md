@@ -38,6 +38,6 @@ The selected baseline passed the complete release chain:
 - session probe 11/11 tests;
 - .NET build with zero warnings and zero errors;
 - Desktop Runtime-only dependency closure;
-- one-file publish and versioned ZIP/checksum generation.
+- one-file publish and versioned ZIP generation with a logged local SHA-256.
 
 The generated baseline executable was 1,523,080 bytes. Validation and publish intermediates use unique system temporary directories so IDE-owned `bin`/`obj` locks cannot invalidate the release gate; cleanup remains constrained to those generated temporary roots.
