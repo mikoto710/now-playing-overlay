@@ -11,6 +11,7 @@ internal sealed record ApplicationPaths
         LogDirectory = Path.Combine(RootDirectory, "logs");
         LogFilePath = Path.Combine(LogDirectory, "NowPlayingOverlay.log");
         SettingsFilePath = Path.Combine(RootDirectory, "settings.json");
+        SpotifyCredentialsFilePath = Path.Combine(RootDirectory, "spotify-credentials.dat");
     }
 
     public string RootDirectory { get; }
@@ -20,6 +21,8 @@ internal sealed record ApplicationPaths
     public string LogFilePath { get; }
 
     public string SettingsFilePath { get; }
+
+    public string SpotifyCredentialsFilePath { get; }
 
     public static ApplicationPaths ForCurrentUser()
     {
