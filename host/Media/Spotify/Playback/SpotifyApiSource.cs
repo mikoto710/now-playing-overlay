@@ -223,10 +223,11 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
             SourceStatus.Starting,
             SourceStatusReason.Starting);
         _pollCancellation = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
-        var task = PollAsync(
-            _configurationGeneration,
-            _clientId.Value,
-            _pollCancellation.Token);
+        var generation = _configurationGeneration;
+        var clientId = _clientId.Value;
+        var cancellationToken = _pollCancellation.Token;
+        // Keep background polling independent of the WinForms message pump.
+        var task = Task.Run(() => PollAsync(generation, clientId, cancellationToken));
         _pollTasks.Add(task);
         _ = task.ContinueWith(
             completed =>

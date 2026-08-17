@@ -131,6 +131,9 @@ internal static class Program
             return;
         }
 
+        // The WinForms message pump is no longer available during cleanup.
+        SynchronizationContext.SetSynchronizationContext(null);
+
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));

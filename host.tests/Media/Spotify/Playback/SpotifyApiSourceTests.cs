@@ -125,6 +125,30 @@ public sealed class SpotifyApiSourceTests
         await delay.WaitForCancellationAsync(1);
     }
 
+    [Fact]
+    public async Task SelectionStartedOnUiContextDoesNotPostThePollingLoopBackToIt()
+    {
+        var delay = new StepDelay();
+        var context = new ForwardingSynchronizationContext();
+        var previousContext = SynchronizationContext.Current;
+        var source = CreateSource(
+            (_, _) => Task.FromResult(SpotifyPlaybackResult.Idle),
+            delay);
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+
+            source.SetSelection(SourceDescriptor.SpotifyApi());
+
+            Assert.Equal(0, context.PostCount);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previousContext);
+            await source.DisposeAsync();
+        }
+    }
+
     private static SpotifyApiSource CreateSource(
         Func<SpotifyClientId, CancellationToken, Task<SpotifyPlaybackResult>> read,
         StepDelay delay,
@@ -226,6 +250,19 @@ public sealed class SpotifyApiSourceTests
         public void Advance(TimeSpan duration)
         {
             UtcNow += duration;
+        }
+    }
+
+    private sealed class ForwardingSynchronizationContext : SynchronizationContext
+    {
+        private int _postCount;
+
+        public int PostCount => Volatile.Read(ref _postCount);
+
+        public override void Post(SendOrPostCallback callback, object? state)
+        {
+            Interlocked.Increment(ref _postCount);
+            ThreadPool.QueueUserWorkItem(_ => callback(state));
         }
     }
 
