@@ -1,7 +1,7 @@
 using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Models;
 
-namespace NowPlayingOverlay.Host.Media;
+namespace NowPlayingOverlay.Host.Media.Sources;
 
 internal sealed class SessionObservation
 {

@@ -1,4 +1,4 @@
-using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Windows;
 using NowPlayingOverlay.Host.Models;
 

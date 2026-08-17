@@ -1,6 +1,6 @@
 using System.Windows.Forms;
 using NowPlayingOverlay.Host.Configuration;
-using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Sources;
 
 namespace NowPlayingOverlay.Host.Shell;
 

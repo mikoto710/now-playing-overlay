@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Media.Windows;

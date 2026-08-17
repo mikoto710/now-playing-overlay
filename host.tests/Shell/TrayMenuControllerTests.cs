@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Hosting;
-using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Shell;
 using NowPlayingOverlay.Host.Tests.TestInfrastructure;
 

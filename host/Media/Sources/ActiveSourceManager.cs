@@ -1,6 +1,6 @@
 using NowPlayingOverlay.Host.Models;
 
-namespace NowPlayingOverlay.Host.Media;
+namespace NowPlayingOverlay.Host.Media.Sources;
 
 internal sealed class ActiveSourceManager : ISessionSource, ISessionSourceStatus
 {

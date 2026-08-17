@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
+using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Models;
 

@@ -5,7 +5,7 @@ using System.Text.Json;
 using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Hosting;
-using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
 using NowPlayingOverlay.Host.Tests.TestInfrastructure;
 

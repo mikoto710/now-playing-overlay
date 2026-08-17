@@ -1,7 +1,7 @@
-using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
 
-namespace NowPlayingOverlay.Host.Tests.Media;
+namespace NowPlayingOverlay.Host.Tests.Media.Sources;
 
 public sealed class ActiveSourceManagerTests
 {

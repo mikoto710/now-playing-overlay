@@ -1,4 +1,4 @@
-using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Sources;
 
 namespace NowPlayingOverlay.Host.Configuration;
 

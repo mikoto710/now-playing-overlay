@@ -1,4 +1,4 @@
-using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Tests.TestInfrastructure;
 

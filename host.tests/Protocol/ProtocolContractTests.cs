@@ -1,5 +1,5 @@
 using System.Text.Json;
-using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
 using NowPlayingOverlay.Host.Protocol;
 

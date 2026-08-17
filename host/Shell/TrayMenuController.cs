@@ -1,6 +1,6 @@
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Hosting;
-using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Sources;
 using OverlayHostOptions = NowPlayingOverlay.Host.Configuration.HostOptions;
 
 namespace NowPlayingOverlay.Host.Shell;

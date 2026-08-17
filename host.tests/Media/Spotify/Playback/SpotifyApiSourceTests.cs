@@ -1,5 +1,5 @@
 using System.Net;
-using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Media.Spotify.Playback;
 using NowPlayingOverlay.Host.Models;

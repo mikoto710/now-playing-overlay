@@ -1,6 +1,6 @@
 using Windows.Media;
 using Windows.Media.Control;
-using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Media.Windows;

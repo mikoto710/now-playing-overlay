@@ -1,6 +1,6 @@
 using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Hosting;
-using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
 using NowPlayingOverlay.Host.State;
 using NowPlayingOverlay.Host.Tests.TestInfrastructure;

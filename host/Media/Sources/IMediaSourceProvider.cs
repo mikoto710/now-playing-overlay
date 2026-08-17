@@ -1,4 +1,4 @@
-namespace NowPlayingOverlay.Host.Media;
+namespace NowPlayingOverlay.Host.Media.Sources;
 
 internal interface IMediaSourceProvider : ISessionSource, ISessionSourceStatus
 {

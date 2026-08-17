@@ -1,4 +1,4 @@
-using NowPlayingOverlay.Host.Media;
+using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Protocol;
