@@ -35,7 +35,7 @@ public sealed class SpotifyTokenClientTests
         var result = await client.ExchangeAuthorizationCodeAsync(
             new SpotifyClientId("client-id"),
             "authorization-code",
-            new Uri("http://127.0.0.1:54321/callback"),
+            new Uri("http://127.0.0.1:54321/oauth/spotify/callback"),
             "code-verifier-value-that-is-long-enough-for-pkce-1234567890",
             CancellationToken.None);
         var form = ParseForm(capturedBody!);
@@ -46,7 +46,9 @@ public sealed class SpotifyTokenClientTests
         Assert.Equal("client-id", form["client_id"]);
         Assert.Equal("authorization_code", form["grant_type"]);
         Assert.Equal("authorization-code", form["code"]);
-        Assert.Equal("http://127.0.0.1:54321/callback", form["redirect_uri"]);
+        Assert.Equal(
+            "http://127.0.0.1:54321/oauth/spotify/callback",
+            form["redirect_uri"]);
         Assert.Equal(
             "code-verifier-value-that-is-long-enough-for-pkce-1234567890",
             form["code_verifier"]);

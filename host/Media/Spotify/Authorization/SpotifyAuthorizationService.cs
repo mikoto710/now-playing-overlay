@@ -11,6 +11,7 @@ internal sealed class SpotifyAuthorizationService : IAsyncDisposable
     private readonly CancellationTokenSource _shutdown = new();
     private readonly SpotifyCredentialStore _credentialStore;
     private readonly SpotifyTokenClient _tokenClient;
+    private readonly SpotifyAuthorizationCallbackBroker _callbackBroker;
     private readonly TimeProvider _timeProvider;
     private readonly Action<Uri> _openBrowser;
     private readonly HttpClient? _ownedHttpClient;
@@ -20,6 +21,7 @@ internal sealed class SpotifyAuthorizationService : IAsyncDisposable
 
     public SpotifyAuthorizationService(
         string credentialFilePath,
+        SpotifyAuthorizationCallbackBroker callbackBroker,
         TimeProvider? timeProvider = null)
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
@@ -29,6 +31,8 @@ internal sealed class SpotifyAuthorizationService : IAsyncDisposable
         };
         _credentialStore = new SpotifyCredentialStore(credentialFilePath);
         _tokenClient = new SpotifyTokenClient(_ownedHttpClient, _timeProvider);
+        _callbackBroker = callbackBroker
+            ?? throw new ArgumentNullException(nameof(callbackBroker));
         _openBrowser = OpenSystemBrowser;
     }
 
@@ -36,11 +40,13 @@ internal sealed class SpotifyAuthorizationService : IAsyncDisposable
         SpotifyCredentialStore credentialStore,
         SpotifyTokenClient tokenClient,
         Action<Uri> openBrowser,
+        SpotifyAuthorizationCallbackBroker? callbackBroker = null,
         TimeProvider? timeProvider = null)
     {
         _credentialStore = credentialStore ?? throw new ArgumentNullException(nameof(credentialStore));
         _tokenClient = tokenClient ?? throw new ArgumentNullException(nameof(tokenClient));
         _openBrowser = openBrowser ?? throw new ArgumentNullException(nameof(openBrowser));
+        _callbackBroker = callbackBroker ?? new SpotifyAuthorizationCallbackBroker();
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -73,16 +79,18 @@ internal sealed class SpotifyAuthorizationService : IAsyncDisposable
 
     public Task<SpotifyConnectionState> ConnectAsync(
         SpotifyClientId clientId,
+        Uri redirectUri,
         CancellationToken cancellationToken = default)
     {
-        return AuthorizeAsync(clientId, cancellationToken);
+        return AuthorizeAsync(clientId, redirectUri, cancellationToken);
     }
 
     public Task<SpotifyConnectionState> ReauthorizeAsync(
         SpotifyClientId clientId,
+        Uri redirectUri,
         CancellationToken cancellationToken = default)
     {
-        return AuthorizeAsync(clientId, cancellationToken);
+        return AuthorizeAsync(clientId, redirectUri, cancellationToken);
     }
 
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
@@ -222,6 +230,7 @@ internal sealed class SpotifyAuthorizationService : IAsyncDisposable
 
     private async Task<SpotifyConnectionState> AuthorizeAsync(
         SpotifyClientId clientId,
+        Uri redirectUri,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposeStarted != 0, this);
@@ -231,8 +240,8 @@ internal sealed class SpotifyAuthorizationService : IAsyncDisposable
         await _operation.WaitAsync(operationCancellation.Token);
         try
         {
-            using var callback = new SpotifyLoopbackCallbackListener();
-            var request = SpotifyAuthorizationRequest.Create(clientId, callback.RedirectUri);
+            var request = SpotifyAuthorizationRequest.Create(clientId, redirectUri);
+            using var callback = _callbackBroker.Begin(request.State);
             try
             {
                 _openBrowser(request.AuthorizationUri);
@@ -245,7 +254,6 @@ internal sealed class SpotifyAuthorizationService : IAsyncDisposable
             }
 
             var authorizationCode = await callback.WaitForAuthorizationCodeAsync(
-                request.State,
                 AuthorizationTimeout,
                 operationCancellation.Token);
             var tokens = await _tokenClient.ExchangeAuthorizationCodeAsync(

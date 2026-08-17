@@ -6,6 +6,7 @@ namespace NowPlayingOverlay.Host.Media.Spotify.Authorization;
 internal sealed record SpotifyAuthorizationRequest
 {
     public const string RequiredScope = "user-read-currently-playing";
+    public const string RedirectPath = "/oauth/spotify/callback";
 
     private static readonly Uri AuthorizationEndpoint = new("https://accounts.spotify.com/authorize");
 
@@ -28,6 +29,16 @@ internal sealed record SpotifyAuthorizationRequest
     public string State { get; }
 
     public string CodeVerifier { get; }
+
+    public static Uri CreateLoopbackRedirectUri(int port)
+    {
+        if (port is < 1 or > 65535)
+        {
+            throw new ArgumentOutOfRangeException(nameof(port));
+        }
+
+        return new Uri($"http://127.0.0.1:{port}{RedirectPath}");
+    }
 
     public static SpotifyAuthorizationRequest Create(
         SpotifyClientId clientId,
@@ -81,7 +92,7 @@ internal sealed record SpotifyAuthorizationRequest
             || !string.Equals(redirectUri.Scheme, Uri.UriSchemeHttp, StringComparison.Ordinal)
             || !string.Equals(redirectUri.Host, "127.0.0.1", StringComparison.Ordinal)
             || redirectUri.Port is < 1 or > 65535
-            || !string.Equals(redirectUri.AbsolutePath, "/callback", StringComparison.Ordinal)
+            || !string.Equals(redirectUri.AbsolutePath, RedirectPath, StringComparison.Ordinal)
             || !string.IsNullOrEmpty(redirectUri.Query)
             || !string.IsNullOrEmpty(redirectUri.Fragment))
         {

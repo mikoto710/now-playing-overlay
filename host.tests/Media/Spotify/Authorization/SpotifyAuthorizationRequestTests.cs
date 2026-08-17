@@ -9,7 +9,7 @@ public sealed class SpotifyAuthorizationRequestTests
     {
         var request = SpotifyAuthorizationRequest.Create(
             new SpotifyClientId("client-id"),
-            new Uri("http://127.0.0.1:54321/callback"),
+            new Uri("http://127.0.0.1:54321/oauth/spotify/callback"),
             "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk",
             "state-value");
 
@@ -18,7 +18,7 @@ public sealed class SpotifyAuthorizationRequestTests
         Assert.Contains("response_type=code", request.AuthorizationUri.Query, StringComparison.Ordinal);
         Assert.Contains("client_id=client-id", request.AuthorizationUri.Query, StringComparison.Ordinal);
         Assert.Contains(
-            "redirect_uri=http%3A%2F%2F127.0.0.1%3A54321%2Fcallback",
+            "redirect_uri=http%3A%2F%2F127.0.0.1%3A54321%2Foauth%2Fspotify%2Fcallback",
             request.AuthorizationUri.Query,
             StringComparison.OrdinalIgnoreCase);
         Assert.Contains(
