@@ -12,6 +12,7 @@ internal sealed class SettingsDialog : Form
         _authorizeSpotify;
     private readonly Func<CancellationToken, Task<SpotifyConnectionSnapshot>> _disconnectSpotify;
     private readonly int _effectivePort;
+    private readonly SourceSelectionSettings _currentSource;
     private readonly NumericUpDown _port;
     private readonly ComboBox _provider;
     private readonly ComboBox _source;
@@ -45,6 +46,7 @@ internal sealed class SettingsDialog : Form
     private string? _selectedSourceAppUserModelId;
     private bool _hasPendingSourceSelection;
     private SpotifyConnectionSnapshot _spotifyConnectionState;
+    private SourceDiscoveryResult _windowsDiscovery;
 
     public SettingsDialog(
         int currentPort,
@@ -59,6 +61,8 @@ internal sealed class SettingsDialog : Form
         ArgumentNullException.ThrowIfNull(discovery);
         ArgumentNullException.ThrowIfNull(currentSource);
         currentSource.Validate();
+        _currentSource = currentSource;
+        _windowsDiscovery = discovery;
         _spotifyConnectionState = spotifyConnection
             ?? throw new ArgumentNullException(nameof(spotifyConnection));
         ArgumentNullException.ThrowIfNull(currentAppearance);
@@ -148,6 +152,12 @@ internal sealed class SettingsDialog : Form
             {
                 args.Value = option.Label;
             }
+        };
+        _source.SelectedIndexChanged += (_, _) =>
+        {
+            _selectedSourceAppUserModelId = SelectedSourceAppUserModelId;
+            _hasPendingSourceSelection = true;
+            UpdateWindowsSelectionStatus();
         };
         _refresh = new Button
         {
@@ -722,10 +732,15 @@ internal sealed class SettingsDialog : Form
         _spotifySourceGroup.Visible = provider == SourceProvider.SpotifyApi;
         _refresh.Enabled = provider == SourceProvider.WindowsMedia;
         _source.Enabled = provider == SourceProvider.WindowsMedia;
+        if (provider == SourceProvider.WindowsMedia)
+        {
+            UpdateWindowsSelectionStatus();
+        }
     }
 
     private void ApplyDiscovery(SourceDiscoveryResult discovery)
     {
+        _windowsDiscovery = discovery;
         var selected = _hasPendingSourceSelection
             ? _selectedSourceAppUserModelId
             : discovery.State.ActiveSource?.Key.InstanceId;
@@ -761,7 +776,48 @@ internal sealed class SettingsDialog : Form
             _source.EndUpdate();
         }
 
-        _sourceStatus.Text = BuildStatusText(discovery.State);
+        UpdateWindowsSelectionStatus();
+    }
+
+    private void UpdateWindowsSelectionStatus()
+    {
+        _sourceStatus.Text = BuildWindowsSelectionStatusText(
+            SelectedSourceAppUserModelId,
+            _currentSource,
+            _windowsDiscovery);
+    }
+
+    internal static string BuildWindowsSelectionStatusText(
+        string? selectedSourceAppUserModelId,
+        SourceSelectionSettings currentSource,
+        SourceDiscoveryResult discovery)
+    {
+        ArgumentNullException.ThrowIfNull(currentSource);
+        ArgumentNullException.ThrowIfNull(discovery);
+        if (selectedSourceAppUserModelId is null)
+        {
+            return "No player is selected.";
+        }
+
+        var selectionIsApplied = currentSource.Provider == SourceProvider.WindowsMedia
+            && string.Equals(
+                currentSource.SourceAppUserModelId,
+                selectedSourceAppUserModelId,
+                StringComparison.Ordinal);
+        if (selectionIsApplied)
+        {
+            return BuildStatusText(discovery.State);
+        }
+
+        var playerIsDiscovered = discovery.Sources.Any(source =>
+            source.Key.Provider == SourceProvider.WindowsMedia
+            && string.Equals(
+                source.Key.InstanceId,
+                selectedSourceAppUserModelId,
+                StringComparison.Ordinal));
+        return playerIsDiscovered
+            ? "The selected player is available. Save to apply."
+            : "The selected player is not currently available. The selection will be kept.";
     }
 
     internal static string BuildStatusText(SourceManagerState state)
