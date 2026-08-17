@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 
@@ -12,6 +13,7 @@ internal sealed class SpotifyConnectionDialog : Form
     private readonly Button _connect;
     private readonly Button _reauthorize;
     private readonly Button _disconnectButton;
+    private readonly Button _copyRedirectUri;
     private readonly Button _close;
     private readonly CancellationTokenSource _shutdown = new();
     private bool _operationActive;
@@ -42,8 +44,39 @@ internal sealed class SpotifyConnectionDialog : Form
             AutoSize = true,
             Dock = DockStyle.Top,
             MaximumSize = new Size(560, 0),
-            Text = $"Use your own Spotify Developer application Client ID. Register {redirectUri.AbsoluteUri} as its redirect URI; authorization opens in the system browser.",
+            Text = "Use your own Spotify Developer application Client ID. Register the redirect URI below in Spotify Dashboard; authorization opens in the system browser.",
         };
+        var redirectUriValue = new TextBox
+        {
+            Dock = DockStyle.Fill,
+            ReadOnly = true,
+            TabStop = false,
+            Text = redirectUri.AbsoluteUri,
+        };
+        _copyRedirectUri = new Button
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(12, 0, 0, 0),
+            MinimumSize = new Size(85, 0),
+            Padding = new Padding(8, 2, 8, 2),
+            Text = "Copy",
+        };
+        _copyRedirectUri.Click += async (_, _) =>
+            await CopyRedirectUriAsync(redirectUri.AbsoluteUri);
+        var redirectUriRow = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+            RowCount = 1,
+        };
+        redirectUriRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        redirectUriRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        redirectUriRow.Controls.Add(redirectUriValue, 0, 0);
+        redirectUriRow.Controls.Add(_copyRedirectUri, 1, 0);
         _clientId = new TextBox
         {
             Dock = DockStyle.Fill,
@@ -101,7 +134,7 @@ internal sealed class SpotifyConnectionDialog : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 2,
             Padding = new Padding(16),
-            RowCount = 5,
+            RowCount = 6,
         };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -110,20 +143,34 @@ internal sealed class SpotifyConnectionDialog : Form
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.Controls.Add(explanation, 0, 0);
         layout.SetColumnSpan(explanation, 2);
-        layout.Controls.Add(CreateLabel("Client ID:"), 0, 1);
-        layout.Controls.Add(_clientId, 1, 1);
-        layout.Controls.Add(_status, 0, 2);
+        layout.Controls.Add(CreateLabel("Redirect URI:"), 0, 1);
+        layout.Controls.Add(redirectUriRow, 1, 1);
+        layout.Controls.Add(CreateLabel("Client ID:"), 0, 2);
+        layout.Controls.Add(_clientId, 1, 2);
+        layout.Controls.Add(_status, 0, 3);
         layout.SetColumnSpan(_status, 2);
-        layout.Controls.Add(actions, 0, 3);
+        layout.Controls.Add(actions, 0, 4);
         layout.SetColumnSpan(actions, 2);
-        layout.Controls.Add(closeRow, 0, 4);
+        layout.Controls.Add(closeRow, 0, 5);
         layout.SetColumnSpan(closeRow, 2);
 
         AcceptButton = _connect;
         CancelButton = _close;
         Controls.Add(layout);
+        Shown += (_, _) =>
+        {
+            if (string.IsNullOrEmpty(_clientId.Text))
+            {
+                _clientId.Select();
+            }
+            else
+            {
+                _close.Select();
+            }
+        };
         UpdateStatus();
         UpdateButtons(clientIdEdited: false);
     }
@@ -230,6 +277,49 @@ internal sealed class SpotifyConnectionDialog : Form
             if (!IsDisposed && !_shutdown.IsCancellationRequested)
             {
                 SetOperationState(active: false);
+            }
+        }
+    }
+
+    private async Task CopyRedirectUriAsync(string redirectUri)
+    {
+        _copyRedirectUri.Enabled = false;
+        try
+        {
+            for (var attempt = 0; attempt < 10; attempt++)
+            {
+                try
+                {
+                    Clipboard.SetText(redirectUri, TextDataFormat.UnicodeText);
+                    _copyRedirectUri.Text = "Copied";
+                    return;
+                }
+                catch (ExternalException)
+                {
+                    if (attempt == 9)
+                    {
+                        break;
+                    }
+
+                    await Task.Delay(100, _shutdown.Token);
+                }
+            }
+
+            MessageBox.Show(
+                this,
+                "The Windows clipboard is temporarily unavailable. Try again.",
+                "Copy Redirect URI Failed",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            if (!IsDisposed && !_shutdown.IsCancellationRequested)
+            {
+                _copyRedirectUri.Enabled = true;
             }
         }
     }
