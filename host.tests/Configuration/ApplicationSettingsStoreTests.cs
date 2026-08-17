@@ -29,12 +29,12 @@ public sealed class ApplicationSettingsStoreTests
     {
         using var directory = new TemporaryDirectory();
         var path = Path.Combine(directory.Path, "settings.json");
-        File.WriteAllText(path, "{\"port\":13130}");
+        File.WriteAllText(path, "{\"port\":10598}");
         var store = new ApplicationSettingsStore(path);
 
         var result = store.Load();
 
-        Assert.Equal(13130, result.Settings.Port);
+        Assert.Equal(10598, result.Settings.Port);
         Assert.Equal(SourceProvider.WindowsMedia, result.Settings.Source.Provider);
         Assert.Null(result.Settings.Source.SourceAppUserModelId);
         Assert.Null(result.Warning);

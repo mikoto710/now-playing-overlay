@@ -4,7 +4,7 @@ internal sealed record HostOptions
 {
     public const string SectionName = "Host";
     public const string AllowedHost = "127.0.0.1";
-    public const int DefaultPort = 10598;
+    public const int DefaultPort = 13130;
 
     public int Port { get; init; } = DefaultPort;
 
