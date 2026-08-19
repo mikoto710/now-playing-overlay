@@ -192,16 +192,29 @@ internal sealed class OverlayApplication : IAsyncDisposable
         return _activeSourceManager?.GetState() ?? SourceManagerState.Unconfigured;
     }
 
-    public Task<SourceDiscoveryResult> RefreshWindowsMediaSourcesAsync(
+    public Task<SourceDiscoveryResult> RefreshSourcesAsync(
+        SourceProvider provider,
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        if (_windowsMediaSource is null)
+        if (!Enum.IsDefined(provider))
         {
-            throw new InvalidOperationException("This host does not have Windows Media discovery.");
+            throw new ArgumentOutOfRangeException(nameof(provider));
         }
 
-        return _windowsMediaSource.RefreshSourcesAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return provider switch
+        {
+            SourceProvider.WindowsMedia when _windowsMediaSource is not null =>
+                _windowsMediaSource.RefreshSourcesAsync(cancellationToken),
+            SourceProvider.SpotifyApi when _spotifyApiSource is not null =>
+                Task.FromResult(new SourceDiscoveryResult(
+                    [SourceDescriptor.SpotifyApi()],
+                    GetSourceState())),
+            _ => throw new InvalidOperationException(
+                "This host does not have the requested source provider."),
+        };
     }
 
     public void SelectSource(SourceSelectionSettings source)

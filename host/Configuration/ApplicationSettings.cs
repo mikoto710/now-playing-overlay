@@ -9,6 +9,8 @@ internal sealed record ApplicationSettings
 
     public SourceSelectionSettings Source { get; init; } = new();
 
+    public WindowsMediaSettings WindowsMedia { get; init; } = new();
+
     public SpotifyConnectionSettings Spotify { get; init; } = new();
 
     public AppearanceSettings Appearance { get; init; } = new();
@@ -26,6 +28,22 @@ internal sealed record ApplicationSettings
         }
 
         Source.Validate();
+
+        if (WindowsMedia is null)
+        {
+            throw new InvalidDataException("The configured Windows Media settings must not be null.");
+        }
+
+        WindowsMedia.Validate();
+        if (Source.Provider == SourceProvider.WindowsMedia
+            && !string.Equals(
+                Source.InstanceId,
+                WindowsMedia.LastInstanceId,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The selected Windows Media source must match the remembered Windows Media source.");
+        }
 
         if (Spotify is null)
         {
@@ -51,7 +69,7 @@ internal sealed record SourceSelectionSettings
 {
     public SourceProvider Provider { get; init; } = SourceProvider.WindowsMedia;
 
-    public string? SourceAppUserModelId { get; init; }
+    public string? InstanceId { get; init; }
 
     public void Validate()
     {
@@ -60,16 +78,24 @@ internal sealed record SourceSelectionSettings
             throw new InvalidDataException("The configured source provider is not supported.");
         }
 
-        if (SourceAppUserModelId is not null)
+        try
         {
-            try
+            switch (Provider)
             {
-                _ = SourceKey.WindowsMedia(SourceAppUserModelId);
+                case SourceProvider.WindowsMedia when InstanceId is not null:
+                    _ = SourceKey.WindowsMedia(InstanceId);
+                    break;
+                case SourceProvider.SpotifyApi when !string.Equals(
+                    InstanceId,
+                    SourceKey.SpotifyApi().InstanceId,
+                    StringComparison.Ordinal):
+                    throw new InvalidDataException(
+                        "The configured Spotify API source instance is invalid.");
             }
-            catch (ArgumentException error)
-            {
-                throw new InvalidDataException("The configured Windows Media source ID is invalid.", error);
-            }
+        }
+        catch (ArgumentException error)
+        {
+            throw new InvalidDataException("The configured source instance ID is invalid.", error);
         }
     }
 
@@ -78,12 +104,54 @@ internal sealed record SourceSelectionSettings
         Validate();
         return Provider switch
         {
-            SourceProvider.WindowsMedia => SourceAppUserModelId is null
+            SourceProvider.WindowsMedia => InstanceId is null
                 ? null
-                : SourceDescriptor.WindowsMedia(SourceAppUserModelId),
+                : SourceDescriptor.WindowsMedia(InstanceId),
             SourceProvider.SpotifyApi => SourceDescriptor.SpotifyApi(),
             _ => throw new InvalidDataException("The configured source provider is not supported."),
         };
+    }
+
+    public static SourceSelectionSettings WindowsMedia(string? instanceId)
+    {
+        return new SourceSelectionSettings
+        {
+            Provider = SourceProvider.WindowsMedia,
+            InstanceId = instanceId,
+        };
+    }
+
+    public static SourceSelectionSettings SpotifyApi()
+    {
+        return new SourceSelectionSettings
+        {
+            Provider = SourceProvider.SpotifyApi,
+            InstanceId = SourceKey.SpotifyApi().InstanceId,
+        };
+    }
+}
+
+internal sealed record WindowsMediaSettings
+{
+    public string? LastInstanceId { get; init; }
+
+    public void Validate()
+    {
+        if (LastInstanceId is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = SourceKey.WindowsMedia(LastInstanceId);
+        }
+        catch (ArgumentException error)
+        {
+            throw new InvalidDataException(
+                "The remembered Windows Media source instance ID is invalid.",
+                error);
+        }
     }
 }
 

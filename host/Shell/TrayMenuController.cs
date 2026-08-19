@@ -24,7 +24,8 @@ internal sealed class TrayMenuController
     private readonly Func<int> _getEffectivePort;
     private readonly Func<int, Action, CancellationToken, Task> _rebindPort;
     private readonly Func<SourceManagerState> _getSourceState;
-    private readonly Func<CancellationToken, Task<SourceDiscoveryResult>> _refreshSources;
+    private readonly Func<SourceProvider, CancellationToken, Task<SourceDiscoveryResult>>
+        _refreshSources;
     private readonly Action<SourceSelectionSettings> _selectSource;
     private readonly Func<SpotifyClientId, SpotifyConnectionState> _getSpotifyConnectionState;
     private readonly Func<SpotifyClientId, bool, CancellationToken, Task<SpotifyConnectionState>>
@@ -39,7 +40,7 @@ internal sealed class TrayMenuController
         string logDirectory,
         Func<int, Action, CancellationToken, Task> rebindPort,
         Func<SourceManagerState> getSourceState,
-        Func<CancellationToken, Task<SourceDiscoveryResult>> refreshSources,
+        Func<SourceProvider, CancellationToken, Task<SourceDiscoveryResult>> refreshSources,
         Action<SourceSelectionSettings> selectSource,
         Func<SpotifyClientId, SpotifyConnectionState> getSpotifyConnectionState,
         Func<SpotifyClientId, bool, CancellationToken, Task<SpotifyConnectionState>> authorizeSpotify,
@@ -70,7 +71,7 @@ internal sealed class TrayMenuController
         string logDirectory,
         Func<int, Action, CancellationToken, Task> rebindPort,
         Func<SourceManagerState>? getSourceState = null,
-        Func<CancellationToken, Task<SourceDiscoveryResult>>? refreshSources = null,
+        Func<SourceProvider, CancellationToken, Task<SourceDiscoveryResult>>? refreshSources = null,
         Action<SourceSelectionSettings>? selectSource = null,
         Func<SpotifyClientId, SpotifyConnectionState>? getSpotifyConnectionState = null,
         Func<SpotifyClientId, bool, CancellationToken, Task<SpotifyConnectionState>>?
@@ -83,7 +84,7 @@ internal sealed class TrayMenuController
         _getStatus = getStatus ?? throw new ArgumentNullException(nameof(getStatus));
         _rebindPort = rebindPort ?? throw new ArgumentNullException(nameof(rebindPort));
         _getSourceState = getSourceState ?? (() => SourceManagerState.Unconfigured);
-        _refreshSources = refreshSources ?? (_ => Task.FromResult(
+        _refreshSources = refreshSources ?? ((_, _) => Task.FromResult(
             new SourceDiscoveryResult([], _getSourceState())));
         _selectSource = selectSource ?? (_ => { });
         _getSpotifyConnectionState = getSpotifyConnectionState
@@ -119,9 +120,15 @@ internal sealed class TrayMenuController
     }
 
     public Task<SourceDiscoveryResult> RefreshSourcesAsync(
+        SourceProvider provider,
         CancellationToken cancellationToken = default)
     {
-        return _refreshSources(cancellationToken);
+        if (!Enum.IsDefined(provider))
+        {
+            throw new ArgumentOutOfRangeException(nameof(provider));
+        }
+
+        return _refreshSources(provider, cancellationToken);
     }
 
     public ApplicationSettings GetSettings()
@@ -173,7 +180,8 @@ internal sealed class TrayMenuController
             var source = current.Source;
             if (source.Provider == SourceProvider.SpotifyApi)
             {
-                source = source with { Provider = SourceProvider.WindowsMedia };
+                source = SourceSelectionSettings.WindowsMedia(
+                    current.WindowsMedia.LastInstanceId);
                 fallback = source;
             }
 
@@ -217,7 +225,7 @@ internal sealed class TrayMenuController
     public async Task<SettingsChangeResult> SaveSettingsAsync(
         int port,
         SourceProvider provider,
-        string? sourceAppUserModelId,
+        string? instanceId,
         AppearanceSettings appearance,
         CancellationToken cancellationToken = default)
     {
@@ -225,13 +233,17 @@ internal sealed class TrayMenuController
         var source = new SourceSelectionSettings
         {
             Provider = provider,
-            SourceAppUserModelId = sourceAppUserModelId,
+            InstanceId = instanceId,
         };
         var currentSettings = _settingsStore.Load().Settings;
+        var windowsMedia = provider == SourceProvider.WindowsMedia
+            ? currentSettings.WindowsMedia with { LastInstanceId = instanceId }
+            : currentSettings.WindowsMedia;
         var settings = currentSettings with
         {
             Port = port,
             Source = source,
+            WindowsMedia = windowsMedia,
             Appearance = appearance,
         };
         settings.Validate();
@@ -254,6 +266,7 @@ internal sealed class TrayMenuController
                 {
                     Port = port,
                     Source = source,
+                    WindowsMedia = windowsMedia,
                     Appearance = appearance,
                 }),
                 cancellationToken);
@@ -264,6 +277,7 @@ internal sealed class TrayMenuController
             {
                 Port = port,
                 Source = source,
+                WindowsMedia = windowsMedia,
                 Appearance = appearance,
             });
         }

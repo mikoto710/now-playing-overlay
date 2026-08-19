@@ -78,12 +78,16 @@ internal sealed class ApplicationSettingsStore
             var document = JsonSerializer.Deserialize<ApplicationSettingsDocument>(
                 File.ReadAllText(_filePath),
                 JsonOptions) ?? throw new InvalidDataException("The settings file is empty.");
+            var source = ReadSource(document.Source, out var migratedWindowsMediaInstanceId);
+            var windowsMedia = ReadWindowsMedia(
+                document.WindowsMedia,
+                migratedWindowsMediaInstanceId);
             var appearance = ReadAppearance(document.Appearance, out var appearanceWarning);
             var settings = new ApplicationSettings
             {
                 Port = document.Port,
-                Source = document.Source
-                    ?? throw new InvalidDataException("The configured source must not be null."),
+                Source = source,
+                WindowsMedia = windowsMedia,
                 Spotify = document.Spotify
                     ?? throw new InvalidDataException("The configured Spotify connection must not be null."),
                 Appearance = appearance,
@@ -100,6 +104,77 @@ internal sealed class ApplicationSettingsStore
                 new ApplicationSettings(),
                 $"Could not read '{_filePath}'; the default settings will be used. {error.Message}");
         }
+    }
+
+    private SourceSelectionSettings ReadSource(
+        JsonElement element,
+        out string? migratedWindowsMediaInstanceId)
+    {
+        migratedWindowsMediaInstanceId = null;
+        if (element.ValueKind is JsonValueKind.Undefined)
+        {
+            return SourceSelectionSettings.WindowsMedia(instanceId: null);
+        }
+
+        if (element.ValueKind is JsonValueKind.Null)
+        {
+            throw new InvalidDataException("The configured source must not be null.");
+        }
+
+        var document = element.Deserialize<SourceSelectionSettingsDocument>(JsonOptions)
+            ?? throw new InvalidDataException("The configured source is empty.");
+        var hasInstanceId = element.TryGetProperty("instanceId", out _);
+        var hasLegacyInstanceId = element.TryGetProperty("sourceAppUserModelId", out _);
+        if (hasInstanceId && hasLegacyInstanceId)
+        {
+            throw new InvalidDataException(
+                "The configured source must not contain both instanceId and sourceAppUserModelId.");
+        }
+
+        if (hasLegacyInstanceId)
+        {
+            migratedWindowsMediaInstanceId = document.SourceAppUserModelId;
+            return document.Provider switch
+            {
+                SourceProvider.WindowsMedia =>
+                    SourceSelectionSettings.WindowsMedia(document.SourceAppUserModelId),
+                SourceProvider.SpotifyApi => SourceSelectionSettings.SpotifyApi(),
+                _ => throw new InvalidDataException("The configured source provider is not supported."),
+            };
+        }
+
+        var source = new SourceSelectionSettings
+        {
+            Provider = document.Provider,
+            InstanceId = document.InstanceId,
+        };
+        source.Validate();
+        if (source.Provider == SourceProvider.WindowsMedia)
+        {
+            migratedWindowsMediaInstanceId = source.InstanceId;
+        }
+
+        return source;
+    }
+
+    private WindowsMediaSettings ReadWindowsMedia(
+        JsonElement element,
+        string? migratedWindowsMediaInstanceId)
+    {
+        if (element.ValueKind is JsonValueKind.Undefined)
+        {
+            return new WindowsMediaSettings { LastInstanceId = migratedWindowsMediaInstanceId };
+        }
+
+        if (element.ValueKind is JsonValueKind.Null)
+        {
+            throw new InvalidDataException("The configured Windows Media settings must not be null.");
+        }
+
+        var settings = element.Deserialize<WindowsMediaSettings>(JsonOptions)
+            ?? throw new InvalidDataException("The configured Windows Media settings are empty.");
+        settings.Validate();
+        return settings;
     }
 
     private AppearanceSettings ReadAppearance(
@@ -155,11 +230,22 @@ internal sealed class ApplicationSettingsStore
     {
         public int Port { get; init; } = HostOptions.DefaultPort;
 
-        public SourceSelectionSettings? Source { get; init; } = new();
+        public JsonElement Source { get; init; }
+
+        public JsonElement WindowsMedia { get; init; }
 
         public SpotifyConnectionSettings? Spotify { get; init; } = new();
 
         public JsonElement? Appearance { get; init; }
+    }
+
+    private sealed record SourceSelectionSettingsDocument
+    {
+        public SourceProvider Provider { get; init; } = SourceProvider.WindowsMedia;
+
+        public string? InstanceId { get; init; }
+
+        public string? SourceAppUserModelId { get; init; }
     }
 }
 

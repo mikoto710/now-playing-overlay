@@ -87,7 +87,7 @@ internal static class Program
                 (port, persistPort, cancellationToken) =>
                     app.RebindPortAsync(port, persistPort, cancellationToken),
                 app.GetSourceState,
-                app.RefreshWindowsMediaSourcesAsync,
+                app.RefreshSourcesAsync,
                 app.SelectSource,
                 app.GetSpotifyConnectionState,
                 (clientId, reauthorize, cancellationToken) => reauthorize

@@ -16,7 +16,8 @@ public sealed class ApplicationSettingsStoreTests
 
         Assert.Equal(HostOptions.DefaultPort, result.Settings.Port);
         Assert.Equal(SourceProvider.WindowsMedia, result.Settings.Source.Provider);
-        Assert.Null(result.Settings.Source.SourceAppUserModelId);
+        Assert.Null(result.Settings.Source.InstanceId);
+        Assert.Null(result.Settings.WindowsMedia.LastInstanceId);
         Assert.Equal(AppearancePreset.Default, result.Settings.Appearance.Preset);
         Assert.Equal(
             CustomAppearanceSettings.DefaultArtistColor,
@@ -36,7 +37,8 @@ public sealed class ApplicationSettingsStoreTests
 
         Assert.Equal(10598, result.Settings.Port);
         Assert.Equal(SourceProvider.WindowsMedia, result.Settings.Source.Provider);
-        Assert.Null(result.Settings.Source.SourceAppUserModelId);
+        Assert.Null(result.Settings.Source.InstanceId);
+        Assert.Null(result.Settings.WindowsMedia.LastInstanceId);
         Assert.Null(result.Warning);
     }
 
@@ -69,8 +71,9 @@ public sealed class ApplicationSettingsStoreTests
             Source = new SourceSelectionSettings
             {
                 Provider = SourceProvider.WindowsMedia,
-                SourceAppUserModelId = "Player.App!Exact",
+                InstanceId = "Player.App!Exact",
             },
+            WindowsMedia = new WindowsMediaSettings { LastInstanceId = "Player.App!Exact" },
             Appearance = new AppearanceSettings
             {
                 Preset = AppearancePreset.Custom,
@@ -96,7 +99,8 @@ public sealed class ApplicationSettingsStoreTests
         });
         var result = store.Load();
 
-        Assert.Equal("Player.App!Exact", result.Settings.Source.SourceAppUserModelId);
+        Assert.Equal("Player.App!Exact", result.Settings.Source.InstanceId);
+        Assert.Equal("Player.App!Exact", result.Settings.WindowsMedia.LastInstanceId);
         Assert.Equal(AppearancePreset.Custom, result.Settings.Appearance.Preset);
         Assert.Equal("#123456", result.Settings.Appearance.Custom.ArtistColor);
         Assert.Equal(65, result.Settings.Appearance.Custom.BackgroundOpacityPercent);
@@ -113,7 +117,9 @@ public sealed class ApplicationSettingsStoreTests
         Assert.Equal(8, result.Settings.Appearance.Custom.ArtworkCornerRadius);
         var json = File.ReadAllText(path);
         Assert.Contains("\"provider\": \"windows-media\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"sourceAppUserModelId\": \"Player.App!Exact\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"instanceId\": \"Player.App!Exact\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"lastInstanceId\": \"Player.App!Exact\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("sourceAppUserModelId", json, StringComparison.Ordinal);
         Assert.Contains("\"preset\": \"custom\"", json, StringComparison.Ordinal);
     }
 
@@ -125,19 +131,46 @@ public sealed class ApplicationSettingsStoreTests
         var store = new ApplicationSettingsStore(path);
         store.Save(new ApplicationSettings
         {
-            Source = new SourceSelectionSettings
-            {
-                Provider = SourceProvider.SpotifyApi,
-                SourceAppUserModelId = "Player.App!Exact",
-            },
+            Source = SourceSelectionSettings.SpotifyApi(),
+            WindowsMedia = new WindowsMediaSettings { LastInstanceId = "Player.App!Exact" },
             Spotify = new SpotifyConnectionSettings { ClientId = "client-id" },
         });
 
         var saved = store.Load().Settings;
 
         Assert.Equal(SourceProvider.SpotifyApi, saved.Source.Provider);
-        Assert.Equal("Player.App!Exact", saved.Source.SourceAppUserModelId);
+        Assert.Equal("current-account", saved.Source.InstanceId);
+        Assert.Equal("Player.App!Exact", saved.WindowsMedia.LastInstanceId);
         Assert.Equal("client-id", saved.Spotify.ClientId);
+    }
+
+    [Fact]
+    public void LegacySpotifySelectionMigratesDormantWindowsSource()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        File.WriteAllText(
+            path,
+            """
+            {
+              "source": {
+                "provider": "spotify-api",
+                "sourceAppUserModelId": "Player.App!Exact"
+              },
+              "spotify": {
+                "clientId": "client-id"
+              }
+            }
+            """);
+        var store = new ApplicationSettingsStore(path);
+
+        var result = store.Load();
+
+        Assert.Equal(SourceProvider.SpotifyApi, result.Settings.Source.Provider);
+        Assert.Equal("current-account", result.Settings.Source.InstanceId);
+        Assert.Equal("Player.App!Exact", result.Settings.WindowsMedia.LastInstanceId);
+        Assert.Equal("client-id", result.Settings.Spotify.ClientId);
+        Assert.Null(result.Warning);
     }
 
     [Fact]
@@ -228,7 +261,8 @@ public sealed class ApplicationSettingsStoreTests
         var result = store.Load();
 
         Assert.Equal(13130, result.Settings.Port);
-        Assert.Equal("Player.App!Exact", result.Settings.Source.SourceAppUserModelId);
+        Assert.Equal("Player.App!Exact", result.Settings.Source.InstanceId);
+        Assert.Equal("Player.App!Exact", result.Settings.WindowsMedia.LastInstanceId);
         Assert.Equal(AppearancePreset.Default, result.Settings.Appearance.Preset);
         Assert.Equal(
             CustomAppearanceSettings.DefaultBackgroundColor,
@@ -240,6 +274,10 @@ public sealed class ApplicationSettingsStoreTests
     [InlineData("{\"port\":0}")]
     [InlineData("{\"port\":10598,\"unexpected\":true}")]
     [InlineData("{\"port\":10598,\"source\":null}")]
+    [InlineData("{\"source\":{\"provider\":\"spotify-api\",\"instanceId\":\"Player.App\"}}")]
+    [InlineData("{\"source\":{\"provider\":\"windows-media\",\"instanceId\":\"A\",\"sourceAppUserModelId\":\"A\"}}")]
+    [InlineData("{\"source\":{\"provider\":\"windows-media\",\"instanceId\":\"A\"},\"windowsMedia\":{\"lastInstanceId\":\"B\"}}")]
+    [InlineData("{\"windowsMedia\":null}")]
     [InlineData("not json")]
     public void InvalidSettingsFallBackWithWarning(string json)
     {

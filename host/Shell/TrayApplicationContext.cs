@@ -4,6 +4,7 @@ using System.Net;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Win32;
+using NowPlayingOverlay.Host.Media.Sources;
 
 namespace NowPlayingOverlay.Host.Shell;
 
@@ -173,12 +174,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 "save settings",
                 async () =>
                 {
-                    var discovery = await _controller.RefreshSourcesAsync();
+                    var discovery = await _controller.RefreshSourcesAsync(
+                        SourceProvider.WindowsMedia);
                     var settings = _controller.GetSettings();
                     using var dialog = new SettingsDialog(
                         _controller.EffectivePort,
                         discovery,
                         settings.Source,
+                        settings.WindowsMedia,
                         _controller.GetSpotifyConnection(),
                         settings.Appearance,
                         _controller.RefreshSourcesAsync,
@@ -192,7 +195,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                     var result = await _controller.SaveSettingsAsync(
                         dialog.SelectedPort,
                         dialog.SelectedProvider,
-                        dialog.SelectedSourceAppUserModelId,
+                        dialog.SelectedInstanceId,
                         dialog.SelectedAppearance);
                     if (result.PortChanged)
                     {

@@ -10,11 +10,7 @@ public sealed class SettingsDialogTests
     public void DormantWindowsSelectionUsesLatestDiscoveryInsteadOfInactiveState()
     {
         const string playerId = "SpotifyAB.SpotifyMusic_test!Spotify";
-        var currentSource = new SourceSelectionSettings
-        {
-            Provider = SourceProvider.SpotifyApi,
-            SourceAppUserModelId = playerId,
-        };
+        var currentSource = SourceSelectionSettings.SpotifyApi();
         var discovery = new SourceDiscoveryResult(
             [SourceDescriptor.WindowsMedia(playerId)],
             SourceManagerState.Unconfigured);
@@ -31,11 +27,7 @@ public sealed class SettingsDialogTests
     public void MissingDraftSelectionIsReportedWithoutChangingTheRuntimeSource()
     {
         const string playerId = "SpotifyAB.SpotifyMusic_test!Spotify";
-        var currentSource = new SourceSelectionSettings
-        {
-            Provider = SourceProvider.SpotifyApi,
-            SourceAppUserModelId = playerId,
-        };
+        var currentSource = SourceSelectionSettings.SpotifyApi();
         var discovery = new SourceDiscoveryResult([], SourceManagerState.Unconfigured);
 
         var status = SettingsDialog.BuildWindowsSelectionStatusText(

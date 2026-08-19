@@ -7,7 +7,8 @@ namespace NowPlayingOverlay.Host.Shell;
 
 internal sealed class SettingsDialog : Form
 {
-    private readonly Func<CancellationToken, Task<SourceDiscoveryResult>> _refreshSources;
+    private readonly Func<SourceProvider, CancellationToken, Task<SourceDiscoveryResult>>
+        _refreshSources;
     private readonly Func<string, bool, CancellationToken, Task<SpotifyConnectionSnapshot>>
         _authorizeSpotify;
     private readonly Func<CancellationToken, Task<SpotifyConnectionSnapshot>> _disconnectSpotify;
@@ -43,7 +44,7 @@ internal sealed class SettingsDialog : Form
     private readonly NumericUpDown _artworkCornerRadius;
     private readonly CancellationTokenSource _shutdown = new();
     private CustomAppearanceSettings _customAppearanceDraft;
-    private string? _selectedSourceAppUserModelId;
+    private string? _selectedWindowsMediaInstanceId;
     private bool _hasPendingSourceSelection;
     private SpotifyConnectionSnapshot _spotifyConnectionState;
     private SourceDiscoveryResult _windowsDiscovery;
@@ -52,9 +53,10 @@ internal sealed class SettingsDialog : Form
         int currentPort,
         SourceDiscoveryResult discovery,
         SourceSelectionSettings currentSource,
+        WindowsMediaSettings windowsMedia,
         SpotifyConnectionSnapshot spotifyConnection,
         AppearanceSettings currentAppearance,
-        Func<CancellationToken, Task<SourceDiscoveryResult>> refreshSources,
+        Func<SourceProvider, CancellationToken, Task<SourceDiscoveryResult>> refreshSources,
         Func<string, bool, CancellationToken, Task<SpotifyConnectionSnapshot>> authorizeSpotify,
         Func<CancellationToken, Task<SpotifyConnectionSnapshot>> disconnectSpotify)
     {
@@ -62,6 +64,8 @@ internal sealed class SettingsDialog : Form
         ArgumentNullException.ThrowIfNull(currentSource);
         currentSource.Validate();
         _currentSource = currentSource;
+        ArgumentNullException.ThrowIfNull(windowsMedia);
+        windowsMedia.Validate();
         _windowsDiscovery = discovery;
         _spotifyConnectionState = spotifyConnection
             ?? throw new ArgumentNullException(nameof(spotifyConnection));
@@ -72,7 +76,7 @@ internal sealed class SettingsDialog : Form
         _authorizeSpotify = authorizeSpotify ?? throw new ArgumentNullException(nameof(authorizeSpotify));
         _disconnectSpotify = disconnectSpotify ?? throw new ArgumentNullException(nameof(disconnectSpotify));
         _effectivePort = currentPort;
-        _selectedSourceAppUserModelId = currentSource.SourceAppUserModelId;
+        _selectedWindowsMediaInstanceId = windowsMedia.LastInstanceId;
         _hasPendingSourceSelection = true;
         Text = "Now Playing Overlay Settings";
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -155,7 +159,7 @@ internal sealed class SettingsDialog : Form
         };
         _source.SelectedIndexChanged += (_, _) =>
         {
-            _selectedSourceAppUserModelId = SelectedSourceAppUserModelId;
+            _selectedWindowsMediaInstanceId = SelectedWindowsMediaInstanceId;
             _hasPendingSourceSelection = true;
             UpdateWindowsSelectionStatus();
         };
@@ -601,8 +605,15 @@ internal sealed class SettingsDialog : Form
             ? provider
             : throw new InvalidOperationException("A media source provider must be selected.");
 
-    public string? SelectedSourceAppUserModelId =>
-        (_source.SelectedItem as SourceOption)?.SourceAppUserModelId;
+    public string? SelectedInstanceId => SelectedProvider switch
+    {
+        SourceProvider.WindowsMedia => SelectedWindowsMediaInstanceId,
+        SourceProvider.SpotifyApi => SourceKey.SpotifyApi().InstanceId,
+        _ => throw new InvalidOperationException("The selected source provider is not supported."),
+    };
+
+    private string? SelectedWindowsMediaInstanceId =>
+        (_source.SelectedItem as SourceOption)?.InstanceId;
 
     public AppearanceSettings SelectedAppearance
     {
@@ -636,12 +647,12 @@ internal sealed class SettingsDialog : Form
 
     private async void RefreshClicked(object? sender, EventArgs args)
     {
-        _selectedSourceAppUserModelId = SelectedSourceAppUserModelId;
+        _selectedWindowsMediaInstanceId = SelectedWindowsMediaInstanceId;
         _hasPendingSourceSelection = true;
         SetRefreshState(refreshing: true);
         try
         {
-            var discovery = await _refreshSources(_shutdown.Token);
+            var discovery = await _refreshSources(SourceProvider.WindowsMedia, _shutdown.Token);
             ApplyDiscovery(discovery);
         }
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
@@ -742,7 +753,7 @@ internal sealed class SettingsDialog : Form
     {
         _windowsDiscovery = discovery;
         var selected = _hasPendingSourceSelection
-            ? _selectedSourceAppUserModelId
+            ? _selectedWindowsMediaInstanceId
             : discovery.State.ActiveSource?.Key.InstanceId;
         var options = new List<SourceOption>
         {
@@ -752,7 +763,7 @@ internal sealed class SettingsDialog : Form
             new SourceOption(source.Key.InstanceId, source.Key.InstanceId)));
         if (selected is not null
             && options.All(option => !string.Equals(
-                option.SourceAppUserModelId,
+                option.InstanceId,
                 selected,
                 StringComparison.Ordinal)))
         {
@@ -767,7 +778,7 @@ internal sealed class SettingsDialog : Form
             _source.SelectedIndex = Math.Max(
                 0,
                 options.FindIndex(option => string.Equals(
-                    option.SourceAppUserModelId,
+                    option.InstanceId,
                     selected,
                     StringComparison.Ordinal)));
         }
@@ -782,27 +793,27 @@ internal sealed class SettingsDialog : Form
     private void UpdateWindowsSelectionStatus()
     {
         _sourceStatus.Text = BuildWindowsSelectionStatusText(
-            SelectedSourceAppUserModelId,
+            SelectedWindowsMediaInstanceId,
             _currentSource,
             _windowsDiscovery);
     }
 
     internal static string BuildWindowsSelectionStatusText(
-        string? selectedSourceAppUserModelId,
+        string? selectedInstanceId,
         SourceSelectionSettings currentSource,
         SourceDiscoveryResult discovery)
     {
         ArgumentNullException.ThrowIfNull(currentSource);
         ArgumentNullException.ThrowIfNull(discovery);
-        if (selectedSourceAppUserModelId is null)
+        if (selectedInstanceId is null)
         {
             return "No player is selected.";
         }
 
         var selectionIsApplied = currentSource.Provider == SourceProvider.WindowsMedia
             && string.Equals(
-                currentSource.SourceAppUserModelId,
-                selectedSourceAppUserModelId,
+                currentSource.InstanceId,
+                selectedInstanceId,
                 StringComparison.Ordinal);
         if (selectionIsApplied)
         {
@@ -813,7 +824,7 @@ internal sealed class SettingsDialog : Form
             source.Key.Provider == SourceProvider.WindowsMedia
             && string.Equals(
                 source.Key.InstanceId,
-                selectedSourceAppUserModelId,
+                selectedInstanceId,
                 StringComparison.Ordinal));
         return playerIsDiscovered
             ? "The selected player is available. Save to apply."
@@ -1297,7 +1308,7 @@ internal sealed class SettingsDialog : Form
         }
     }
 
-    private sealed record SourceOption(string? SourceAppUserModelId, string Label);
+    private sealed record SourceOption(string? InstanceId, string Label);
 
     private sealed record FontFamilyOption(string? FontFamily, string Label);
 }

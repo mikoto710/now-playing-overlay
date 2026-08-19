@@ -94,6 +94,32 @@ public sealed class TrayMenuControllerTests
     }
 
     [Fact]
+    public async Task RefreshSourcesForwardsTheRequestedProvider()
+    {
+        using var directory = new TemporaryDirectory();
+        SourceProvider? requestedProvider = null;
+        var expected = new SourceDiscoveryResult(
+            [SourceDescriptor.SpotifyApi()],
+            SourceManagerState.Unconfigured);
+        var controller = new TrayMenuController(
+            () => HostOptions.DefaultPort,
+            new ApplicationSettingsStore(Path.Combine(directory.Path, "settings.json")),
+            () => new HostStatus("Ready", IsFaulted: false),
+            directory.Path,
+            (_, _, _) => Task.CompletedTask,
+            refreshSources: (provider, _) =>
+            {
+                requestedProvider = provider;
+                return Task.FromResult(expected);
+            });
+
+        var actual = await controller.RefreshSourcesAsync(SourceProvider.SpotifyApi);
+
+        Assert.Equal(SourceProvider.SpotifyApi, requestedProvider);
+        Assert.Same(expected, actual);
+    }
+
+    [Fact]
     public async Task SavingPortPreservesTheExactSourceSelection()
     {
         using var directory = new TemporaryDirectory();
@@ -102,7 +128,8 @@ public sealed class TrayMenuControllerTests
         store.Save(new ApplicationSettings
         {
             Port = 13000,
-            Source = new SourceSelectionSettings { SourceAppUserModelId = "Player.App" },
+            Source = SourceSelectionSettings.WindowsMedia("Player.App"),
+            WindowsMedia = new WindowsMediaSettings { LastInstanceId = "Player.App" },
         });
         var effectivePort = 13000;
         var controller = new TrayMenuController(
@@ -121,7 +148,8 @@ public sealed class TrayMenuControllerTests
 
         var saved = store.Load().Settings;
         Assert.Equal(13001, saved.Port);
-        Assert.Equal("Player.App", saved.Source.SourceAppUserModelId);
+        Assert.Equal("Player.App", saved.Source.InstanceId);
+        Assert.Equal("Player.App", saved.WindowsMedia.LastInstanceId);
     }
 
     [Fact]
@@ -162,10 +190,11 @@ public sealed class TrayMenuControllerTests
 
         var saved = store.Load().Settings;
         Assert.False(result.PortChanged);
-        Assert.Equal("Player.App!Exact", saved.Source.SourceAppUserModelId);
+        Assert.Equal("Player.App!Exact", saved.Source.InstanceId);
+        Assert.Equal("Player.App!Exact", saved.WindowsMedia.LastInstanceId);
         Assert.Equal(appearance, saved.Appearance);
         Assert.Equal(SourceProvider.WindowsMedia, activatedSource?.Provider);
-        Assert.Equal("Player.App!Exact", activatedSource?.SourceAppUserModelId);
+        Assert.Equal("Player.App!Exact", activatedSource?.InstanceId);
         Assert.Equal(appearance, activatedAppearance);
     }
 
@@ -178,11 +207,8 @@ public sealed class TrayMenuControllerTests
         store.Save(new ApplicationSettings
         {
             Port = 13000,
-            Source = new SourceSelectionSettings
-            {
-                Provider = SourceProvider.WindowsMedia,
-                SourceAppUserModelId = "Player.App!Exact",
-            },
+            Source = SourceSelectionSettings.WindowsMedia("Player.App!Exact"),
+            WindowsMedia = new WindowsMediaSettings { LastInstanceId = "Player.App!Exact" },
         });
         var connection = new SpotifyConnectionState(SpotifyConnectionStatus.Disconnected);
         SourceSelectionSettings? activatedSource = null;
@@ -214,7 +240,7 @@ public sealed class TrayMenuControllerTests
         await Assert.ThrowsAsync<InvalidDataException>(() => controller.SaveSettingsAsync(
             13000,
             SourceProvider.SpotifyApi,
-            "Player.App!Exact",
+            "current-account",
             new AppearanceSettings()));
         await controller.AuthorizeSpotifyAsync("client-id", reauthorize: false);
 
@@ -225,18 +251,22 @@ public sealed class TrayMenuControllerTests
         await controller.SaveSettingsAsync(
             13000,
             SourceProvider.SpotifyApi,
-            "Player.App!Exact",
+            "current-account",
             new AppearanceSettings());
-        Assert.Equal(SourceProvider.SpotifyApi, store.Load().Settings.Source.Provider);
+        var selectedSpotify = store.Load().Settings;
+        Assert.Equal(SourceProvider.SpotifyApi, selectedSpotify.Source.Provider);
+        Assert.Equal("current-account", selectedSpotify.Source.InstanceId);
+        Assert.Equal("Player.App!Exact", selectedSpotify.WindowsMedia.LastInstanceId);
 
         await controller.DisconnectSpotifyAsync();
 
         var disconnected = store.Load().Settings;
         Assert.Equal(SourceProvider.WindowsMedia, disconnected.Source.Provider);
-        Assert.Equal("Player.App!Exact", disconnected.Source.SourceAppUserModelId);
+        Assert.Equal("Player.App!Exact", disconnected.Source.InstanceId);
+        Assert.Equal("Player.App!Exact", disconnected.WindowsMedia.LastInstanceId);
         Assert.Null(disconnected.Spotify.ClientId);
         Assert.Equal(SourceProvider.WindowsMedia, activatedSource?.Provider);
-        Assert.Equal("Player.App!Exact", activatedSource?.SourceAppUserModelId);
+        Assert.Equal("Player.App!Exact", activatedSource?.InstanceId);
     }
 
     [Fact]
