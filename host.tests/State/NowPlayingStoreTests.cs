@@ -37,6 +37,127 @@ public sealed class NowPlayingStoreTests
     }
 
     [Fact]
+    public void TryCommitUsesPlayingTimelineSemanticsForRevision()
+    {
+        var sampledAt = new DateTimeOffset(2026, 8, 19, 3, 0, 0, TimeSpan.Zero);
+        var store = CreateStore(ServerInstanceId);
+        var source = SourceDescriptor.WindowsMedia("Player.App");
+        var track = TrackMetadata.Create("Title", "Artist", null);
+        var initialTimeline = PlaybackTimeline.Create(1_000, 240_000, sampledAt);
+
+        Assert.True(
+            store.TryCommit(
+                source,
+                PlaybackState.Playing,
+                track,
+                initialTimeline,
+                artwork: null,
+                sampledAt,
+                out var first));
+        Assert.False(
+            store.TryCommit(
+                source,
+                PlaybackState.Playing,
+                track,
+                PlaybackTimeline.Create(3_500, 240_000, sampledAt.AddSeconds(2)),
+                artwork: null,
+                sampledAt.AddSeconds(2),
+                out var equivalent));
+        Assert.True(
+            store.TryCommit(
+                source,
+                PlaybackState.Playing,
+                track,
+                PlaybackTimeline.Create(3_501, 240_000, sampledAt.AddSeconds(2)),
+                artwork: null,
+                sampledAt.AddSeconds(2),
+                out var corrected));
+
+        Assert.Equal(1, first.SnapshotRevision);
+        Assert.Same(first, equivalent);
+        Assert.Same(initialTimeline, equivalent.Timeline);
+        Assert.Equal(2, corrected.SnapshotRevision);
+    }
+
+    [Fact]
+    public void TryCommitCreatesRevisionsForPausedMovementAndNullTransition()
+    {
+        var sampledAt = new DateTimeOffset(2026, 8, 19, 3, 0, 0, TimeSpan.Zero);
+        var store = CreateStore(ServerInstanceId);
+        var source = SourceDescriptor.WindowsMedia("Player.App");
+        var track = TrackMetadata.Create("Title", "Artist", null);
+
+        Assert.True(
+            store.TryCommit(
+                source,
+                PlaybackState.Paused,
+                track,
+                PlaybackTimeline.Create(1_000, 240_000, sampledAt),
+                artwork: null,
+                sampledAt,
+                out var first));
+        Assert.False(
+            store.TryCommit(
+                source,
+                PlaybackState.Paused,
+                track,
+                PlaybackTimeline.Create(1_000, 240_000, sampledAt.AddMinutes(1)),
+                artwork: null,
+                sampledAt.AddMinutes(1),
+                out var resampled));
+        Assert.True(
+            store.TryCommit(
+                source,
+                PlaybackState.Paused,
+                track,
+                PlaybackTimeline.Create(1_001, 240_000, sampledAt.AddMinutes(1)),
+                artwork: null,
+                sampledAt.AddMinutes(1),
+                out var moved));
+        Assert.True(
+            store.TryCommit(
+                source,
+                PlaybackState.Paused,
+                track,
+                timeline: null,
+                artwork: null,
+                sampledAt.AddMinutes(2),
+                out var removed));
+
+        Assert.Equal(1, first.SnapshotRevision);
+        Assert.Same(first, resampled);
+        Assert.Equal(2, moved.SnapshotRevision);
+        Assert.Equal(3, removed.SnapshotRevision);
+        Assert.Null(removed.Timeline);
+    }
+
+    [Fact]
+    public void TryCommitDoesNotCarryTimelineToDifferentTrack()
+    {
+        var store = CreateStore(ServerInstanceId);
+        var source = SourceDescriptor.WindowsMedia("Player.App");
+        store.TryCommit(
+            source,
+            PlaybackState.Playing,
+            TrackMetadata.Create("A", "Artist", null),
+            PlaybackTimeline.Create(1_000, 240_000, DateTimeOffset.UtcNow),
+            artwork: null,
+            DateTimeOffset.UtcNow,
+            out _);
+
+        store.TryCommit(
+            source,
+            PlaybackState.Playing,
+            TrackMetadata.Create("B", "Artist", null),
+            artwork: null,
+            DateTimeOffset.UtcNow,
+            out var changedTrack);
+
+        Assert.Equal("B", changedTrack.Track!.Title);
+        Assert.Null(changedTrack.Timeline);
+    }
+
+    [Fact]
     public async Task SubscriptionStartsCurrentAndDropsIntermediateSnapshots()
     {
         var store = CreateStore(ServerInstanceId);

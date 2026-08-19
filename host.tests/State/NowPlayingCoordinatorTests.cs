@@ -147,6 +147,64 @@ public sealed class NowPlayingCoordinatorTests
     }
 
     [Fact]
+    public async Task ArtworkFollowUpCommitsPreservePublishedTimeline()
+    {
+        var sampledAt = new DateTimeOffset(2026, 8, 19, 3, 0, 0, TimeSpan.Zero);
+        var timeline = PlaybackTimeline.Create(10_000, 240_000, sampledAt);
+        var source = new ControlledSessionSource();
+        source.Enqueue(Playing("A", new ImmediateArtworkReader(OnePixelPng), timeline));
+        source.Enqueue(Playing(
+            "A",
+            new ImmediateArtworkReader(CreateDistinctPng(42)),
+            PlaybackTimeline.Create(11_000, 240_000, sampledAt.AddSeconds(1))));
+        source.Enqueue(Playing(
+            "A",
+            new ImmediateNullArtworkReader(),
+            PlaybackTimeline.Create(12_000, 240_000, sampledAt.AddSeconds(2))));
+        var store = CreateStore();
+        await using var coordinator = CreateCoordinator(source, store);
+        using var subscription = store.Subscribe();
+
+        coordinator.Start();
+        var firstArtwork = await WaitForSnapshotAsync(subscription, value => value.Artwork is not null);
+        var firstArtworkId = firstArtwork.Artwork!.ArtworkId;
+        source.RaiseChanged();
+        var replacement = await WaitForSnapshotAsync(
+            subscription,
+            value => value.Artwork is not null
+                && !string.Equals(value.Artwork.ArtworkId, firstArtworkId, StringComparison.Ordinal));
+        source.RaiseChanged();
+        var withoutArtwork = await WaitForSnapshotAsync(
+            subscription,
+            value => value.SnapshotRevision > replacement.SnapshotRevision
+                && value.Artwork is null);
+
+        Assert.Same(timeline, firstArtwork.Timeline);
+        Assert.Same(timeline, replacement.Timeline);
+        Assert.Same(timeline, withoutArtwork.Timeline);
+    }
+
+    [Fact]
+    public async Task NewTrackDoesNotInheritPreviousTimeline()
+    {
+        var timeline = PlaybackTimeline.Create(10_000, 240_000, DateTimeOffset.UtcNow);
+        var source = new ControlledSessionSource();
+        source.Enqueue(Playing("A", timeline: timeline));
+        source.Enqueue(Playing("B"));
+        var store = CreateStore();
+        await using var coordinator = CreateCoordinator(source, store);
+        using var subscription = store.Subscribe();
+
+        coordinator.Start();
+        var first = await WaitForSnapshotAsync(subscription, value => value.Track?.Title == "A");
+        source.RaiseChanged();
+        var changedTrack = await WaitForSnapshotAsync(subscription, value => value.Track?.Title == "B");
+
+        Assert.Same(timeline, first.Timeline);
+        Assert.Null(changedTrack.Timeline);
+    }
+
+    [Fact]
     public async Task PlaybackTransitionsPreserveIdentityUntilIdleOrUnavailable()
     {
         var source = new ControlledSessionSource();
@@ -219,13 +277,24 @@ public sealed class NowPlayingCoordinatorTests
             NowPlayingSnapshot.CreateInitial(ServerInstanceId, DateTimeOffset.UtcNow));
     }
 
-    private static SessionObservation Playing(string title, IArtworkReader? artworkReader = null)
+    private static SessionObservation Playing(
+        string title,
+        IArtworkReader? artworkReader = null,
+        PlaybackTimeline? timeline = null)
     {
         return SessionObservation.Create(
             SourceDescriptor.WindowsMedia("Player.App"),
             PlaybackState.Playing,
             TrackMetadata.Create(title, "Artist", null),
-            artworkReader);
+            artworkReader,
+            timeline);
+    }
+
+    private static byte[] CreateDistinctPng(byte value)
+    {
+        var bytes = OnePixelPng.ToArray();
+        bytes[^13] = value;
+        return bytes;
     }
 
     private static async Task<NowPlayingSnapshot> WaitForSnapshotAsync(
@@ -395,6 +464,14 @@ public sealed class NowPlayingCoordinatorTests
         public ValueTask<ArtworkPayload?> ReadAsync(CancellationToken cancellationToken)
         {
             return ValueTask.FromResult<ArtworkPayload?>(ArtworkPayload.Create(bytes));
+        }
+    }
+
+    private sealed class ImmediateNullArtworkReader : IArtworkReader
+    {
+        public ValueTask<ArtworkPayload?> ReadAsync(CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult<ArtworkPayload?>(null);
         }
     }
 

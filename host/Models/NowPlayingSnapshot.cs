@@ -4,12 +4,15 @@ namespace NowPlayingOverlay.Host.Models;
 
 internal sealed record NowPlayingSnapshot
 {
+    private const double PlayingTimelineToleranceMilliseconds = 500d;
+
     private NowPlayingSnapshot(
         Guid serverInstanceId,
         long snapshotRevision,
         SourceDescriptor? source,
         PlaybackState playback,
         TrackMetadata? track,
+        PlaybackTimeline? timeline,
         ArtworkDescriptor? artwork,
         DateTimeOffset observedAt)
     {
@@ -18,6 +21,7 @@ internal sealed record NowPlayingSnapshot
         Source = source;
         Playback = playback;
         Track = track;
+        Timeline = timeline;
         Artwork = artwork;
         ObservedAt = observedAt;
     }
@@ -31,6 +35,8 @@ internal sealed record NowPlayingSnapshot
     public PlaybackState Playback { get; }
 
     public TrackMetadata? Track { get; }
+
+    public PlaybackTimeline? Timeline { get; }
 
     public ArtworkDescriptor? Artwork { get; }
 
@@ -51,6 +57,7 @@ internal sealed record NowPlayingSnapshot
             source: null,
             PlaybackState.Unavailable,
             track: null,
+            timeline: null,
             artwork: null,
             observedAt);
     }
@@ -61,6 +68,27 @@ internal sealed record NowPlayingSnapshot
         SourceDescriptor? source,
         PlaybackState playback,
         TrackMetadata? track,
+        ArtworkDescriptor? artwork,
+        DateTimeOffset observedAt)
+    {
+        return Create(
+            serverInstanceId,
+            snapshotRevision,
+            source,
+            playback,
+            track,
+            timeline: null,
+            artwork,
+            observedAt);
+    }
+
+    public static NowPlayingSnapshot Create(
+        Guid serverInstanceId,
+        long snapshotRevision,
+        SourceDescriptor? source,
+        PlaybackState playback,
+        TrackMetadata? track,
+        PlaybackTimeline? timeline,
         ArtworkDescriptor? artwork,
         DateTimeOffset observedAt)
     {
@@ -77,13 +105,14 @@ internal sealed record NowPlayingSnapshot
                 "Snapshot revision must not be negative.");
         }
 
-        ValidateState(playback, source, track, artwork);
+        ValidateState(playback, source, track, timeline, artwork);
         return new NowPlayingSnapshot(
             serverInstanceId,
             snapshotRevision,
             source,
             playback,
             track,
+            timeline,
             artwork,
             observedAt.ToUniversalTime());
     }
@@ -97,6 +126,7 @@ internal sealed record NowPlayingSnapshot
             && Equals(Source?.Key, other.Source?.Key)
             && Playback == other.Playback
             && Equals(Track, other.Track)
+            && HasSameTimelineAs(other)
             && Artwork == other.Artwork;
     }
 
@@ -104,6 +134,7 @@ internal sealed record NowPlayingSnapshot
         PlaybackState playback,
         SourceDescriptor? source,
         TrackMetadata? track,
+        PlaybackTimeline? timeline,
         ArtworkDescriptor? artwork)
     {
         if (artwork is not null && track is null)
@@ -124,5 +155,40 @@ internal sealed record NowPlayingSnapshot
             case < PlaybackState.Playing or > PlaybackState.Unavailable:
                 throw new ArgumentOutOfRangeException(nameof(playback), playback, "Playback state is invalid.");
         }
+
+        if (timeline is not null
+            && playback is not (PlaybackState.Playing or PlaybackState.Paused))
+        {
+            throw new ArgumentException(
+                $"{playback} must not contain a playback timeline.",
+                nameof(timeline));
+        }
+    }
+
+    private bool HasSameTimelineAs(NowPlayingSnapshot other)
+    {
+        if (Timeline is null || other.Timeline is null)
+        {
+            return Timeline is null && other.Timeline is null;
+        }
+
+        if (Timeline.DurationMs != other.Timeline.DurationMs)
+        {
+            return false;
+        }
+
+        if (Playback == PlaybackState.Paused)
+        {
+            return Timeline.PositionMs == other.Timeline.PositionMs;
+        }
+
+        // A playing anchor is equivalent when it matches the projected old position.
+        var elapsedMilliseconds = (other.Timeline.SampledAt - Timeline.SampledAt).TotalMilliseconds;
+        var projectedPosition = Math.Clamp(
+            Timeline.PositionMs + elapsedMilliseconds,
+            0d,
+            Timeline.DurationMs);
+        return Math.Abs(projectedPosition - other.Timeline.PositionMs)
+            <= PlayingTimelineToleranceMilliseconds;
     }
 }

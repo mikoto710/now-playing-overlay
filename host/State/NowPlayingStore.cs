@@ -46,6 +46,25 @@ internal sealed class NowPlayingStore
         DateTimeOffset observedAt,
         out NowPlayingSnapshot snapshot)
     {
+        return TryCommit(
+            source,
+            playback,
+            track,
+            timeline: null,
+            artwork,
+            observedAt,
+            out snapshot);
+    }
+
+    public bool TryCommit(
+        SourceDescriptor? source,
+        PlaybackState playback,
+        TrackMetadata? track,
+        PlaybackTimeline? timeline,
+        ArtworkDescriptor? artwork,
+        DateTimeOffset observedAt,
+        out NowPlayingSnapshot snapshot)
+    {
         lock (_gate)
         {
             if (_current.SnapshotRevision == long.MaxValue)
@@ -59,6 +78,7 @@ internal sealed class NowPlayingStore
                 source,
                 playback,
                 track,
+                timeline,
                 artwork,
                 observedAt);
 

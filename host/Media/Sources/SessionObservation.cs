@@ -10,11 +10,13 @@ internal sealed class SessionObservation
         SourceDescriptor? source,
         PlaybackState playback,
         TrackMetadata? track,
+        PlaybackTimeline? timeline,
         IArtworkReader? artworkReader)
     {
         Source = source;
         Playback = playback;
         Track = track;
+        Timeline = timeline;
         ArtworkReader = artworkReader;
     }
 
@@ -23,6 +25,8 @@ internal sealed class SessionObservation
     public PlaybackState Playback { get; }
 
     public TrackMetadata? Track { get; }
+
+    public PlaybackTimeline? Timeline { get; }
 
     public IArtworkReader? ArtworkReader { get; }
 
@@ -35,16 +39,18 @@ internal sealed class SessionObservation
         SourceDescriptor? source,
         PlaybackState playback,
         TrackMetadata? track = null,
-        IArtworkReader? artworkReader = null)
+        IArtworkReader? artworkReader = null,
+        PlaybackTimeline? timeline = null)
     {
-        Validate(playback, source, track, artworkReader);
-        return new SessionObservation(source, playback, track, artworkReader);
+        Validate(playback, source, track, timeline, artworkReader);
+        return new SessionObservation(source, playback, track, timeline, artworkReader);
     }
 
     private static void Validate(
         PlaybackState playback,
         SourceDescriptor? source,
         TrackMetadata? track,
+        PlaybackTimeline? timeline,
         IArtworkReader? artworkReader)
     {
         if (artworkReader is not null && track is null)
@@ -64,6 +70,14 @@ internal sealed class SessionObservation
                 throw new ArgumentException("Unavailable must not contain track metadata or artwork.");
             case < PlaybackState.Playing or > PlaybackState.Unavailable:
                 throw new ArgumentOutOfRangeException(nameof(playback), playback, "Playback state is invalid.");
+        }
+
+        if (timeline is not null
+            && playback is not (PlaybackState.Playing or PlaybackState.Paused))
+        {
+            throw new ArgumentException(
+                $"{playback} must not contain a playback timeline.",
+                nameof(timeline));
         }
     }
 }

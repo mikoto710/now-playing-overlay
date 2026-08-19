@@ -19,6 +19,7 @@ public sealed class NowPlayingSnapshotTests
         Assert.Equal(PlaybackState.Unavailable, snapshot.Playback);
         Assert.Null(snapshot.Source);
         Assert.Null(snapshot.Track);
+        Assert.Null(snapshot.Timeline);
         Assert.Null(snapshot.Artwork);
         Assert.Null(snapshot.Identity);
         Assert.Equal(TimeSpan.Zero, snapshot.ObservedAt.Offset);
@@ -90,6 +91,83 @@ public sealed class NowPlayingSnapshotTests
     }
 
     [Fact]
+    public void VisibleStateIncludesTimelineNullTransitions()
+    {
+        var track = TrackMetadata.Create("Title", "Artist", null);
+        var withoutTimeline = CreateSnapshot(1, PlaybackState.Playing, track: track);
+        var withTimeline = CreateSnapshot(
+            2,
+            PlaybackState.Playing,
+            track: track,
+            timeline: PlaybackTimeline.Create(10_000, 240_000, DateTimeOffset.UtcNow));
+
+        Assert.False(withoutTimeline.HasSameVisibleStateAs(withTimeline));
+        Assert.False(withTimeline.HasSameVisibleStateAs(withoutTimeline));
+    }
+
+    [Fact]
+    public void PausedTimelineIgnoresResamplingButIncludesPositionAndDuration()
+    {
+        var sampledAt = new DateTimeOffset(2026, 8, 19, 3, 0, 0, TimeSpan.Zero);
+        var track = TrackMetadata.Create("Title", "Artist", null);
+        var first = CreateSnapshot(
+            1,
+            PlaybackState.Paused,
+            track: track,
+            timeline: PlaybackTimeline.Create(10_000, 240_000, sampledAt));
+        var resampled = CreateSnapshot(
+            2,
+            PlaybackState.Paused,
+            track: track,
+            timeline: PlaybackTimeline.Create(10_000, 240_000, sampledAt.AddMinutes(1)));
+        var moved = CreateSnapshot(
+            2,
+            PlaybackState.Paused,
+            track: track,
+            timeline: PlaybackTimeline.Create(10_001, 240_000, sampledAt.AddMinutes(1)));
+        var durationChanged = CreateSnapshot(
+            2,
+            PlaybackState.Paused,
+            track: track,
+            timeline: PlaybackTimeline.Create(10_000, 240_001, sampledAt.AddMinutes(1)));
+
+        Assert.True(first.HasSameVisibleStateAs(resampled));
+        Assert.False(first.HasSameVisibleStateAs(moved));
+        Assert.False(first.HasSameVisibleStateAs(durationChanged));
+    }
+
+    [Fact]
+    public void PlayingTimelineProjectsOldAnchorUsingInternalTolerance()
+    {
+        var sampledAt = new DateTimeOffset(2026, 8, 19, 3, 0, 0, TimeSpan.Zero);
+        var track = TrackMetadata.Create("Title", "Artist", null);
+        var first = CreateSnapshot(
+            1,
+            PlaybackState.Playing,
+            track: track,
+            timeline: PlaybackTimeline.Create(10_000, 240_000, sampledAt));
+        var atTolerance = CreateSnapshot(
+            2,
+            PlaybackState.Playing,
+            track: track,
+            timeline: PlaybackTimeline.Create(12_500, 240_000, sampledAt.AddSeconds(2)));
+        var beyondTolerance = CreateSnapshot(
+            2,
+            PlaybackState.Playing,
+            track: track,
+            timeline: PlaybackTimeline.Create(12_501, 240_000, sampledAt.AddSeconds(2)));
+        var durationChanged = CreateSnapshot(
+            2,
+            PlaybackState.Playing,
+            track: track,
+            timeline: PlaybackTimeline.Create(12_000, 240_001, sampledAt.AddSeconds(2)));
+
+        Assert.True(first.HasSameVisibleStateAs(atTolerance));
+        Assert.False(first.HasSameVisibleStateAs(beyondTolerance));
+        Assert.False(first.HasSameVisibleStateAs(durationChanged));
+    }
+
+    [Fact]
     public void PausedAndStoppedAllowMissingTrack()
     {
         Assert.Null(CreateSnapshot(1, PlaybackState.Paused).Track);
@@ -137,11 +215,37 @@ public sealed class NowPlayingSnapshotTests
                 DateTimeOffset.UtcNow));
     }
 
+    [Theory]
+    [InlineData((int)PlaybackState.Stopped)]
+    [InlineData((int)PlaybackState.Idle)]
+    [InlineData((int)PlaybackState.Unavailable)]
+    public void CreateRejectsTimelineOutsideActivePlaybackStates(int playbackValue)
+    {
+        var playback = (PlaybackState)playbackValue;
+        var source = playback == PlaybackState.Unavailable
+            ? null
+            : SourceDescriptor.WindowsMedia("Player.App");
+
+        var error = Assert.Throws<ArgumentException>(
+            () => NowPlayingSnapshot.Create(
+                ServerInstanceId,
+                1,
+                source,
+                playback,
+                track: null,
+                PlaybackTimeline.Create(10_000, 240_000, DateTimeOffset.UtcNow),
+                artwork: null,
+                DateTimeOffset.UtcNow));
+
+        Assert.Equal("timeline", error.ParamName);
+    }
+
     private static NowPlayingSnapshot CreateSnapshot(
         long revision,
         PlaybackState playback,
         TrackMetadata? track = null,
-        ArtworkDescriptor? artwork = null)
+        ArtworkDescriptor? artwork = null,
+        PlaybackTimeline? timeline = null)
     {
         return NowPlayingSnapshot.Create(
             ServerInstanceId,
@@ -149,6 +253,7 @@ public sealed class NowPlayingSnapshotTests
             SourceDescriptor.WindowsMedia("Player.App"),
             playback,
             track,
+            timeline,
             artwork,
             DateTimeOffset.UtcNow);
     }

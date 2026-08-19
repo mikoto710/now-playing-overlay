@@ -272,6 +272,7 @@ internal sealed class NowPlayingCoordinator : IAsyncDisposable
             observation.Source,
             observation.Playback,
             observation.Track,
+            observation.Timeline,
             artwork,
             _timeProvider.GetUtcNow(),
             out var committed);
@@ -361,6 +362,7 @@ internal sealed class NowPlayingCoordinator : IAsyncDisposable
                 current.Source,
                 current.Playback,
                 current.Track,
+                current.Timeline,
                 artwork: null,
                 _timeProvider.GetUtcNow(),
                 out var withoutArtwork);
@@ -389,6 +391,7 @@ internal sealed class NowPlayingCoordinator : IAsyncDisposable
             current.Source,
             current.Playback,
             current.Track,
+            current.Timeline,
             descriptor,
             _timeProvider.GetUtcNow(),
             out var withArtwork);

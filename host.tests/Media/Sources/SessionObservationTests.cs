@@ -21,6 +21,7 @@ public sealed class SessionObservationTests
         Assert.Equal(
             new TrackIdentity(SourceKey.WindowsMedia("Player.App"), "Title", "Artist"),
             observation.Identity);
+        Assert.Null(observation.Timeline);
     }
 
     [Fact]
@@ -30,7 +31,44 @@ public sealed class SessionObservationTests
 
         Assert.Null(observation.Source);
         Assert.Null(observation.Track);
+        Assert.Null(observation.Timeline);
         Assert.Null(observation.ArtworkReader);
+    }
+
+    [Theory]
+    [InlineData((int)PlaybackState.Playing)]
+    [InlineData((int)PlaybackState.Paused)]
+    public void CreateAllowsTimelineForActivePlaybackStates(int playbackValue)
+    {
+        var timeline = PlaybackTimeline.Create(10_000, 240_000, DateTimeOffset.UtcNow);
+
+        var observation = SessionObservation.Create(
+            SourceDescriptor.WindowsMedia("Player.App"),
+            (PlaybackState)playbackValue,
+            TrackMetadata.Create("Title", "Artist", null),
+            timeline: timeline);
+
+        Assert.Same(timeline, observation.Timeline);
+    }
+
+    [Theory]
+    [InlineData((int)PlaybackState.Stopped)]
+    [InlineData((int)PlaybackState.Idle)]
+    [InlineData((int)PlaybackState.Unavailable)]
+    public void CreateRejectsTimelineOutsideActivePlaybackStates(int playbackValue)
+    {
+        var playback = (PlaybackState)playbackValue;
+        var source = playback == PlaybackState.Unavailable
+            ? null
+            : SourceDescriptor.WindowsMedia("Player.App");
+
+        var error = Assert.Throws<ArgumentException>(
+            () => SessionObservation.Create(
+                source,
+                playback,
+                timeline: PlaybackTimeline.Create(10_000, 240_000, DateTimeOffset.UtcNow)));
+
+        Assert.Equal("timeline", error.ParamName);
     }
 
     [Fact]
