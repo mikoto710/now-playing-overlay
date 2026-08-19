@@ -1,5 +1,7 @@
 # Local protocol version 2
 
+> Status: historical version 2 contract. `dev@730d5da` remains the last committed v2 baseline, while the accepted but uncommitted Phase A working tree implements [`local-protocol-v3.md`](./local-protocol-v3.md). This document is retained for history only and does not describe a compatibility runtime.
+
 This document freezes the local contract shared by the host and browser client. The service listens only on `127.0.0.1`; the default port is `13130`.
 
 ## Endpoints
@@ -116,4 +118,4 @@ The production client navigates only when `overlayUrl` is an absolute `http://12
 
 `/health` reports host lifecycle plus provider-neutral source state. It includes `activeSourceProvider` (`windows-media`, `spotify-api`, or null) and `sourceStatus` (`unconfigured`, `starting`, `available`, `unavailable`, or `faulted`). It does not expose AUMIDs, media text, exceptions, Client IDs, or Spotify credentials.
 
-The `/api/v1/*` routes do not exist. Changing this contract requires a new protocol version or a reviewed backward-compatible extension across both DTO implementations and their contract tests.
+The `/api/v1/*` routes do not exist. Changing this contract requires a new protocol version or a reviewed backward-compatible extension across both DTO implementations and their contract tests. The accepted v2-to-v3 transition is a breaking, atomic host/browser upgrade with no dual-protocol runtime support.
