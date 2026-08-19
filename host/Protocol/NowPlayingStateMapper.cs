@@ -18,9 +18,10 @@ internal static class NowPlayingStateMapper
                 : new SourceDto
                 {
                     Provider = snapshot.Source.Key.Provider.ToProtocolValue(),
-                },
+            },
             Playback = MapPlayback(snapshot.Playback),
             Track = snapshot.Track is null ? null : MapTrack(snapshot.Track),
+            Timeline = snapshot.Timeline is null ? null : MapTimeline(snapshot.Timeline),
             Artwork = snapshot.Artwork is null ? null : MapArtwork(snapshot.Artwork),
             ObservedAt = snapshot.ObservedAt,
         };
@@ -70,13 +71,23 @@ internal static class NowPlayingStateMapper
         };
     }
 
+    private static PlaybackTimelineDto MapTimeline(PlaybackTimeline timeline)
+    {
+        return new PlaybackTimelineDto
+        {
+            PositionMs = timeline.PositionMs,
+            DurationMs = timeline.DurationMs,
+            SampledAt = timeline.SampledAt,
+        };
+    }
+
     private static ArtworkDto MapArtwork(ArtworkDescriptor artwork)
     {
         return new ArtworkDto
         {
             ArtworkRevision = artwork.ArtworkRevision,
             ArtworkId = artwork.ArtworkId,
-            Url = $"/api/v2/artwork/{artwork.ArtworkId}",
+            Url = $"/api/v3/artwork/{artwork.ArtworkId}",
         };
     }
 }

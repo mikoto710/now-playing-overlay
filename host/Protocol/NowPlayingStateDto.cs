@@ -4,7 +4,7 @@ namespace NowPlayingOverlay.Host.Protocol;
 
 internal sealed record NowPlayingStateDto
 {
-    public const int CurrentProtocolVersion = 2;
+    public const int CurrentProtocolVersion = 3;
 
     [JsonPropertyName("protocolVersion")]
     public int ProtocolVersion { get; init; } = CurrentProtocolVersion;
@@ -23,6 +23,9 @@ internal sealed record NowPlayingStateDto
 
     [JsonPropertyName("track")]
     public TrackDto? Track { get; init; }
+
+    [JsonPropertyName("timeline")]
+    public PlaybackTimelineDto? Timeline { get; init; }
 
     [JsonPropertyName("artwork")]
     public ArtworkDto? Artwork { get; init; }

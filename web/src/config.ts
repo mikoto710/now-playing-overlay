@@ -4,9 +4,9 @@ export const overlaySize = {
 } as const;
 
 export const config = {
-  appearanceUrl: "/api/v2/appearance",
-  stateUrl: "/api/v2/state",
-  eventsUrl: "/api/v2/events",
+  appearanceUrl: "/api/v3/appearance",
+  stateUrl: "/api/v3/state",
+  eventsUrl: "/api/v3/events",
   connectionStaleAfterMs: 5_000,
   widgetAnimationMs: 500,
   textExitAnimationMs: 300,

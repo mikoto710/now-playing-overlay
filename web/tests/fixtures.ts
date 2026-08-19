@@ -7,7 +7,7 @@ export const artworkIdB = "b".repeat(64);
 
 export function playingState(overrides: Partial<NowPlayingStateDto> = {}): NowPlayingStateDto {
   return {
-    protocolVersion: 2,
+    protocolVersion: 3,
     serverInstanceId: instanceA,
     snapshotRevision: 1,
     source: { provider: "windows-media" },
@@ -23,10 +23,11 @@ export function playingState(overrides: Partial<NowPlayingStateDto> = {}): NowPl
       playbackType: "music",
       genres: [],
     },
+    timeline: null,
     artwork: {
       artworkRevision: 1,
       artworkId: artworkIdA,
-      url: `/api/v2/artwork/${artworkIdA}`,
+      url: `/api/v3/artwork/${artworkIdA}`,
     },
     observedAt: "2026-08-10T12:00:00Z",
     ...overrides,

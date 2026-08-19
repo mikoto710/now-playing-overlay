@@ -51,7 +51,7 @@ describe("now-playing reducer", () => {
 
     expect(withArtwork.view.textRevision).toBe(withoutArtwork.view.textRevision);
     expect(withArtwork.view.artworkRevision).toBe(withoutArtwork.view.artworkRevision + 1);
-    expect(withArtwork.view.artworkUrl).toBe(`/api/v2/artwork/${artworkIdA}`);
+    expect(withArtwork.view.artworkUrl).toBe(`/api/v3/artwork/${artworkIdA}`);
   });
 
   it("invalidates the old cover when a new track has no artwork", () => {
@@ -109,7 +109,7 @@ describe("now-playing reducer", () => {
         artwork: {
           artworkRevision: 2,
           artworkId: artworkIdB,
-          url: `/api/v2/artwork/${artworkIdB}`,
+          url: `/api/v3/artwork/${artworkIdB}`,
         },
       }),
     );

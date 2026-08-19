@@ -130,7 +130,7 @@ describe("OverlayClient", () => {
     );
 
     client.start();
-    source.emit({ protocolVersion: 1 });
+    source.emit({ protocolVersion: 2 });
     source.emit(playingState());
 
     expect(source.closed).toBe(true);
@@ -192,7 +192,7 @@ function createClientWithCallbacks(
     clearTimer: clearTimeout,
   };
   return new OverlayClient(
-    { stateUrl: "/api/v2/state", eventsUrl: "/api/v2/events", staleAfterMs: 5_000 },
+    { stateUrl: "/api/v3/state", eventsUrl: "/api/v3/events", staleAfterMs: 5_000 },
     callbacks,
     dependencies,
   );

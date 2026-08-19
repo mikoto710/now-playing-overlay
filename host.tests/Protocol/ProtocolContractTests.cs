@@ -10,7 +10,7 @@ public sealed class ProtocolContractTests
     private static readonly Guid ServerInstanceId = Guid.Parse("f64b0c0f-73f3-4c0c-8b76-e84b89b77db2");
 
     [Fact]
-    public void SerializePlayingSnapshotUsesFrozenVersionTwoContractWithoutInternalIdentity()
+    public void SerializePlayingSnapshotUsesFrozenVersionThreeContractWithoutInternalIdentity()
     {
         var track = TrackMetadata.Create(
             "Track title",
@@ -27,12 +27,15 @@ public sealed class ProtocolContractTests
             "9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a",
             "image/png",
             1024);
+        var sampledAt = new DateTimeOffset(2026, 8, 9, 11, 59, 59, TimeSpan.Zero);
+        var timeline = PlaybackTimeline.Create(100_000, 240_000, sampledAt);
         var snapshot = NowPlayingSnapshot.Create(
             ServerInstanceId,
             42,
             SourceDescriptor.WindowsMedia("Player.App"),
             PlaybackState.Playing,
             track,
+            timeline,
             artwork,
             new DateTimeOffset(2026, 8, 9, 12, 0, 0, TimeSpan.Zero));
 
@@ -47,11 +50,12 @@ public sealed class ProtocolContractTests
                 "source",
                 "playback",
                 "track",
+                "timeline",
                 "artwork",
                 "observedAt",
             ],
             root.EnumerateObject().Select(property => property.Name));
-        Assert.Equal(2, root.GetProperty("protocolVersion").GetInt32());
+        Assert.Equal(3, root.GetProperty("protocolVersion").GetInt32());
         Assert.Equal(ServerInstanceId, root.GetProperty("serverInstanceId").GetGuid());
         Assert.Equal(42, root.GetProperty("snapshotRevision").GetInt64());
         var sourceJson = root.GetProperty("source");
@@ -81,10 +85,18 @@ public sealed class ProtocolContractTests
         Assert.Equal("music", trackJson.GetProperty("playbackType").GetString());
         Assert.Equal(["Rock", "Pop"], trackJson.GetProperty("genres").EnumerateArray().Select(value => value.GetString()));
 
+        var timelineJson = root.GetProperty("timeline");
+        Assert.Equal(
+            ["positionMs", "durationMs", "sampledAt"],
+            timelineJson.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(100_000, timelineJson.GetProperty("positionMs").GetInt64());
+        Assert.Equal(240_000, timelineJson.GetProperty("durationMs").GetInt64());
+        Assert.Equal(sampledAt, timelineJson.GetProperty("sampledAt").GetDateTimeOffset());
+
         var artworkJson = root.GetProperty("artwork");
         Assert.Equal(7, artworkJson.GetProperty("artworkRevision").GetInt64());
         Assert.Equal(
-            "/api/v2/artwork/9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a",
+            "/api/v3/artwork/9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a",
             artworkJson.GetProperty("url").GetString());
         Assert.DoesNotContain(
             "Player.App",
@@ -105,6 +117,7 @@ public sealed class ProtocolContractTests
         Assert.Equal("unavailable", root.GetProperty("playback").GetString());
         Assert.Equal(JsonValueKind.Null, root.GetProperty("source").ValueKind);
         Assert.Equal(JsonValueKind.Null, root.GetProperty("track").ValueKind);
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("timeline").ValueKind);
         Assert.Equal(JsonValueKind.Null, root.GetProperty("artwork").ValueKind);
     }
 
@@ -128,7 +141,39 @@ public sealed class ProtocolContractTests
             root.GetProperty("source").GetProperty("provider").GetString());
         Assert.DoesNotContain("Private.Player.Aumid", root.GetRawText(), StringComparison.Ordinal);
         Assert.Equal(JsonValueKind.Null, root.GetProperty("track").ValueKind);
+        Assert.Equal(JsonValueKind.Null, root.GetProperty("timeline").ValueKind);
         Assert.Equal(JsonValueKind.Null, root.GetProperty("artwork").ValueKind);
+    }
+
+    [Theory]
+    [InlineData((int)SourceProvider.WindowsMedia, "windows-media")]
+    [InlineData((int)SourceProvider.SpotifyApi, "spotify-api")]
+    public void EveryCurrentProviderUsesCanonicalProtocolToken(int value, string expected)
+    {
+        var token = ((SourceProvider)value).ToProtocolValue();
+
+        Assert.Equal(expected, token);
+        Assert.True(SourceProviderProtocolToken.IsCanonical(token));
+    }
+
+    [Theory]
+    [InlineData("future-player", true)]
+    [InlineData("", false)]
+    [InlineData("Windows-media", false)]
+    [InlineData("windows_media", false)]
+    [InlineData("windows--media", false)]
+    [InlineData("2player", false)]
+    public void ProviderTokenValidationUsesFrozenCanonicalShape(string token, bool expected)
+    {
+        Assert.Equal(expected, SourceProviderProtocolToken.IsCanonical(token));
+    }
+
+    [Fact]
+    public void ProviderTokenValidationUsesFrozenLengthBound()
+    {
+        Assert.Equal(64, SourceProviderProtocolToken.MaximumLength);
+        Assert.True(SourceProviderProtocolToken.IsCanonical(new string('a', 64)));
+        Assert.False(SourceProviderProtocolToken.IsCanonical(new string('a', 65)));
     }
 
     [Theory]
