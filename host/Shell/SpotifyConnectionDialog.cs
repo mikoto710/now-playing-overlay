@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 
@@ -8,6 +7,7 @@ internal sealed class SpotifyConnectionDialog : Form
 {
     private readonly Func<string, bool, CancellationToken, Task<SpotifyConnectionSnapshot>> _authorize;
     private readonly Func<CancellationToken, Task<SpotifyConnectionSnapshot>> _disconnect;
+    private readonly Action<string> _setClipboardText;
     private readonly TextBox _clientId;
     private readonly Label _status;
     private readonly Button _connect;
@@ -22,11 +22,13 @@ internal sealed class SpotifyConnectionDialog : Form
         SpotifyConnectionSnapshot connection,
         int callbackPort,
         Func<string, bool, CancellationToken, Task<SpotifyConnectionSnapshot>> authorize,
-        Func<CancellationToken, Task<SpotifyConnectionSnapshot>> disconnect)
+        Func<CancellationToken, Task<SpotifyConnectionSnapshot>> disconnect,
+        Action<string>? setClipboardText = null)
     {
         CurrentConnection = connection ?? throw new ArgumentNullException(nameof(connection));
         _authorize = authorize ?? throw new ArgumentNullException(nameof(authorize));
         _disconnect = disconnect ?? throw new ArgumentNullException(nameof(disconnect));
+        _setClipboardText = setClipboardText ?? new ClipboardTextWriter().SetText;
         var redirectUri = SpotifyAuthorizationRequest.CreateLoopbackRedirectUri(callbackPort);
 
         Text = "Spotify Connection";
@@ -62,8 +64,7 @@ internal sealed class SpotifyConnectionDialog : Form
             Padding = new Padding(8, 2, 8, 2),
             Text = "Copy",
         };
-        _copyRedirectUri.Click += async (_, _) =>
-            await CopyRedirectUriAsync(redirectUri.AbsoluteUri);
+        _copyRedirectUri.Click += (_, _) => CopyRedirectUri(redirectUri.AbsoluteUri);
         var redirectUriRow = new TableLayoutPanel
         {
             AutoSize = true,
@@ -281,39 +282,22 @@ internal sealed class SpotifyConnectionDialog : Form
         }
     }
 
-    private async Task CopyRedirectUriAsync(string redirectUri)
+    private void CopyRedirectUri(string redirectUri)
     {
         _copyRedirectUri.Enabled = false;
         try
         {
-            for (var attempt = 0; attempt < 10; attempt++)
-            {
-                try
-                {
-                    Clipboard.SetText(redirectUri, TextDataFormat.UnicodeText);
-                    _copyRedirectUri.Text = "Copied";
-                    return;
-                }
-                catch (ExternalException)
-                {
-                    if (attempt == 9)
-                    {
-                        break;
-                    }
-
-                    await Task.Delay(100, _shutdown.Token);
-                }
-            }
-
+            _setClipboardText(redirectUri);
+            _copyRedirectUri.Text = "Copied";
+        }
+        catch (Exception error)
+        {
             MessageBox.Show(
                 this,
-                "The Windows clipboard is temporarily unavailable. Try again.",
+                $"The redirect URI could not be copied. {error.Message}",
                 "Copy Redirect URI Failed",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
-        }
-        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
-        {
         }
         finally
         {
