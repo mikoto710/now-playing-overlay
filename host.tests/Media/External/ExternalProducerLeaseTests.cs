@@ -1,0 +1,143 @@
+using NowPlayingOverlay.Host.Media.External;
+using NowPlayingOverlay.Host.Models;
+
+namespace NowPlayingOverlay.Host.Tests.Media.External;
+
+public sealed class ExternalProducerLeaseTests
+{
+    private static readonly Guid FirstProducer = Guid.Parse("6ec6ece6-6ee1-49dd-8819-22ef82010342");
+    private static readonly Guid SecondProducer = Guid.Parse("710871aa-33fb-485c-96a9-29885ee1960c");
+
+    [Fact]
+    public void FirstStateClaimsLeaseAndIncreasingRevisionUpdatesIt()
+    {
+        var lease = CreateLease(out _);
+
+        var first = lease.ApplyState(Playing(FirstProducer, 1, "First"));
+        var second = lease.ApplyState(Playing(FirstProducer, 2, "Second"));
+
+        Assert.Equal(ExternalLeaseStateResult.Accepted, first);
+        Assert.Equal(ExternalLeaseStateResult.Accepted, second);
+        Assert.Equal(2, lease.GetCurrentState()!.ProducerRevision);
+        Assert.Equal("Second", lease.GetCurrentState()!.Track!.Title);
+    }
+
+    [Fact]
+    public void StaleStateIsRejectedAndDoesNotRenewLease()
+    {
+        var lease = CreateLease(out var clock);
+        Assert.Equal(
+            ExternalLeaseStateResult.Accepted,
+            lease.ApplyState(Playing(FirstProducer, 2, "Current")));
+        clock.Advance(TimeSpan.FromSeconds(9));
+
+        var stale = lease.ApplyState(Playing(FirstProducer, 2, "Replay"));
+        clock.Advance(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(ExternalLeaseStateResult.StaleRevision, stale);
+        Assert.True(lease.TryExpire());
+        Assert.Null(lease.GetCurrentState());
+    }
+
+    [Fact]
+    public void ForeignStateAndHeartbeatCannotReplaceOrRenewOwner()
+    {
+        var lease = CreateLease(out var clock);
+        lease.ApplyState(Playing(FirstProducer, 1, "Owner"));
+        clock.Advance(TimeSpan.FromSeconds(9));
+
+        var stateResult = lease.ApplyState(Playing(SecondProducer, 1, "Foreign"));
+        var heartbeatResult = lease.Heartbeat(SecondProducer);
+        clock.Advance(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(ExternalLeaseStateResult.ProducerConflict, stateResult);
+        Assert.Equal(ExternalLeaseHeartbeatResult.ProducerConflict, heartbeatResult);
+        Assert.True(lease.TryExpire());
+        Assert.Null(lease.GetCurrentState());
+    }
+
+    [Fact]
+    public void OwnerHeartbeatRenewsWithoutChangingPublishedState()
+    {
+        var lease = CreateLease(out var clock);
+        var state = Playing(FirstProducer, 1, "Owner");
+        lease.ApplyState(state);
+        clock.Advance(TimeSpan.FromSeconds(9));
+
+        var result = lease.Heartbeat(FirstProducer);
+        clock.Advance(TimeSpan.FromSeconds(9));
+
+        Assert.Equal(ExternalLeaseHeartbeatResult.Renewed, result);
+        Assert.False(lease.TryExpire());
+        Assert.Same(state, lease.GetCurrentState());
+    }
+
+    [Fact]
+    public void ExpiryClearsOwnerAndAllowsAnotherProducerToClaim()
+    {
+        var lease = CreateLease(out var clock);
+        lease.ApplyState(Playing(FirstProducer, 8, "First"));
+        clock.Advance(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(
+            ExternalLeaseHeartbeatResult.NoActiveLease,
+            lease.Heartbeat(SecondProducer));
+        Assert.Equal(
+            ExternalLeaseStateResult.Accepted,
+            lease.ApplyState(Playing(SecondProducer, 1, "Second")));
+        Assert.Equal(SecondProducer, lease.GetCurrentState()!.ProducerId);
+    }
+
+    [Fact]
+    public void CurrentStateReadExpiresLeaseAtTheExactBoundary()
+    {
+        var lease = CreateLease(out var clock);
+        lease.ApplyState(Playing(FirstProducer, 1, "Owner"));
+        clock.Advance(TimeSpan.FromSeconds(10));
+
+        Assert.Null(lease.GetCurrentState());
+        Assert.False(lease.TryExpire());
+    }
+
+    [Fact]
+    public void ConstructorAndHeartbeatRejectInvalidValues()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => new ExternalProducerLease(TimeSpan.Zero));
+        var lease = CreateLease(out _);
+        Assert.Throws<ArgumentException>(() => lease.Heartbeat(Guid.Empty));
+    }
+
+    private static ExternalProducerLease CreateLease(out ManualTimeProvider clock)
+    {
+        clock = new ManualTimeProvider();
+        return new ExternalProducerLease(TimeSpan.FromSeconds(10), clock);
+    }
+
+    private static ExternalIngestState Playing(Guid producerId, long revision, string title)
+    {
+        return ExternalIngestState.Create(
+            producerId,
+            revision,
+            PlaybackState.Playing,
+            title,
+            "Artist");
+    }
+
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        private long _timestamp;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp()
+        {
+            return _timestamp;
+        }
+
+        public void Advance(TimeSpan duration)
+        {
+            _timestamp = checked(_timestamp + duration.Ticks);
+        }
+    }
+}
