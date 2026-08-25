@@ -1,6 +1,6 @@
 # Local protocol version 3
 
-> Status: current implemented and accepted Phase A contract. PA-01 is committed at `dev@730d5da`; PA-02 and the PA-03 closeout remain uncommitted and unpushed. [`local-protocol-v2.md`](./local-protocol-v2.md) is retained only as the historical v2 contract.
+> Status: current output protocol and Custom Source input contract. Phase A and Phase B are implemented and accepted. PC-01/PC-02/PC-03 are committed on local `protocol-v3`; PC-03 remains ready for acceptance, and the branch has not been pushed. [`local-protocol-v2.md`](./local-protocol-v2.md) is historical only.
 
 This document freezes the next local contract shared by the host and embedded browser client. The service remains bound only to `127.0.0.1`; the default port remains `13130`.
 
@@ -11,16 +11,19 @@ Phase A upgraded the host, embedded page, TypeScript parser, fixtures, and HTTP/
 | Method | Path | Cache policy | Purpose |
 | --- | --- | --- | --- |
 | `GET`, `HEAD` | `/NowPlaying.html` | `no-store` | Embedded production overlay page |
+| `GET`, `HEAD` | `/NowPlayingOverlay.user.js` | `no-store` | Official standalone Tampermonkey Browser Producer |
 | `GET`, `HEAD` | `/api/v3/state` | `no-store` | Latest complete state snapshot |
 | `GET`, `HEAD` | `/api/v3/appearance` | `no-store` | Complete effective presentation configuration read once at page load |
 | `GET` | `/api/v3/events` | `no-store` | Server-Sent Events containing complete state snapshots |
 | `GET`, `HEAD` | `/api/v3/artwork/{artworkId}` | one year, `immutable` | Content-addressed PNG, JPEG, or WebP bytes |
 | `GET` | `/oauth/spotify/callback` | `no-store` | One-time callback for a pending Spotify PKCE authorization |
 | `GET`, `HEAD` | `/health` | `no-store` | Host and media-source readiness without track metadata |
+| `POST` | `/ingest/v1/state` | `no-store` | Authenticated Custom Source state claim or update |
+| `POST` | `/ingest/v1/heartbeat` | `no-store` | Authenticated renewal for the current Producer lease |
 
 Every `/api/v2/*` route now returns `404`. There is no redirect, compatibility fallback, content negotiation, or v2/v3 dual handler. The browser parser rejects a state payload with `protocolVersion: 2`.
 
-`/health`, `/NowPlaying.html`, and the Spotify OAuth callback are intentionally outside the versioned `/api/v3` namespace. Loopback binding, strict Host validation, no CORS, and no forwarded-header trust remain unchanged.
+`/health`, the two embedded assets, and the Spotify OAuth callback are intentionally outside the versioned `/api/v3` namespace. `/ingest/v1` is an independently versioned input contract; it is not an extension of the output DTO and does not imply output protocol v1. Loopback binding, strict Host validation, no CORS, and no forwarded-header trust remain unchanged.
 
 ## State shape
 
@@ -64,14 +67,15 @@ The C# DTOs and TypeScript parser represent the same version 3 shape:
 
 ## Provider token
 
-The host keeps a strong internal `SourceProvider` enum. The output `source.provider` is a bounded, canonical token rather than a closed browser union. Current and planned canonical values are:
+The host keeps a strong internal `SourceProvider` enum. The output `source.provider` is a bounded, canonical token rather than a closed browser union. Current production canonical values are:
 
 ```text
 windows-media
 spotify-api
-window-title
 external-push
 ```
+
+`window-title` is deferred and is not a production enum value. A future provider may add another canonical token without changing the token grammar.
 
 A token is 1 to 64 ASCII characters and must match:
 
@@ -178,16 +182,96 @@ The initial event contains current state. `Last-Event-ID` remains diagnostic onl
 
 ## Health
 
-`/health` remains unversioned. `activeSourceProvider` uses the same canonical serializer as `source.provider`, including future `window-title` and `external-push` values when those providers are actually implemented.
+`/health` remains unversioned. `activeSourceProvider` uses the same canonical serializer as `source.provider`; current non-null values are `windows-media`, `spotify-api`, and `external-push`.
 
-Health never exposes instance ID, external source ID, producer ID, display name, track metadata, Spotify account, Spotify Client ID, or `IngestKey`. Future enum values are not added to production merely to satisfy this document; each provider adds and tests its health token in its implementation phase.
+Health never exposes instance ID, external source ID, producer ID, display name, track metadata, Spotify account, Spotify Client ID, or `IngestKey`. Each provider adds and tests its health token only with its production implementation.
 
-## External input is a separate protocol
+## Custom Source input protocol
 
-External Push input does not POST this state DTO. Its future `/ingest/v1/state` and `/ingest/v1/heartbeat` contract is independently versioned and cannot control server instance, snapshot revision, observed time, `SourceKey`, or host artwork identity. External Push is outside Phase A.
+Custom Source is displayed to users as one fixed Source and serialized to output as `external-push`. External input never posts the output state DTO. A Producer cannot control `serverInstanceId`, `snapshotRevision`, `observedAt`, `SourceKey`, output artwork identity, appearance, or the Host URL.
 
-## Implemented Phase A boundary
+Ordinary users should use the official [Browser Producer](./browser-producer.md). Direct `/ingest/v1` calls are an advanced integration surface.
 
-Phase A was contract-first. It added the timeline domain and pass-through, version 3 DTOs and routes, provider-token validation, browser parser/config, a timeline pure helper, atomic embedded-page output, protocol documentation, and canonical health serialization coverage.
+### Authentication and transport
 
-It did not implement GSMTC or Spotify timelines, richer Spotify metadata, polling changes, WindowTitle, ExternalPush, `IngestKey`, ingest POST routes, a progress bar, RAF animation, artwork enhancements, adapters, or source-settings migration. Those capabilities remain subject to their later phases and separate authorization.
+Both endpoints require:
+
+```http
+Authorization: Bearer <43-character base64url IngestKey>
+Content-Type: application/json; charset=utf-8
+```
+
+The Host generates a 32-byte random key on first use, protects it with Windows DPAPI `CurrentUser`, and stores the protected document at `%LOCALAPPDATA%\NowPlayingOverlay\ingest-key.dat`. The key is never accepted in the URL. Settings exposes only a versioned connection code, `npo1:<port>:<key>`, for copying into the official userscript. Rotating the code atomically replaces the persisted key, rejects the old key immediately, and revokes the current lease.
+
+Only `127.0.0.1` is bound. Exact Host validation, no CORS opt-in, no forwarded-header trust, a 16 KiB body limit, five-second body-read timeout, JSON depth limit 8, strict property names, duplicate-property rejection, unknown-field rejection, and a global 20-request/one-second ingest limit apply. Track text is normalized by the Host and capped at 512 Unicode scalars.
+
+### State
+
+```http
+POST /ingest/v1/state
+```
+
+```json
+{
+  "producerId": "f5b7d897-c655-4cdf-a93b-cd10bd0707d7",
+  "producerRevision": 42,
+  "playback": "playing",
+  "track": {
+    "title": "Track title",
+    "artist": "Artist",
+    "albumTitle": "Album",
+    "trackId": "provider-stable-id"
+  }
+}
+```
+
+`producerId` must be a non-empty UUID. `producerRevision` is a positive signed 64-bit integer and must increase strictly for the current Producer. `playback` is exactly `playing`, `paused`, `stopped`, or `idle`; numeric enums and `unavailable` are rejected. `track` is nullable, but if present its non-empty normalized `title` is required; `artist`, `albumTitle`, and `trackId` are optional strings.
+
+The input state matrix is:
+
+| Playback | Track |
+| --- | --- |
+| `playing` | Required |
+| `paused` | Optional |
+| `stopped` | Optional |
+| `idle` | Must be null |
+
+`timeline`, `artwork`, remote URLs, playback controls, account data, and provider-specific fields are not ingest v1 fields. Strict JSON rejects them instead of accepting and ignoring them.
+
+### Heartbeat and lease
+
+```http
+POST /ingest/v1/heartbeat
+```
+
+```json
+{
+  "producerId": "f5b7d897-c655-4cdf-a93b-cd10bd0707d7"
+}
+```
+
+The first accepted state claims the single Producer lease. The same Producer may update it only with a strictly greater revision. Its heartbeat renews ownership without changing the published media state or snapshot revision. A foreign state/heartbeat, stale revision, replay, or heartbeat without an active lease returns conflict and does not renew ownership.
+
+The production lease duration is 10 seconds, measured only with Host monotonic time. On expiry the Host clears the owner and state, publishes Custom Source as unavailable, and allows another Producer to claim. A Producer cannot submit `unavailable`. Host restart begins with no lease; the persisted key remains valid and the Producer must resend state.
+
+### Responses
+
+| Status | Meaning |
+| --- | --- |
+| `204` | State accepted or owner heartbeat renewed |
+| `400` | Invalid JSON, schema, enum, UUID, revision, state matrix, or track value |
+| `401` | Missing or invalid bearer key |
+| `405` | Method other than `POST`; `Allow: POST` |
+| `408` | Body read timed out |
+| `409` | Stale/replayed state, foreign Producer, or heartbeat without the active owner |
+| `413` | Body exceeds 16 KiB |
+| `415` | Unsupported content type, charset, or content encoding |
+| `429` | Ingest rate limit exceeded; includes `Retry-After` |
+
+Common Host gates may also reject an invalid Host header, excessive headers, or exhausted concurrent-request capacity before the ingest handler runs. Responses contain no state or credential body and use `Cache-Control: no-store`.
+
+## Implemented phase boundary
+
+Phase A added Timeline domain/pass-through and output protocol v3. Phase B made source configuration provider-neutral. PC-01 added strict external state and the single-owner lease; PC-02 added the protected IngestKey and fail-closed HTTP transport; PC-03 connects the production Source, Settings/Shell, application composition, embedded userscript asset, release package, and official Media Session Browser Producer.
+
+PC-03 intentionally does not add Custom Source Timeline or artwork, remote artwork URLs, a progress UI, playback controls, source registry, multiple logical sources, Producer winner arbitration, a new SDK/package/project, a bridge executable, or a WindowTitle Source. Future Timeline and bounded inline artwork use the existing `PlaybackTimeline` and `IArtworkReader -> ArtworkCache` boundaries only after separate contracts and authorization.
