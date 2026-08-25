@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Diagnostics;
+using NowPlayingOverlay.Host.Media.External;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Media.Spotify.Playback;
@@ -18,7 +19,10 @@ internal sealed class OverlayApplication : IAsyncDisposable
     private readonly ActiveSourceManager? _activeSourceManager;
     private readonly WindowsMediaSource? _windowsMediaSource;
     private readonly SpotifyApiSource? _spotifyApiSource;
+    private readonly ExternalPushSource? _externalPushSource;
     private readonly SpotifyAuthorizationService? _spotifyAuthorizationService;
+    private readonly IngestKeyStore? _ingestKeyStore;
+    private readonly ExternalIngestHttpHandler? _externalIngestHandler;
     private readonly HostRuntimeState _runtimeState;
     private readonly AppearanceState _appearanceState;
     private readonly OverlayHttpServer _httpServer;
@@ -32,7 +36,10 @@ internal sealed class OverlayApplication : IAsyncDisposable
         ActiveSourceManager? activeSourceManager,
         WindowsMediaSource? windowsMediaSource,
         SpotifyApiSource? spotifyApiSource,
+        ExternalPushSource? externalPushSource,
         SpotifyAuthorizationService? spotifyAuthorizationService,
+        IngestKeyStore? ingestKeyStore,
+        ExternalIngestHttpHandler? externalIngestHandler,
         HostRuntimeState runtimeState,
         AppearanceState appearanceState,
         OverlayHttpServer httpServer)
@@ -43,7 +50,10 @@ internal sealed class OverlayApplication : IAsyncDisposable
         _activeSourceManager = activeSourceManager;
         _windowsMediaSource = windowsMediaSource;
         _spotifyApiSource = spotifyApiSource;
+        _externalPushSource = externalPushSource;
         _spotifyAuthorizationService = spotifyAuthorizationService;
+        _ingestKeyStore = ingestKeyStore;
+        _externalIngestHandler = externalIngestHandler;
         _runtimeState = runtimeState;
         _appearanceState = appearanceState;
         _httpServer = httpServer;
@@ -80,8 +90,14 @@ internal sealed class OverlayApplication : IAsyncDisposable
             new SpotifyCurrentlyPlayingClient(spotifyAuthorizationService),
             settings.Spotify.ToClientId(),
             logger: CreateLogger<SpotifyApiSource>(loggerProvider));
+        var externalLease = new ExternalProducerLease(ExternalPushSource.DefaultLeaseDuration);
+        var externalPushSource = new ExternalPushSource(externalLease);
+        var ingestKeyStore = new IngestKeyStore(paths.IngestKeyFilePath);
+        var externalIngestHandler = new ExternalIngestHttpHandler(
+            ingestKeyStore.LoadOrCreate(),
+            externalLease);
         var sessionSource = new ActiveSourceManager(
-            [windowsMediaSource, spotifyApiSource],
+            [windowsMediaSource, spotifyApiSource, externalPushSource],
             settings.Source.ToDescriptor());
         return Build(
             options,
@@ -91,9 +107,11 @@ internal sealed class OverlayApplication : IAsyncDisposable
             sessionSource,
             windowsMediaSource,
             spotifyApiSource,
+            externalPushSource,
             spotifyAuthorizationService,
+            ingestKeyStore,
             spotifyCallbackBroker,
-            externalIngestHandler: null,
+            externalIngestHandler,
             appearance: settings.Appearance);
     }
 
@@ -112,7 +130,9 @@ internal sealed class OverlayApplication : IAsyncDisposable
             activeSourceManager: null,
             windowsMediaSource: null,
             spotifyApiSource: null,
+            externalPushSource: null,
             spotifyAuthorizationService: null,
+            ingestKeyStore: null,
             spotifyCallbackBroker: spotifyCallbackBroker
                 ?? new SpotifyAuthorizationCallbackBroker(),
             externalIngestHandler: externalIngestHandler,
@@ -127,7 +147,9 @@ internal sealed class OverlayApplication : IAsyncDisposable
         ActiveSourceManager? activeSourceManager,
         WindowsMediaSource? windowsMediaSource,
         SpotifyApiSource? spotifyApiSource,
+        ExternalPushSource? externalPushSource,
         SpotifyAuthorizationService? spotifyAuthorizationService,
+        IngestKeyStore? ingestKeyStore,
         SpotifyAuthorizationCallbackBroker spotifyCallbackBroker,
         ExternalIngestHttpHandler? externalIngestHandler,
         AppearanceSettings appearance)
@@ -185,7 +207,10 @@ internal sealed class OverlayApplication : IAsyncDisposable
             activeSourceManager,
             windowsMediaSource,
             spotifyApiSource,
+            externalPushSource,
             spotifyAuthorizationService,
+            ingestKeyStore,
+            externalIngestHandler,
             runtimeState,
             appearanceState,
             httpServer);
@@ -216,6 +241,10 @@ internal sealed class OverlayApplication : IAsyncDisposable
             SourceProvider.SpotifyApi when _spotifyApiSource is not null =>
                 Task.FromResult(new SourceDiscoveryResult(
                     [SourceDescriptor.SpotifyApi()],
+                    GetSourceState())),
+            SourceProvider.ExternalPush when _externalPushSource is not null =>
+                Task.FromResult(new SourceDiscoveryResult(
+                    [SourceDescriptor.ExternalPush()],
                     GetSourceState())),
             _ => throw new InvalidOperationException(
                 "This host does not have the requested source provider."),
@@ -265,6 +294,34 @@ internal sealed class OverlayApplication : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _appearanceState.Set(appearance);
+    }
+
+    public string ExportIngestKey()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return GetExternalIngestHandler().ExportKey();
+    }
+
+    public string RotateIngestKey()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var store = _ingestKeyStore
+            ?? throw new InvalidOperationException("This host does not have an ingest key store.");
+        var replacement = store.Rotate();
+        var transferred = false;
+        try
+        {
+            GetExternalIngestHandler().ReplaceKey(replacement);
+            transferred = true;
+            return GetExternalIngestHandler().ExportKey();
+        }
+        finally
+        {
+            if (!transferred)
+            {
+                replacement.Dispose();
+            }
+        }
     }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -350,5 +407,11 @@ internal sealed class OverlayApplication : IAsyncDisposable
     {
         return _spotifyAuthorizationService
             ?? throw new InvalidOperationException("This host does not have Spotify authorization.");
+    }
+
+    private ExternalIngestHttpHandler GetExternalIngestHandler()
+    {
+        return _externalIngestHandler
+            ?? throw new InvalidOperationException("This host does not have external ingest enabled.");
     }
 }

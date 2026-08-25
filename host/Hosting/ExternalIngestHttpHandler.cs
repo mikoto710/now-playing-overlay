@@ -46,7 +46,9 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
     public const string StatePath = "/ingest/v1/state";
     public const string HeartbeatPath = "/ingest/v1/heartbeat";
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
-    private readonly IngestKey _key;
+    private readonly object _keyGate = new();
+    private IngestKey? _key;
+    private long _keyGeneration;
     private readonly ExternalProducerLease _lease;
     private readonly ExternalIngestLimits _limits;
     private readonly FixedWindowRateLimiter _rateLimiter;
@@ -66,6 +68,33 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
             _limits.MaximumRequestsPerWindow,
             _limits.RateLimitWindow,
             timeProvider ?? TimeProvider.System);
+    }
+
+    public string ExportKey()
+    {
+        lock (_keyGate)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            return GetKeyLocked().Export();
+        }
+    }
+
+    public void ReplaceKey(IngestKey replacement)
+    {
+        ArgumentNullException.ThrowIfNull(replacement);
+        IngestKey previous;
+        lock (_keyGate)
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            previous = GetKeyLocked();
+            _key = replacement;
+            _keyGeneration = checked(_keyGeneration + 1);
+            // Serialize revocation with final request authorization so an in-flight old-key
+            // request cannot recreate the lease after rotation.
+            _lease.Revoke();
+        }
+
+        previous.Dispose();
     }
 
     public async Task HandleAsync(
@@ -93,11 +122,9 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
             return;
         }
 
-        if (!_key.MatchesAuthorization(request.Headers["Authorization"]))
+        if (!TryAuthorize(request.Headers["Authorization"], out var keyGeneration))
         {
-            response.StatusCode = 401;
-            response.Headers[HttpResponseHeader.WwwAuthenticate] = "Bearer";
-            response.ContentLength64 = 0;
+            WriteUnauthorized(response);
             return;
         }
 
@@ -136,9 +163,18 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
 
         try
         {
-            response.StatusCode = heartbeat
-                ? HandleHeartbeat(body)
-                : HandleState(body);
+            lock (_keyGate)
+            {
+                if (keyGeneration != _keyGeneration)
+                {
+                    WriteUnauthorized(response);
+                    return;
+                }
+
+                response.StatusCode = heartbeat
+                    ? HandleHeartbeat(body)
+                    : HandleState(body);
+            }
         }
         catch (Exception error) when (error is JsonException
             or ArgumentException
@@ -154,8 +190,37 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 0)
         {
-            _key.Dispose();
+            IngestKey? key;
+            lock (_keyGate)
+            {
+                key = _key;
+                _key = null;
+            }
+
+            key?.Dispose();
         }
+    }
+
+    private bool TryAuthorize(string? authorization, out long keyGeneration)
+    {
+        lock (_keyGate)
+        {
+            var matches = GetKeyLocked().MatchesAuthorization(authorization);
+            keyGeneration = _keyGeneration;
+            return matches;
+        }
+    }
+
+    private static void WriteUnauthorized(HttpListenerResponse response)
+    {
+        response.StatusCode = 401;
+        response.Headers[HttpResponseHeader.WwwAuthenticate] = "Bearer";
+        response.ContentLength64 = 0;
+    }
+
+    private IngestKey GetKeyLocked()
+    {
+        return _key ?? throw new ObjectDisposedException(nameof(ExternalIngestHttpHandler));
     }
 
     private int HandleState(ReadOnlySpan<byte> body)

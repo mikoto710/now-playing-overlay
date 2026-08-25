@@ -21,6 +21,7 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
     private readonly object _gate = new();
     private readonly HostOptions _options;
     private readonly OverlayPageAsset _pageAsset;
+    private readonly BrowserProducerAsset _browserProducerAsset;
     private readonly NowPlayingStore _store;
     private readonly ArtworkCache _artworkCache;
     private readonly HostHealthService _healthService;
@@ -51,10 +52,13 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
         ServerEndpointChangeBroadcaster endpointChanges,
         SpotifyAuthorizationCallbackBroker spotifyCallbackBroker,
         ExternalIngestHttpHandler? externalIngestHandler,
-        ILogger<OverlayHttpServer> logger)
+        ILogger<OverlayHttpServer> logger,
+        BrowserProducerAsset? browserProducerAsset = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _pageAsset = pageAsset ?? throw new ArgumentNullException(nameof(pageAsset));
+        _browserProducerAsset = browserProducerAsset
+            ?? BrowserProducerAsset.LoadEmbedded(typeof(BrowserProducerAsset).Assembly);
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _artworkCache = artworkCache ?? throw new ArgumentNullException(nameof(artworkCache));
         _healthService = healthService ?? throw new ArgumentNullException(nameof(healthService));
@@ -319,6 +323,17 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
                 _pageAsset.Bytes,
                 cancellationToken,
                 ContentSecurityPolicy);
+            return;
+        }
+
+        if (string.Equals(path, BrowserProducerAsset.Path, StringComparison.Ordinal))
+        {
+            await HandleGetAndHeadAsync(
+                context,
+                "application/javascript; charset=utf-8",
+                "no-store",
+                _browserProducerAsset.Bytes,
+                cancellationToken);
             return;
         }
 

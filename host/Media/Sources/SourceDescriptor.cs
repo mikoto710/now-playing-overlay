@@ -33,4 +33,11 @@ internal sealed record SourceDescriptor
     {
         return new SourceDescriptor(SourceKey.SpotifyApi(), SourceProvider.SpotifyApi.ToDisplayName());
     }
+
+    public static SourceDescriptor ExternalPush()
+    {
+        return new SourceDescriptor(
+            SourceKey.ExternalPush(),
+            SourceProvider.ExternalPush.ToDisplayName());
+    }
 }

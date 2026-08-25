@@ -4,7 +4,7 @@
     <AssemblyName>NowPlayingOverlay</AssemblyName>
     <AssemblyTitle>Now Playing Overlay</AssemblyTitle>
     <Product>Now Playing Overlay</Product>
-    <Description>Windows Media and Spotify now-playing overlay host for OBS.</Description>
+    <Description>Windows Media, Spotify, and Custom Source now-playing overlay host for OBS.</Description>
     <Version>0.2.0</Version>
     <AssemblyVersion>0.2.0.0</AssemblyVersion>
     <FileVersion>0.2.0.0</FileVersion>
@@ -16,6 +16,7 @@
     <IncludeWindowsSDKRefFrameworkReferences>false</IncludeWindowsSDKRefFrameworkReferences>
     <ApplicationIcon>Assets\NowPlayingOverlay.ico</ApplicationIcon>
     <WebAssetPath>$(MSBuildProjectDirectory)\..\web\dist\NowPlaying.html</WebAssetPath>
+    <BrowserProducerAssetPath>$(MSBuildProjectDirectory)\..\integrations\NowPlayingOverlay.user.js</BrowserProducerAssetPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,12 +27,16 @@
     <InternalsVisibleTo Include="NowPlayingOverlay.Host.Tests" />
     <EmbeddedResource Include="Assets\NowPlayingOverlay.ico" LogicalName="NowPlayingOverlay.Assets.NowPlayingOverlay.ico" />
     <EmbeddedResource Include="$(WebAssetPath)" LogicalName="NowPlayingOverlay.Web.NowPlaying.html" />
+    <EmbeddedResource Include="$(BrowserProducerAssetPath)" LogicalName="NowPlayingOverlay.Integrations.NowPlayingOverlay.user.js" />
   </ItemGroup>
 
   <Target Name="PrepareEmbeddedWebAsset" BeforeTargets="PrepareResourceNames">
     <Error
       Condition="!Exists('$(WebAssetPath)')"
       Text="The production web asset is missing at '$(WebAssetPath)'. Run 'npm --prefix web run build' before building the host." />
+    <Error
+      Condition="!Exists('$(BrowserProducerAssetPath)')"
+      Text="The browser Producer asset is missing at '$(BrowserProducerAssetPath)'." />
   </Target>
 
 </Project>

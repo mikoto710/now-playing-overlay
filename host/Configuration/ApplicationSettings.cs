@@ -91,6 +91,12 @@ internal sealed record SourceSelectionSettings
                     StringComparison.Ordinal):
                     throw new InvalidDataException(
                         "The configured Spotify API source instance is invalid.");
+                case SourceProvider.ExternalPush when !string.Equals(
+                    InstanceId,
+                    SourceKey.ExternalPush().InstanceId,
+                    StringComparison.Ordinal):
+                    throw new InvalidDataException(
+                        "The configured Custom Source instance is invalid.");
             }
         }
         catch (ArgumentException error)
@@ -108,6 +114,7 @@ internal sealed record SourceSelectionSettings
                 ? null
                 : SourceDescriptor.WindowsMedia(InstanceId),
             SourceProvider.SpotifyApi => SourceDescriptor.SpotifyApi(),
+            SourceProvider.ExternalPush => SourceDescriptor.ExternalPush(),
             _ => throw new InvalidDataException("The configured source provider is not supported."),
         };
     }
@@ -127,6 +134,15 @@ internal sealed record SourceSelectionSettings
         {
             Provider = SourceProvider.SpotifyApi,
             InstanceId = SourceKey.SpotifyApi().InstanceId,
+        };
+    }
+
+    public static SourceSelectionSettings ExternalPush()
+    {
+        return new SourceSelectionSettings
+        {
+            Provider = SourceProvider.ExternalPush,
+            InstanceId = SourceKey.ExternalPush().InstanceId,
         };
     }
 }

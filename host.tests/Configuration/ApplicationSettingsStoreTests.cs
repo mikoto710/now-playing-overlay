@@ -145,6 +145,26 @@ public sealed class ApplicationSettingsStoreTests
     }
 
     [Fact]
+    public void SaveAndLoadRoundTripsFixedCustomSourceSelection()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var store = new ApplicationSettingsStore(path);
+        store.Save(new ApplicationSettings
+        {
+            Source = SourceSelectionSettings.ExternalPush(),
+            WindowsMedia = new WindowsMediaSettings { LastInstanceId = "Player.App!Exact" },
+        });
+
+        var saved = store.Load().Settings;
+
+        Assert.Equal(SourceProvider.ExternalPush, saved.Source.Provider);
+        Assert.Equal("default", saved.Source.InstanceId);
+        Assert.Equal("Player.App!Exact", saved.WindowsMedia.LastInstanceId);
+        Assert.Contains("\"provider\": \"external-push\"", File.ReadAllText(path), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LegacySpotifySelectionMigratesDormantWindowsSource()
     {
         using var directory = new TemporaryDirectory();
@@ -275,6 +295,7 @@ public sealed class ApplicationSettingsStoreTests
     [InlineData("{\"port\":10598,\"unexpected\":true}")]
     [InlineData("{\"port\":10598,\"source\":null}")]
     [InlineData("{\"source\":{\"provider\":\"spotify-api\",\"instanceId\":\"Player.App\"}}")]
+    [InlineData("{\"source\":{\"provider\":\"external-push\",\"instanceId\":\"other\"}}")]
     [InlineData("{\"source\":{\"provider\":\"windows-media\",\"instanceId\":\"A\",\"sourceAppUserModelId\":\"A\"}}")]
     [InlineData("{\"source\":{\"provider\":\"windows-media\",\"instanceId\":\"A\"},\"windowsMedia\":{\"lastInstanceId\":\"B\"}}")]
     [InlineData("{\"windowsMedia\":null}")]

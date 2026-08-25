@@ -108,6 +108,43 @@ public sealed class ExternalProducerLeaseTests
         Assert.Throws<ArgumentException>(() => lease.Heartbeat(Guid.Empty));
     }
 
+    [Fact]
+    public void ChangeSignalCoversAcceptedStateAndExpiryButNotHeartbeatOrRejection()
+    {
+        var lease = CreateLease(out var clock);
+        var changes = 0;
+        lease.StateChanged += (_, _) => changes++;
+
+        lease.ApplyState(Playing(FirstProducer, 1, "Owner"));
+        lease.Heartbeat(FirstProducer);
+        lease.ApplyState(Playing(FirstProducer, 1, "Replay"));
+        lease.ApplyState(Playing(SecondProducer, 2, "Foreign"));
+        clock.Advance(TimeSpan.FromSeconds(10));
+        lease.TryExpire();
+
+        Assert.Equal(2, changes);
+    }
+
+    [Fact]
+    public void HostRevocationClearsOwnerImmediatelyAndIsIdempotent()
+    {
+        var lease = CreateLease(out _);
+        lease.ApplyState(Playing(FirstProducer, 1, "Owner"));
+        var changes = 0;
+        lease.StateChanged += (_, _) => changes++;
+
+        var revoked = lease.Revoke();
+        var repeated = lease.Revoke();
+
+        Assert.True(revoked);
+        Assert.False(repeated);
+        Assert.Null(lease.GetCurrentState());
+        Assert.Equal(1, changes);
+        Assert.Equal(
+            ExternalLeaseStateResult.Accepted,
+            lease.ApplyState(Playing(SecondProducer, 1, "Replacement")));
+    }
+
     private static ExternalProducerLease CreateLease(out ManualTimeProvider clock)
     {
         clock = new ManualTimeProvider();

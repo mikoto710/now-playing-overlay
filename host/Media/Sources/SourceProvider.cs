@@ -4,6 +4,7 @@ internal enum SourceProvider
 {
     WindowsMedia,
     SpotifyApi,
+    ExternalPush,
 }
 
 internal static class SourceProviderExtensions
@@ -14,6 +15,7 @@ internal static class SourceProviderExtensions
         {
             SourceProvider.WindowsMedia => "windows-media",
             SourceProvider.SpotifyApi => "spotify-api",
+            SourceProvider.ExternalPush => "external-push",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(provider),
                 provider,
@@ -29,6 +31,7 @@ internal static class SourceProviderExtensions
         {
             SourceProvider.WindowsMedia => "Windows Media",
             SourceProvider.SpotifyApi => "Spotify API",
+            SourceProvider.ExternalPush => "Custom Source",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(provider),
                 provider,

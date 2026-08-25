@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Configuration;
+using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Media.External;
 using NowPlayingOverlay.Host.Media.Sources;
@@ -155,6 +156,143 @@ public sealed class OverlayHttpTests
     }
 
     [Fact]
+    public async Task BrowserProducerAssetSupportsGetAndHeadWithoutCaching()
+    {
+        await using var host = await TestOverlayHost.StartAsync();
+
+        using var get = await host.Client.GetAsync(BrowserProducerAsset.Path);
+        var script = await get.Content.ReadAsStringAsync();
+        using var headRequest = new HttpRequestMessage(HttpMethod.Head, BrowserProducerAsset.Path);
+        using var head = await host.Client.SendAsync(headRequest);
+
+        Assert.Equal(HttpStatusCode.OK, get.StatusCode);
+        Assert.Equal("application/javascript", get.Content.Headers.ContentType!.MediaType);
+        Assert.Equal("utf-8", get.Content.Headers.ContentType.CharSet);
+        Assert.Equal("no-store", get.Headers.CacheControl!.ToString());
+        Assert.Contains("// ==UserScript==", script, StringComparison.Ordinal);
+        Assert.Contains("/ingest/v1/state", script, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.OK, head.StatusCode);
+        Assert.Equal(get.Content.Headers.ContentLength, head.Content.Headers.ContentLength);
+        Assert.Empty(await head.Content.ReadAsByteArrayAsync());
+    }
+
+    [Fact]
+    public async Task ProductionCustomSourceSurvivesKeyRotationAndHostRestart()
+    {
+        using var directory = new TemporaryDirectory();
+        var paths = new ApplicationPaths(directory.Path);
+        var producerId = Guid.Parse("f5b7d897-c655-4cdf-a93b-cd10bd0707d7");
+        var firstPort = ReservePort();
+        var settings = new ApplicationSettings
+        {
+            Port = firstPort,
+            Source = SourceSelectionSettings.ExternalPush(),
+        };
+        string rotatedToken;
+
+        await using (var app = OverlayApplication.Build([], settings, paths))
+        {
+            Assert.Equal(SourceProvider.ExternalPush, app.GetSourceState().ActiveSource!.Key.Provider);
+            Assert.Equal(SourceStatus.Unavailable, app.GetSourceState().Status);
+            await app.StartAsync();
+            using var client = CreateClient(firstPort);
+            var initialToken = app.ExportIngestKey();
+            using var stateRequest = CreateIngestRequest(
+                ExternalIngestHttpHandler.StatePath,
+                initialToken,
+                new
+                {
+                    producerId,
+                    producerRevision = 1,
+                    playback = "playing",
+                    track = new { title = "Before rotation", artist = "Artist" },
+                });
+            using var stateResponse = await client.SendAsync(stateRequest);
+            using var published = await WaitForStateAsync(
+                client,
+                root => root.GetProperty("track").ValueKind == JsonValueKind.Object
+                    && root.GetProperty("track").GetProperty("title").GetString()
+                        == "Before rotation");
+            using var health = await client.GetAsync("/health");
+            using var healthJson = JsonDocument.Parse(await health.Content.ReadAsStringAsync());
+
+            Assert.Equal(HttpStatusCode.NoContent, stateResponse.StatusCode);
+            Assert.Equal(
+                "external-push",
+                published.RootElement.GetProperty("source").GetProperty("provider").GetString());
+            Assert.Equal(JsonValueKind.Null, published.RootElement.GetProperty("timeline").ValueKind);
+            Assert.Equal(JsonValueKind.Null, published.RootElement.GetProperty("artwork").ValueKind);
+            Assert.Equal(
+                "external-push",
+                healthJson.RootElement.GetProperty("activeSourceProvider").GetString());
+            Assert.Equal("available", healthJson.RootElement.GetProperty("sourceStatus").GetString());
+
+            rotatedToken = app.RotateIngestKey();
+            Assert.NotEqual(initialToken, rotatedToken);
+            Assert.Equal(SourceStatus.Unavailable, app.GetSourceState().Status);
+            using var rejectedRequest = CreateIngestRequest(
+                ExternalIngestHttpHandler.StatePath,
+                initialToken,
+                new
+                {
+                    producerId,
+                    producerRevision = 2,
+                    playback = "paused",
+                    track = new { title = "Rejected old code" },
+                });
+            using var rejected = await client.SendAsync(rejectedRequest);
+            using var acceptedRequest = CreateIngestRequest(
+                ExternalIngestHttpHandler.StatePath,
+                rotatedToken,
+                new
+                {
+                    producerId,
+                    producerRevision = 2,
+                    playback = "paused",
+                    track = new { title = "After rotation" },
+                });
+            using var accepted = await client.SendAsync(acceptedRequest);
+            using var rotated = await WaitForStateAsync(
+                client,
+                root => root.GetProperty("track").ValueKind == JsonValueKind.Object
+                    && root.GetProperty("track").GetProperty("title").GetString()
+                        == "After rotation");
+
+            Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, accepted.StatusCode);
+            Assert.Equal("paused", rotated.RootElement.GetProperty("playback").GetString());
+        }
+
+        var secondPort = ReservePort();
+        await using var restarted = OverlayApplication.Build(
+            [],
+            settings with { Port = secondPort },
+            paths);
+        Assert.Equal(rotatedToken, restarted.ExportIngestKey());
+        await restarted.StartAsync();
+        using var restartedClient = CreateClient(secondPort);
+        using var resumedRequest = CreateIngestRequest(
+            ExternalIngestHttpHandler.StatePath,
+            rotatedToken,
+            new
+            {
+                producerId,
+                producerRevision = 3,
+                playback = "playing",
+                track = new { title = "After restart", artist = "Artist" },
+            });
+        using var resumed = await restartedClient.SendAsync(resumedRequest);
+        using var republished = await WaitForStateAsync(
+            restartedClient,
+            root => root.GetProperty("track").ValueKind == JsonValueKind.Object
+                && root.GetProperty("track").GetProperty("title").GetString()
+                    == "After restart");
+
+        Assert.Equal(HttpStatusCode.NoContent, resumed.StatusCode);
+        Assert.Equal("After restart", republished.RootElement.GetProperty("track").GetProperty("title").GetString());
+    }
+
+    [Fact]
     public async Task ResponsesDoNotIdentifyTheServerAndUnknownRoutesFailClosed()
     {
         await using var host = await TestOverlayHost.StartAsync();
@@ -239,6 +377,39 @@ public sealed class OverlayHttpTests
         Assert.Equal(HttpStatusCode.Unauthorized, missing.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
         Assert.Equal("Bearer", missing.Headers.WwwAuthenticate.Single().Scheme);
+        Assert.Null(lease.GetCurrentState());
+    }
+
+    [Fact]
+    public async Task KeyRotationRejectsAnOldRequestThatIsStillUploading()
+    {
+        var lease = new ExternalProducerLease(TimeSpan.FromMinutes(1));
+        var originalKey = IngestKey.Generate();
+        var originalToken = originalKey.Export();
+        var handler = new ExternalIngestHttpHandler(originalKey, lease);
+        await using var host = await TestOverlayHost.StartAsync(externalIngestHandler: handler);
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            producerId = Guid.Parse("e2352364-659d-4496-9bc1-746b51b21348"),
+            producerRevision = 1,
+            playback = "idle",
+        });
+        var content = new BlockingJsonContent(payload);
+        using var request = new HttpRequestMessage(HttpMethod.Post, ExternalIngestHttpHandler.StatePath)
+        {
+            Content = content,
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", originalToken);
+        var send = host.Client.SendAsync(request);
+        await content.FirstByteWritten.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(100);
+        var replacement = IngestKey.Generate();
+        handler.ReplaceKey(replacement);
+
+        content.Release();
+        using var response = await send.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Null(lease.GetCurrentState());
     }
 
@@ -942,6 +1113,26 @@ public sealed class OverlayHttpTests
         return request;
     }
 
+    private static async Task<JsonDocument> WaitForStateAsync(
+        HttpClient client,
+        Func<JsonElement, bool> predicate)
+    {
+        for (var attempt = 0; attempt < 200; attempt++)
+        {
+            using var response = await client.GetAsync("/api/v3/state");
+            var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            if (predicate(document.RootElement))
+            {
+                return document;
+            }
+
+            document.Dispose();
+            await Task.Delay(10);
+        }
+
+        throw new TimeoutException("Production state did not reach the expected value.");
+    }
+
     private sealed class ManualTimeProvider : TimeProvider
     {
         private long _timestamp;
@@ -956,6 +1147,48 @@ public sealed class OverlayHttpTests
         public void Advance(TimeSpan duration)
         {
             _timestamp = checked(_timestamp + duration.Ticks);
+        }
+    }
+
+    private sealed class BlockingJsonContent : HttpContent
+    {
+        private readonly byte[] _body;
+        private readonly TaskCompletionSource _release =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _firstByteWritten =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public BlockingJsonContent(byte[] body)
+        {
+            _body = body;
+            Headers.ContentType = new MediaTypeHeaderValue("application/json")
+            {
+                CharSet = "utf-8",
+            };
+        }
+
+        public Task FirstByteWritten => _firstByteWritten.Task;
+
+        public void Release()
+        {
+            _release.TrySetResult();
+        }
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = _body.Length;
+            return true;
+        }
+
+        protected override async Task SerializeToStreamAsync(
+            Stream stream,
+            TransportContext? context)
+        {
+            await stream.WriteAsync(_body.AsMemory(0, 1));
+            await stream.FlushAsync();
+            _firstByteWritten.TrySetResult();
+            await _release.Task;
+            await stream.WriteAsync(_body.AsMemory(1));
         }
     }
 }

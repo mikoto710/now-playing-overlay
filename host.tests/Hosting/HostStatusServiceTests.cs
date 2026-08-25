@@ -41,4 +41,25 @@ public sealed class HostStatusServiceTests
         Assert.DoesNotContain("Private", status.Text, StringComparison.Ordinal);
         await coordinator.DisposeAsync();
     }
+
+    [Fact]
+    public async Task CustomSourceMissingStatusExplainsTheUserAction()
+    {
+        var source = new FakeSessionSource();
+        var store = new NowPlayingStore(
+            NowPlayingSnapshot.CreateInitial(Guid.NewGuid(), DateTimeOffset.UtcNow));
+        var coordinator = new NowPlayingCoordinator(source, store, new ArtworkCache());
+        var runtime = new HostRuntimeState(TimeProvider.System);
+        runtime.MarkReady();
+        source.Publish(SessionObservation.Create(
+            SourceDescriptor.ExternalPush(),
+            PlaybackState.Unavailable));
+        var service = new HostStatusService(runtime, coordinator, source, store);
+
+        Assert.Equal(
+            "Custom Source: Waiting for Browser Producer",
+            service.GetCurrent().Text);
+
+        await coordinator.DisposeAsync();
+    }
 }

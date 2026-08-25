@@ -12,6 +12,10 @@ internal sealed class SettingsDialog : Form
     private readonly Func<string, bool, CancellationToken, Task<SpotifyConnectionSnapshot>>
         _authorizeSpotify;
     private readonly Func<CancellationToken, Task<SpotifyConnectionSnapshot>> _disconnectSpotify;
+    private readonly Func<string> _getCustomSourceConnectionCode;
+    private readonly Func<string> _rotateCustomSourceConnectionCode;
+    private readonly Action _openBrowserProducer;
+    private readonly Action<string> _setClipboardText;
     private readonly int _effectivePort;
     private readonly SourceSelectionSettings _currentSource;
     private readonly NumericUpDown _port;
@@ -21,6 +25,7 @@ internal sealed class SettingsDialog : Form
     private readonly Button _refresh;
     private readonly GroupBox _windowsSourceGroup;
     private readonly GroupBox _spotifySourceGroup;
+    private readonly GroupBox _externalSourceGroup;
     private readonly Label _spotifyClientId;
     private readonly Label _spotifyStatus;
     private readonly Button _spotifyConnection;
@@ -58,7 +63,11 @@ internal sealed class SettingsDialog : Form
         AppearanceSettings currentAppearance,
         Func<SourceProvider, CancellationToken, Task<SourceDiscoveryResult>> refreshSources,
         Func<string, bool, CancellationToken, Task<SpotifyConnectionSnapshot>> authorizeSpotify,
-        Func<CancellationToken, Task<SpotifyConnectionSnapshot>> disconnectSpotify)
+        Func<CancellationToken, Task<SpotifyConnectionSnapshot>> disconnectSpotify,
+        Func<string>? getCustomSourceConnectionCode = null,
+        Func<string>? rotateCustomSourceConnectionCode = null,
+        Action? openBrowserProducer = null,
+        Action<string>? setClipboardText = null)
     {
         ArgumentNullException.ThrowIfNull(discovery);
         ArgumentNullException.ThrowIfNull(currentSource);
@@ -75,6 +84,11 @@ internal sealed class SettingsDialog : Form
         _refreshSources = refreshSources ?? throw new ArgumentNullException(nameof(refreshSources));
         _authorizeSpotify = authorizeSpotify ?? throw new ArgumentNullException(nameof(authorizeSpotify));
         _disconnectSpotify = disconnectSpotify ?? throw new ArgumentNullException(nameof(disconnectSpotify));
+        _getCustomSourceConnectionCode = getCustomSourceConnectionCode ?? (() => string.Empty);
+        _rotateCustomSourceConnectionCode = rotateCustomSourceConnectionCode
+            ?? _getCustomSourceConnectionCode;
+        _openBrowserProducer = openBrowserProducer ?? (() => { });
+        _setClipboardText = setClipboardText ?? new ClipboardTextWriter().SetText;
         _effectivePort = currentPort;
         _selectedWindowsMediaInstanceId = windowsMedia.LastInstanceId;
         _hasPendingSourceSelection = true;
@@ -92,7 +106,7 @@ internal sealed class SettingsDialog : Form
             ColumnCount = 3,
             Dock = DockStyle.Fill,
             Padding = new Padding(12),
-            RowCount = 7,
+            RowCount = 8,
         };
         generalLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         generalLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -104,13 +118,14 @@ internal sealed class SettingsDialog : Form
         generalLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 10));
         generalLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         generalLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        generalLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         var generalExplanation = new Label
         {
             AutoSize = true,
             Margin = new Padding(0, 0, 0, 12),
             MaximumSize = new Size(680, 0),
-            Text = "Choose the loopback port and one complete media source. Spotify connection changes take effect immediately; Save applies the selected provider.",
+            Text = "Choose the loopback port and one complete media source. Spotify and Custom Source connection changes take effect immediately; Save applies the selected provider.",
         };
         var portLabel = CreateLabel("Port:");
         _port = new NumericUpDown
@@ -258,6 +273,81 @@ internal sealed class SettingsDialog : Form
         };
         _spotifySourceGroup.Controls.Add(spotifyLayout);
 
+        var externalExplanation = new Label
+        {
+            AutoSize = true,
+            Margin = Padding.Empty,
+            MaximumSize = new Size(680, 0),
+            Text = "Install the Tampermonkey script, then copy the connection code.",
+        };
+        var installBrowserProducer = new Button
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = Padding.Empty,
+            Padding = new Padding(8, 2, 8, 2),
+            Text = "Install Browser Producer...",
+        };
+        installBrowserProducer.Click += (_, _) => RunCustomSourceAction(_openBrowserProducer);
+        var copyConnectionCode = new Button
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(8, 0, 0, 0),
+            Padding = new Padding(8, 2, 8, 2),
+            Text = "Copy Connection Code",
+        };
+        copyConnectionCode.Click += (_, _) => CopyCustomSourceConnectionCode(rotate: false);
+        var rotateConnectionCode = new Button
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(0, 8, 0, 0),
+            Padding = new Padding(8, 2, 8, 2),
+            Text = "Rotate Code...",
+        };
+        rotateConnectionCode.Click += (_, _) => CopyCustomSourceConnectionCode(rotate: true);
+        var externalButtons = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 2,
+            Dock = DockStyle.Top,
+            Margin = new Padding(0, 10, 0, 0),
+            RowCount = 2,
+        };
+        externalButtons.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        externalButtons.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        externalButtons.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        externalButtons.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        externalButtons.Controls.Add(installBrowserProducer, 0, 0);
+        externalButtons.Controls.Add(copyConnectionCode, 1, 0);
+        externalButtons.Controls.Add(rotateConnectionCode, 0, 1);
+        var externalLayout = new TableLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            Dock = DockStyle.Top,
+            Margin = Padding.Empty,
+            Padding = new Padding(8),
+            RowCount = 2,
+        };
+        externalLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        externalLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        externalLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        externalLayout.Controls.Add(externalExplanation, 0, 0);
+        externalLayout.Controls.Add(externalButtons, 0, 1);
+        _externalSourceGroup = new GroupBox
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Top,
+            Margin = Padding.Empty,
+            Text = "Custom Source",
+        };
+        _externalSourceGroup.Controls.Add(externalLayout);
+
         generalLayout.Controls.Add(generalExplanation, 0, 0);
         generalLayout.SetColumnSpan(generalExplanation, 3);
         generalLayout.Controls.Add(portLabel, 0, 1);
@@ -270,6 +360,8 @@ internal sealed class SettingsDialog : Form
         generalLayout.SetColumnSpan(_windowsSourceGroup, 3);
         generalLayout.Controls.Add(_spotifySourceGroup, 0, 6);
         generalLayout.SetColumnSpan(_spotifySourceGroup, 3);
+        generalLayout.Controls.Add(_externalSourceGroup, 0, 7);
+        generalLayout.SetColumnSpan(_externalSourceGroup, 3);
 
         var appearanceExplanation = new Label
         {
@@ -609,6 +701,7 @@ internal sealed class SettingsDialog : Form
     {
         SourceProvider.WindowsMedia => SelectedWindowsMediaInstanceId,
         SourceProvider.SpotifyApi => SourceKey.SpotifyApi().InstanceId,
+        SourceProvider.ExternalPush => SourceKey.ExternalPush().InstanceId,
         _ => throw new InvalidOperationException("The selected source provider is not supported."),
     };
 
@@ -709,7 +802,8 @@ internal sealed class SettingsDialog : Form
             _spotifyConnectionState,
             _effectivePort,
             _authorizeSpotify,
-            _disconnectSpotify);
+            _disconnectSpotify,
+            _setClipboardText);
         dialog.ShowDialog(this);
         _spotifyConnectionState = dialog.CurrentConnection;
         UpdateSpotifyConnectionState();
@@ -741,11 +835,62 @@ internal sealed class SettingsDialog : Form
         var provider = SelectedProvider;
         _windowsSourceGroup.Visible = provider == SourceProvider.WindowsMedia;
         _spotifySourceGroup.Visible = provider == SourceProvider.SpotifyApi;
+        _externalSourceGroup.Visible = provider == SourceProvider.ExternalPush;
         _refresh.Enabled = provider == SourceProvider.WindowsMedia;
         _source.Enabled = provider == SourceProvider.WindowsMedia;
         if (provider == SourceProvider.WindowsMedia)
         {
             UpdateWindowsSelectionStatus();
+        }
+    }
+
+    private void CopyCustomSourceConnectionCode(bool rotate)
+    {
+        if (rotate)
+        {
+            var confirmation = MessageBox.Show(
+                this,
+                "Rotating the connection code immediately disconnects every existing browser Producer. Continue?",
+                "Rotate Custom Source Connection",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (confirmation != DialogResult.Yes)
+            {
+                return;
+            }
+        }
+
+        RunCustomSourceAction(() =>
+        {
+            var code = rotate
+                ? _rotateCustomSourceConnectionCode()
+                : _getCustomSourceConnectionCode();
+            _setClipboardText(code);
+            MessageBox.Show(
+                this,
+                rotate
+                    ? "A new connection code was copied. Reconfigure the browser Producer from its Tampermonkey menu."
+                    : "The connection code was copied. Paste it into Configure Now Playing Overlay in the Tampermonkey menu.",
+                "Custom Source Connection",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        });
+    }
+
+    private void RunCustomSourceAction(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception error)
+        {
+            MessageBox.Show(
+                this,
+                $"The Custom Source action could not be completed. {error.Message}",
+                "Custom Source",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
         }
     }
 

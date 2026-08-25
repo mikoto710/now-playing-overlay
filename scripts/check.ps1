@@ -50,6 +50,8 @@ try {
         Pop-Location
     }
 
+    Invoke-CheckedCommand node --test "integrations\tests\browser-producer.test.js"
+
     $testArguments = @(
         "test"
         "host.tests\NowPlayingOverlay.Host.Tests.csproj"

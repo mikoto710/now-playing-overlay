@@ -3,6 +3,7 @@ namespace NowPlayingOverlay.Host.Media.Sources;
 internal sealed record SourceKey
 {
     private const string SpotifyCurrentAccountInstanceId = "current-account";
+    private const string ExternalPushInstanceId = "default";
 
     public SourceKey(SourceProvider provider, string instanceId)
     {
@@ -35,5 +36,10 @@ internal sealed record SourceKey
     public static SourceKey SpotifyApi()
     {
         return new SourceKey(SourceProvider.SpotifyApi, SpotifyCurrentAccountInstanceId);
+    }
+
+    public static SourceKey ExternalPush()
+    {
+        return new SourceKey(SourceProvider.ExternalPush, ExternalPushInstanceId);
     }
 }

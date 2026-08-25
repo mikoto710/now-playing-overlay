@@ -33,18 +33,29 @@ internal sealed class ExternalProducerLease
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
+    public event EventHandler? StateChanged;
+
+    internal TimeSpan LeaseDuration => _leaseDuration;
+
     public ExternalIngestState? GetCurrentState()
     {
+        ExternalIngestState? state;
+        bool expired;
         lock (_gate)
         {
-            ExpireLocked(_timeProvider.GetTimestamp());
-            return _state;
+            expired = ExpireLocked(_timeProvider.GetTimestamp());
+            state = _state;
         }
+
+        NotifyStateChanged(expired);
+        return state;
     }
 
     public ExternalLeaseStateResult ApplyState(ExternalIngestState state)
     {
         ArgumentNullException.ThrowIfNull(state);
+        ExternalLeaseStateResult result;
+        var changed = false;
         lock (_gate)
         {
             var now = _timeProvider.GetTimestamp();
@@ -53,23 +64,28 @@ internal sealed class ExternalProducerLease
             {
                 _state = state;
                 _renewedAtTimestamp = now;
-                return ExternalLeaseStateResult.Accepted;
+                result = ExternalLeaseStateResult.Accepted;
+                changed = true;
             }
-
-            if (_state.ProducerId != state.ProducerId)
+            else if (_state.ProducerId != state.ProducerId)
             {
-                return ExternalLeaseStateResult.ProducerConflict;
+                result = ExternalLeaseStateResult.ProducerConflict;
             }
-
-            if (state.ProducerRevision <= _state.ProducerRevision)
+            else if (state.ProducerRevision <= _state.ProducerRevision)
             {
-                return ExternalLeaseStateResult.StaleRevision;
+                result = ExternalLeaseStateResult.StaleRevision;
             }
-
-            _state = state;
-            _renewedAtTimestamp = now;
-            return ExternalLeaseStateResult.Accepted;
+            else
+            {
+                _state = state;
+                _renewedAtTimestamp = now;
+                result = ExternalLeaseStateResult.Accepted;
+                changed = true;
+            }
         }
+
+        NotifyStateChanged(changed);
+        return result;
     }
 
     public ExternalLeaseHeartbeatResult Heartbeat(Guid producerId)
@@ -79,31 +95,55 @@ internal sealed class ExternalProducerLease
             throw new ArgumentException("Producer ID must not be empty.", nameof(producerId));
         }
 
+        ExternalLeaseHeartbeatResult result;
+        var expired = false;
         lock (_gate)
         {
             var now = _timeProvider.GetTimestamp();
-            ExpireLocked(now);
+            expired = ExpireLocked(now);
             if (_state is null)
             {
-                return ExternalLeaseHeartbeatResult.NoActiveLease;
+                result = ExternalLeaseHeartbeatResult.NoActiveLease;
             }
-
-            if (_state.ProducerId != producerId)
+            else if (_state.ProducerId != producerId)
             {
-                return ExternalLeaseHeartbeatResult.ProducerConflict;
+                result = ExternalLeaseHeartbeatResult.ProducerConflict;
             }
-
-            _renewedAtTimestamp = now;
-            return ExternalLeaseHeartbeatResult.Renewed;
+            else
+            {
+                _renewedAtTimestamp = now;
+                result = ExternalLeaseHeartbeatResult.Renewed;
+            }
         }
+
+        NotifyStateChanged(expired);
+        return result;
     }
 
     public bool TryExpire()
     {
+        bool expired;
         lock (_gate)
         {
-            return ExpireLocked(_timeProvider.GetTimestamp());
+            expired = ExpireLocked(_timeProvider.GetTimestamp());
         }
+
+        NotifyStateChanged(expired);
+        return expired;
+    }
+
+    public bool Revoke()
+    {
+        bool revoked;
+        lock (_gate)
+        {
+            revoked = _state is not null;
+            _state = null;
+            _renewedAtTimestamp = 0;
+        }
+
+        NotifyStateChanged(revoked);
+        return revoked;
     }
 
     private bool ExpireLocked(long now)
@@ -117,5 +157,13 @@ internal sealed class ExternalProducerLease
         _state = null;
         _renewedAtTimestamp = 0;
         return true;
+    }
+
+    private void NotifyStateChanged(bool changed)
+    {
+        if (changed)
+        {
+            StateChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 }

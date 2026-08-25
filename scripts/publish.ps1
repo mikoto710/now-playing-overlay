@@ -47,6 +47,16 @@ function Assert-ReleaseVersionSources {
     if ($webPackage.version -ne $Version) {
         throw "Expected web version '$Version', but found '$($webPackage.version)'."
     }
+
+    $browserProducerPath = Join-Path $repositoryRoot "integrations\NowPlayingOverlay.user.js"
+    $browserProducer = Get-Content -LiteralPath $browserProducerPath -Raw
+    $versionMatch = [regex]::Match(
+        $browserProducer,
+        "(?m)^// @version\s+(?<version>\S+)\s*$"
+    )
+    if (-not $versionMatch.Success -or $versionMatch.Groups["version"].Value -ne $Version) {
+        throw "Expected browser Producer version '$Version', but found '$($versionMatch.Groups["version"].Value)'."
+    }
 }
 
 function Reset-PublishDirectory {
@@ -265,7 +275,8 @@ function New-ReleasePackage {
 
     $readmePath = Join-Path $repositoryRoot "README.md"
     $licensePath = Join-Path $repositoryRoot "LICENSE"
-    foreach ($requiredPath in @($readmePath, $licensePath)) {
+    $browserProducerPath = Join-Path $repositoryRoot "integrations\NowPlayingOverlay.user.js"
+    foreach ($requiredPath in @($readmePath, $licensePath, $browserProducerPath)) {
         if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
             throw "Release package input is missing at '$requiredPath'."
         }
@@ -276,6 +287,7 @@ function New-ReleasePackage {
     Copy-Item -LiteralPath $Executable.FullName -Destination $stagingDirectory
     Copy-Item -LiteralPath $readmePath -Destination $stagingDirectory
     Copy-Item -LiteralPath $licensePath -Destination $stagingDirectory
+    Copy-Item -LiteralPath $browserProducerPath -Destination $stagingDirectory
 
     $archivePath = Join-Path $Directory $ArchiveName
     $packageFiles = @(Get-ChildItem -LiteralPath $stagingDirectory -File)
@@ -286,7 +298,7 @@ function New-ReleasePackage {
     $archive = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
     try {
         $actualEntries = @($archive.Entries | ForEach-Object FullName | Sort-Object)
-        $expectedEntries = @("LICENSE", "NowPlayingOverlay.exe", "README.md")
+        $expectedEntries = @("LICENSE", "NowPlayingOverlay.exe", "NowPlayingOverlay.user.js", "README.md")
         if (($actualEntries -join "`n") -cne ($expectedEntries -join "`n")) {
             throw "Unexpected release archive entries: $($actualEntries -join ', ')"
         }

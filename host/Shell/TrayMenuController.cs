@@ -1,5 +1,6 @@
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Hosting;
+using NowPlayingOverlay.Host.Media.External;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using OverlayHostOptions = NowPlayingOverlay.Host.Configuration.HostOptions;
@@ -31,6 +32,8 @@ internal sealed class TrayMenuController
     private readonly Func<SpotifyClientId, bool, CancellationToken, Task<SpotifyConnectionState>>
         _authorizeSpotify;
     private readonly Func<CancellationToken, Task> _disconnectSpotify;
+    private readonly Func<string> _exportIngestKey;
+    private readonly Func<string> _rotateIngestKey;
     private readonly Action<AppearanceSettings> _setAppearance;
 
     public TrayMenuController(
@@ -45,6 +48,8 @@ internal sealed class TrayMenuController
         Func<SpotifyClientId, SpotifyConnectionState> getSpotifyConnectionState,
         Func<SpotifyClientId, bool, CancellationToken, Task<SpotifyConnectionState>> authorizeSpotify,
         Func<CancellationToken, Task> disconnectSpotify,
+        Func<string> exportIngestKey,
+        Func<string> rotateIngestKey,
         Action<AppearanceSettings> setAppearance)
         : this(
             getEffectivePort,
@@ -60,6 +65,8 @@ internal sealed class TrayMenuController
             getSpotifyConnectionState,
             authorizeSpotify,
             disconnectSpotify,
+            exportIngestKey,
+            rotateIngestKey,
             setAppearance)
     {
     }
@@ -77,6 +84,8 @@ internal sealed class TrayMenuController
         Func<SpotifyClientId, bool, CancellationToken, Task<SpotifyConnectionState>>?
             authorizeSpotify = null,
         Func<CancellationToken, Task>? disconnectSpotify = null,
+        Func<string>? exportIngestKey = null,
+        Func<string>? rotateIngestKey = null,
         Action<AppearanceSettings>? setAppearance = null)
     {
         _getEffectivePort = getEffectivePort ?? throw new ArgumentNullException(nameof(getEffectivePort));
@@ -93,6 +102,8 @@ internal sealed class TrayMenuController
             ?? ((_, _, _) => Task.FromResult(
                 new SpotifyConnectionState(SpotifyConnectionStatus.Disconnected)));
         _disconnectSpotify = disconnectSpotify ?? (_ => Task.CompletedTask);
+        _exportIngestKey = exportIngestKey ?? (() => new string('A', IngestKey.EncodedLength));
+        _rotateIngestKey = rotateIngestKey ?? _exportIngestKey;
         _setAppearance = setAppearance ?? (_ => { });
         LogDirectory = Path.GetFullPath(
             logDirectory ?? throw new ArgumentNullException(nameof(logDirectory)));
@@ -101,6 +112,9 @@ internal sealed class TrayMenuController
     public int EffectivePort => _getEffectivePort();
 
     public string OverlayUrl => BuildOverlayUrl(EffectivePort);
+
+    public string BrowserProducerUrl =>
+        $"http://{OverlayHostOptions.AllowedHost}:{EffectivePort}{BrowserProducerAsset.Path}";
 
     public string BuildOverlayPreviewUrl(int previewScale)
     {
@@ -146,6 +160,16 @@ internal sealed class TrayMenuController
 
         var typedClientId = new SpotifyClientId(clientId);
         return new SpotifyConnectionSnapshot(clientId, _getSpotifyConnectionState(typedClientId));
+    }
+
+    public string GetCustomSourceConnectionCode()
+    {
+        return ExternalIngestConnectionCode.Create(EffectivePort, _exportIngestKey());
+    }
+
+    public string RotateCustomSourceConnectionCode()
+    {
+        return ExternalIngestConnectionCode.Create(EffectivePort, _rotateIngestKey());
     }
 
     public async Task<SpotifyConnectionSnapshot> AuthorizeSpotifyAsync(

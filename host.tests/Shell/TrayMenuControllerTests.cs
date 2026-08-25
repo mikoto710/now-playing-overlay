@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Hosting;
+using NowPlayingOverlay.Host.Media.External;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Shell;
@@ -267,6 +268,41 @@ public sealed class TrayMenuControllerTests
         Assert.Null(disconnected.Spotify.ClientId);
         Assert.Equal(SourceProvider.WindowsMedia, activatedSource?.Provider);
         Assert.Equal("Player.App!Exact", activatedSource?.InstanceId);
+    }
+
+    [Fact]
+    public async Task CustomSourceUsesOneConnectionCodeAndDoesNotRequireSpotify()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var store = new ApplicationSettingsStore(path);
+        var firstKey = new string('A', IngestKey.EncodedLength);
+        var rotatedKey = new string('B', IngestKey.EncodedLength);
+        SourceSelectionSettings? activatedSource = null;
+        var controller = new TrayMenuController(
+            () => 14567,
+            store,
+            () => new HostStatus("Custom Source: Selected Player Not Available", IsFaulted: false),
+            directory.Path,
+            (_, _, _) => Task.CompletedTask,
+            selectSource: source => activatedSource = source,
+            exportIngestKey: () => firstKey,
+            rotateIngestKey: () => rotatedKey);
+
+        await controller.SaveSettingsAsync(
+            14567,
+            SourceProvider.ExternalPush,
+            SourceKey.ExternalPush().InstanceId,
+            new AppearanceSettings());
+
+        Assert.Equal($"npo1:14567:{firstKey}", controller.GetCustomSourceConnectionCode());
+        Assert.Equal($"npo1:14567:{rotatedKey}", controller.RotateCustomSourceConnectionCode());
+        Assert.Equal(
+            "http://127.0.0.1:14567/NowPlayingOverlay.user.js",
+            controller.BrowserProducerUrl);
+        Assert.Equal(SourceProvider.ExternalPush, store.Load().Settings.Source.Provider);
+        Assert.Equal(SourceProvider.ExternalPush, activatedSource!.Provider);
+        Assert.Equal(SourceKey.ExternalPush().InstanceId, activatedSource.InstanceId);
     }
 
     [Fact]

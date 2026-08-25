@@ -47,6 +47,9 @@ internal sealed class HostStatusService(
         {
             var detail = state.Reason switch
             {
+                SourceStatusReason.Missing
+                    when state.ActiveSource?.Key.Provider == SourceProvider.ExternalPush =>
+                    "Waiting for Browser Producer",
                 SourceStatusReason.Missing => "Selected Player Not Available",
                 SourceStatusReason.Ambiguous => "Selected Player Is Ambiguous",
                 SourceStatusReason.PlatformUnavailable => "Sessions Unavailable",

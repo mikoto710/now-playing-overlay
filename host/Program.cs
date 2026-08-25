@@ -94,6 +94,8 @@ internal static class Program
                     ? app.ReauthorizeSpotifyAsync(clientId, cancellationToken)
                     : app.ConnectSpotifyAsync(clientId, cancellationToken),
                 app.DisconnectSpotifyAsync,
+                app.ExportIngestKey,
+                app.RotateIngestKey,
                 app.SetAppearance);
             var logger = new BoundedFileLoggerProvider(logFile).CreateLogger<TrayApplicationContext>();
             using var tray = new TrayApplicationContext(controller, logger);
