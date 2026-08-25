@@ -93,14 +93,16 @@ internal sealed class OverlayApplication : IAsyncDisposable
             spotifyApiSource,
             spotifyAuthorizationService,
             spotifyCallbackBroker,
-            settings.Appearance);
+            externalIngestHandler: null,
+            appearance: settings.Appearance);
     }
 
     internal static OverlayApplication Build(
         HostOptions options,
         ISessionSource sessionSource,
         OverlayPageAsset pageAsset,
-        SpotifyAuthorizationCallbackBroker? spotifyCallbackBroker = null)
+        SpotifyAuthorizationCallbackBroker? spotifyCallbackBroker = null,
+        ExternalIngestHttpHandler? externalIngestHandler = null)
     {
         return Build(
             options,
@@ -113,6 +115,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
             spotifyAuthorizationService: null,
             spotifyCallbackBroker: spotifyCallbackBroker
                 ?? new SpotifyAuthorizationCallbackBroker(),
+            externalIngestHandler: externalIngestHandler,
             appearance: new AppearanceSettings());
     }
 
@@ -126,6 +129,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
         SpotifyApiSource? spotifyApiSource,
         SpotifyAuthorizationService? spotifyAuthorizationService,
         SpotifyAuthorizationCallbackBroker spotifyCallbackBroker,
+        ExternalIngestHttpHandler? externalIngestHandler,
         AppearanceSettings appearance)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -171,6 +175,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
             new ConnectionLimiter(options.MaximumConcurrentConnections),
             new ServerEndpointChangeBroadcaster(),
             spotifyCallbackBroker,
+            externalIngestHandler,
             CreateLogger<OverlayHttpServer>(loggerProvider));
 
         return new OverlayApplication(

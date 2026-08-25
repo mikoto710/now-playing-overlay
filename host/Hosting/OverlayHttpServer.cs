@@ -29,6 +29,7 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
     private readonly ConnectionLimiter _requestLimiter;
     private readonly ServerEndpointChangeBroadcaster _endpointChanges;
     private readonly SpotifyAuthorizationCallbackBroker _spotifyCallbackBroker;
+    private readonly ExternalIngestHttpHandler? _externalIngestHandler;
     private readonly ILogger<OverlayHttpServer> _logger;
     private readonly SemaphoreSlim _rebindGate = new(1, 1);
     private readonly CancellationTokenSource _shutdown = new();
@@ -49,6 +50,7 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
         ConnectionLimiter requestLimiter,
         ServerEndpointChangeBroadcaster endpointChanges,
         SpotifyAuthorizationCallbackBroker spotifyCallbackBroker,
+        ExternalIngestHttpHandler? externalIngestHandler,
         ILogger<OverlayHttpServer> logger)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -62,6 +64,7 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
         _endpointChanges = endpointChanges ?? throw new ArgumentNullException(nameof(endpointChanges));
         _spotifyCallbackBroker = spotifyCallbackBroker
             ?? throw new ArgumentNullException(nameof(spotifyCallbackBroker));
+        _externalIngestHandler = externalIngestHandler;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -227,6 +230,7 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
         }
 
         await StopAsync();
+        _externalIngestHandler?.Dispose();
         _shutdown.Dispose();
         _rebindGate.Dispose();
     }
@@ -376,6 +380,20 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
                 bytes,
                 cancellationToken,
                 statusCode: health.StatusCode);
+            return;
+        }
+
+        if (_externalIngestHandler is not null
+            && (string.Equals(path, ExternalIngestHttpHandler.StatePath, StringComparison.Ordinal)
+                || string.Equals(path, ExternalIngestHttpHandler.HeartbeatPath, StringComparison.Ordinal)))
+        {
+            await _externalIngestHandler.HandleAsync(
+                context,
+                heartbeat: string.Equals(
+                    path,
+                    ExternalIngestHttpHandler.HeartbeatPath,
+                    StringComparison.Ordinal),
+                cancellationToken);
             return;
         }
 

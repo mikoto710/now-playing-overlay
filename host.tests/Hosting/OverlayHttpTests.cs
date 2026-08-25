@@ -1,10 +1,12 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
 using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Hosting;
+using NowPlayingOverlay.Host.Media.External;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Models;
@@ -159,10 +161,258 @@ public sealed class OverlayHttpTests
 
         using var health = await host.Client.GetAsync("/health");
         using var missing = await host.Client.GetAsync("/not-an-overlay-route");
+        using var disabledIngest = await host.Client.PostAsync(
+            ExternalIngestHttpHandler.StatePath,
+            content: null);
 
         Assert.False(health.Headers.Contains("Server"));
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, disabledIngest.StatusCode);
         Assert.Equal("nosniff", missing.Headers.GetValues("X-Content-Type-Options").Single());
+    }
+
+    [Fact]
+    public async Task AuthenticatedIngestStateAndHeartbeatReachTheSingleProducerLease()
+    {
+        var lease = new ExternalProducerLease(TimeSpan.FromMinutes(1));
+        var key = IngestKey.Generate();
+        var token = key.Export();
+        await using var host = await TestOverlayHost.StartAsync(
+            externalIngestHandler: new ExternalIngestHttpHandler(key, lease));
+        var producerId = Guid.Parse("cbb01100-9598-4af9-98f8-d150eed35e91");
+        using var stateRequest = CreateIngestRequest(
+            ExternalIngestHttpHandler.StatePath,
+            token,
+            new
+            {
+                producerId,
+                producerRevision = 1,
+                playback = "playing",
+                track = new
+                {
+                    title = "Track",
+                    artist = "Artist",
+                    albumTitle = "Album",
+                    trackId = "track-1",
+                },
+            });
+        using var stateResponse = await host.Client.SendAsync(stateRequest);
+        using var heartbeatRequest = CreateIngestRequest(
+            ExternalIngestHttpHandler.HeartbeatPath,
+            token,
+            new { producerId });
+        using var heartbeatResponse = await host.Client.SendAsync(heartbeatRequest);
+
+        Assert.Equal(HttpStatusCode.NoContent, stateResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, heartbeatResponse.StatusCode);
+        Assert.Equal("no-store", stateResponse.Headers.CacheControl!.ToString());
+        Assert.Equal(producerId, lease.GetCurrentState()!.ProducerId);
+        Assert.Equal("Track", lease.GetCurrentState()!.Track!.Title);
+    }
+
+    [Fact]
+    public async Task IngestRequiresExactBearerAuthenticationBeforeReadingState()
+    {
+        var lease = new ExternalProducerLease(TimeSpan.FromMinutes(1));
+        var key = IngestKey.Generate();
+        var token = key.Export();
+        await using var host = await TestOverlayHost.StartAsync(
+            externalIngestHandler: new ExternalIngestHttpHandler(key, lease));
+        var payload = new
+        {
+            producerId = Guid.Parse("3f71d4d4-479c-44e6-b9ae-0a27c6b1e2d7"),
+            producerRevision = 1,
+            playback = "idle",
+        };
+        using var missingRequest = CreateIngestRequest(
+            ExternalIngestHttpHandler.StatePath,
+            token: null,
+            payload);
+        using var wrongRequest = CreateIngestRequest(
+            ExternalIngestHttpHandler.StatePath,
+            new string('a', IngestKey.EncodedLength),
+            payload);
+
+        using var missing = await host.Client.SendAsync(missingRequest);
+        using var wrong = await host.Client.SendAsync(wrongRequest);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+        Assert.Equal("Bearer", missing.Headers.WwwAuthenticate.Single().Scheme);
+        Assert.Null(lease.GetCurrentState());
+    }
+
+    [Fact]
+    public async Task IngestJsonRejectsUnknownDuplicateAndUnsupportedFields()
+    {
+        var lease = new ExternalProducerLease(TimeSpan.FromMinutes(1));
+        var key = IngestKey.Generate();
+        var token = key.Export();
+        await using var host = await TestOverlayHost.StartAsync(
+            externalIngestHandler: new ExternalIngestHttpHandler(key, lease));
+        var producerId = "642c7d48-0b1f-42ac-935f-aa0c256e8084";
+        var payloads = new[]
+        {
+            JsonSerializer.Serialize(new
+            {
+                producerId,
+                producerRevision = 1,
+                playback = "idle",
+                timeline = new { },
+            }),
+            JsonSerializer.Serialize(new
+            {
+                producerId,
+                producerRevision = 1,
+                playback = "idle",
+                artwork = (object?)null,
+            }),
+            $"{{\"producerId\":\"{producerId}\",\"producerId\":\"{producerId}\",\"producerRevision\":1,\"playback\":\"idle\"}}",
+            JsonSerializer.Serialize(new { producerId, producerRevision = 1, playback = 3 }),
+        };
+
+        foreach (var payload in payloads)
+        {
+            using var request = CreateIngestRequest(
+                ExternalIngestHttpHandler.StatePath,
+                token,
+                payload);
+            using var response = await host.Client.SendAsync(request);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+
+        Assert.Null(lease.GetCurrentState());
+    }
+
+    [Fact]
+    public async Task IngestRejectsWrongContentTypeAndOversizedBodies()
+    {
+        var lease = new ExternalProducerLease(TimeSpan.FromMinutes(1));
+        var key = IngestKey.Generate();
+        var token = key.Export();
+        await using var host = await TestOverlayHost.StartAsync(
+            externalIngestHandler: new ExternalIngestHttpHandler(
+                key,
+                lease,
+                new ExternalIngestLimits { MaximumBodyBytes = 128 }));
+        var validJson = JsonSerializer.Serialize(new
+        {
+            producerId = Guid.NewGuid(),
+            producerRevision = 1,
+            playback = "idle",
+        });
+        using var wrongType = new HttpRequestMessage(HttpMethod.Post, ExternalIngestHttpHandler.StatePath)
+        {
+            Content = new StringContent(validJson, Encoding.UTF8, "text/plain"),
+        };
+        wrongType.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var encoded = CreateIngestRequest(
+            ExternalIngestHttpHandler.StatePath,
+            token,
+            validJson);
+        encoded.Content!.Headers.ContentEncoding.Add("gzip");
+        using var wrongCharset = new HttpRequestMessage(HttpMethod.Post, ExternalIngestHttpHandler.StatePath)
+        {
+            Content = new StringContent(validJson, Encoding.Unicode, "application/json"),
+        };
+        wrongCharset.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var oversized = CreateIngestRequest(
+            ExternalIngestHttpHandler.StatePath,
+            token,
+            new string('a', 256));
+
+        using var wrongTypeResponse = await host.Client.SendAsync(wrongType);
+        using var encodedResponse = await host.Client.SendAsync(encoded);
+        using var wrongCharsetResponse = await host.Client.SendAsync(wrongCharset);
+        using var oversizedResponse = await host.Client.SendAsync(oversized);
+
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, wrongTypeResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, encodedResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, wrongCharsetResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, oversizedResponse.StatusCode);
+        Assert.Null(lease.GetCurrentState());
+    }
+
+    [Fact]
+    public async Task IngestRateLimitAndMethodBoundaryFailClosedWithoutCors()
+    {
+        var lease = new ExternalProducerLease(TimeSpan.FromMinutes(1));
+        var key = IngestKey.Generate();
+        var token = key.Export();
+        var clock = new ManualTimeProvider();
+        await using var host = await TestOverlayHost.StartAsync(
+            externalIngestHandler: new ExternalIngestHttpHandler(
+                key,
+                lease,
+                new ExternalIngestLimits { MaximumRequestsPerWindow = 1 },
+                clock));
+        var producerId = Guid.Parse("663d774b-69a4-42b0-b434-e531bdb0ae64");
+        using var stateRequest = CreateIngestRequest(
+            ExternalIngestHttpHandler.StatePath,
+            token,
+            new { producerId, producerRevision = 1, playback = "idle" });
+        using var accepted = await host.Client.SendAsync(stateRequest);
+        using var limitedRequest = CreateIngestRequest(
+            ExternalIngestHttpHandler.HeartbeatPath,
+            token,
+            new { producerId });
+        using var limited = await host.Client.SendAsync(limitedRequest);
+        clock.Advance(TimeSpan.FromSeconds(1));
+        using var renewedRequest = CreateIngestRequest(
+            ExternalIngestHttpHandler.HeartbeatPath,
+            token,
+            new { producerId });
+        using var renewed = await host.Client.SendAsync(renewedRequest);
+        using var options = new HttpRequestMessage(HttpMethod.Options, ExternalIngestHttpHandler.StatePath);
+        options.Headers.Add("Origin", "https://example.invalid");
+        using var method = await host.Client.SendAsync(options);
+
+        Assert.Equal(HttpStatusCode.NoContent, accepted.StatusCode);
+        Assert.Equal((HttpStatusCode)429, limited.StatusCode);
+        Assert.Equal("1", limited.Headers.RetryAfter!.ToString());
+        Assert.Equal(HttpStatusCode.NoContent, renewed.StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, method.StatusCode);
+        Assert.Equal("POST", method.Content.Headers.Allow.Single());
+        Assert.False(method.Headers.Contains("Access-Control-Allow-Origin"));
+    }
+
+    [Fact]
+    public async Task IngestConflictsAndHeartbeatWithoutLeaseReturnConflict()
+    {
+        var lease = new ExternalProducerLease(TimeSpan.FromMinutes(1));
+        var key = IngestKey.Generate();
+        var token = key.Export();
+        await using var host = await TestOverlayHost.StartAsync(
+            externalIngestHandler: new ExternalIngestHttpHandler(key, lease));
+        var firstProducer = Guid.Parse("50834c77-2056-432f-b255-e191fd668b6d");
+        var secondProducer = Guid.Parse("66f72aeb-f139-4944-90f1-9811f33d21f4");
+        using var missingHeartbeatRequest = CreateIngestRequest(
+            ExternalIngestHttpHandler.HeartbeatPath,
+            token,
+            new { producerId = firstProducer });
+        using var missingHeartbeat = await host.Client.SendAsync(missingHeartbeatRequest);
+        using var claimRequest = CreateIngestRequest(
+            ExternalIngestHttpHandler.StatePath,
+            token,
+            new { producerId = firstProducer, producerRevision = 2, playback = "idle" });
+        using var claim = await host.Client.SendAsync(claimRequest);
+        using var staleRequest = CreateIngestRequest(
+            ExternalIngestHttpHandler.StatePath,
+            token,
+            new { producerId = firstProducer, producerRevision = 2, playback = "idle" });
+        using var stale = await host.Client.SendAsync(staleRequest);
+        using var foreignRequest = CreateIngestRequest(
+            ExternalIngestHttpHandler.StatePath,
+            token,
+            new { producerId = secondProducer, producerRevision = 1, playback = "idle" });
+        using var foreign = await host.Client.SendAsync(foreignRequest);
+
+        Assert.Equal(HttpStatusCode.Conflict, missingHeartbeat.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, claim.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, foreign.StatusCode);
+        Assert.Equal(firstProducer, lease.GetCurrentState()!.ProducerId);
     }
 
     [Theory]
@@ -570,7 +820,8 @@ public sealed class OverlayHttpTests
             int heartbeatMilliseconds = 100,
             int maximumSseConnections = 4,
             int maximumConcurrentConnections = 32,
-            int rebindGraceMilliseconds = 100)
+            int rebindGraceMilliseconds = 100,
+            ExternalIngestHttpHandler? externalIngestHandler = null)
         {
             var port = ReservePort();
             var source = new FakeSessionSource();
@@ -585,7 +836,8 @@ public sealed class OverlayHttpTests
             var app = OverlayApplication.Build(
                 options,
                 source,
-                OverlayPageAsset.LoadEmbedded(typeof(OverlayPageAsset).Assembly));
+                OverlayPageAsset.LoadEmbedded(typeof(OverlayPageAsset).Assembly),
+                externalIngestHandler: externalIngestHandler);
             await app.StartAsync();
             var client = CreateClient(port);
             return new TestOverlayHost(app, source, client, port);
@@ -663,5 +915,47 @@ public sealed class OverlayHttpTests
             BaseAddress = new Uri($"http://127.0.0.1:{port}"),
             Timeout = TimeSpan.FromSeconds(5),
         };
+    }
+
+    private static HttpRequestMessage CreateIngestRequest(
+        string path,
+        string? token,
+        object payload)
+    {
+        return CreateIngestRequest(path, token, JsonSerializer.Serialize(payload));
+    }
+
+    private static HttpRequestMessage CreateIngestRequest(
+        string path,
+        string? token,
+        string payload)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json"),
+        };
+        if (token is not null)
+        {
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        }
+
+        return request;
+    }
+
+    private sealed class ManualTimeProvider : TimeProvider
+    {
+        private long _timestamp;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+        public override long GetTimestamp()
+        {
+            return _timestamp;
+        }
+
+        public void Advance(TimeSpan duration)
+        {
+            _timestamp = checked(_timestamp + duration.Ticks);
+        }
     }
 }
