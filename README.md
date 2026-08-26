@@ -68,9 +68,9 @@ Custom Source is the simple browser-integration path. It does not require a sepa
 4. On a supported music page, open Tampermonkey's **Now Playing Overlay Browser Producer** menu, choose **Configure Now Playing Overlay**, and paste the code.
 5. Save **Custom Source** as the active provider and start playback.
 
-The Producer has site-specific metadata readers for Spotify Web, YouTube/YouTube Music, SoundCloud, Deezer, Yandex Music, Pretzel, Plex, Chillhop, and Bilibili, followed by a general Media Session fallback. These readers use separate page fields for title and artist; they do not guess the order of an `Artist - Title` string.
+The Producer has site-specific metadata and artwork readers for Spotify Web, YouTube/YouTube Music, SoundCloud, Deezer, Yandex Music, Pretzel, Plex, Chillhop, and Bilibili, followed by a general Media Session fallback. These readers use separate page fields for title and artist; they do not guess the order of an `Artist - Title` string.
 
-The script manages authentication, Producer identity, ordering, heartbeat, retry, Host restart recovery, and multi-tab ownership internally. Its key is stored in userscript-private storage and is sent only to `127.0.0.1`. Use **Rotate Code...** to invalidate the old code, clear the active lease, and copy a replacement. See [Browser Producer](docs/browser-producer.md) for troubleshooting and adapter guidance.
+The script manages authentication, Producer identity, ordering, heartbeat, retry, Host restart recovery, multi-tab ownership, and current-cover transfer internally. Artwork URLs stay in the browser: the script retrieves supported images and uploads only validated bytes to the local Host. Its key is stored in userscript-private storage and is sent only to `127.0.0.1`. Use **Rotate Code...** to invalidate the old code, clear the active lease, and copy a replacement. See [Browser Producer](docs/browser-producer.md) for troubleshooting and adapter guidance.
 
 ## Notes
 

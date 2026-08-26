@@ -28,7 +28,7 @@ The userscript has explicit matches for:
 - Chillhop;
 - Bilibili.
 
-There is no unrestricted all-sites match. The Producer first uses a reviewed reader for the current site, then falls back to `navigator.mediaSession` plus active page audio/video elements. The readers use independent title and artist fields rather than guessing the order of a combined window title. Missing or stale site elements do not block the Media Session fallback.
+There is no unrestricted all-sites match. The Producer first uses a reviewed reader for the current site, then falls back to `navigator.mediaSession` plus active page audio/video elements. The readers use independent title and artist fields rather than guessing the order of a combined window title. They may also select the current artwork URL from the site or Media Session, but that URL remains inside the userscript. Missing or stale site elements do not block the Media Session fallback.
 
 ## Lifecycle and multi-tab behavior
 
@@ -37,16 +37,19 @@ The userscript automatically:
 - creates one stable Producer ID in private userscript storage;
 - persists a strictly increasing revision across page reloads and Host restarts;
 - sends state changes and periodic heartbeats to `127.0.0.1`;
+- retrieves supported artwork only after the matching state is accepted, then uploads the detected raw image bytes for that exact revision;
 - retries at a bounded interval after connection failures, Host restart, or lease conflict;
 - elects one tab across all matched sites for this userscript;
 - prefers an actively playing tab and keeps an existing paused/stopped owner sticky;
 - removes its candidacy when the page closes, allowing Host TTL to derive unavailable state.
 
-Only the elected tab sends metadata. A background paused or stopped tab cannot replace a current owner. When another tab begins playing, it becomes the deterministic leader. The Host still enforces one Producer lease, strict revision ordering, conflict rejection, and a 10-second expiry independently of the browser election.
+Only the elected tab sends metadata and artwork. A background paused or stopped tab cannot replace a current owner. When another tab begins playing, it becomes the deterministic leader. The Host still enforces one Producer lease, strict revision ordering, conflict rejection, and a 10-second expiry independently of the browser election. Artwork transfer has its own in-flight guard and rate handling, so a slow cover does not block heartbeats.
 
 ## Connection and security
 
-The script stores the connection code in Tampermonkey storage and sends the key only in the `Authorization` header. It never places the key in a page URL or in the distributed source file. The Host listens only on IPv4 loopback, validates the exact Host header, exposes no CORS opt-in, accepts JSON only, bounds body size and request rate, and stores the key with Windows DPAPI for the current user.
+The script stores the connection code in Tampermonkey storage and sends the key only in the `Authorization` header. It never places the key in a page or artwork URL or in the distributed source file. The Host listens only on IPv4 loopback, validates the exact Host header, exposes no CORS opt-in, bounds body size and request rate, and stores the key with Windows DPAPI for the current user.
+
+Same-origin, `blob:`, and supported `data:` artwork is read in the page. Cross-origin retrieval is restricted to the service CDN domains declared in the userscript; there is no unrestricted `@connect *`. An unrecognized CDN disables only that cover. The userscript validates the downloaded signature and size, sends only PNG/JPEG/WebP bytes to the Host, and never asks the Host to fetch a remote URL.
 
 **Rotate Code...** immediately replaces the persisted key, revokes the current lease, and copies the new connection code. Every existing script configuration then fails closed with `401` until the new code is pasted.
 
@@ -56,6 +59,7 @@ The script stores the connection code in Tampermonkey storage and sends the key 
 - If the Host port changed, copy and paste a new connection code.
 - If code rotation occurred, paste the newly copied code.
 - If the page is matched but no track appears, check whether the site's player elements or `navigator.mediaSession.metadata` are populated in that browser combination.
+- If text appears but the cover does not, the current URL may use an unreviewed CDN or return an unsupported/oversized image; metadata and lease operation continue normally.
 - If another tab is actively playing, that tab intentionally owns the overlay.
 - Open the Host logs from the tray only for Host-side failures; the userscript writes concise warnings to the browser console for rejected codes.
 
@@ -71,12 +75,13 @@ function readExample(context) {
         artist: "Artist",
         albumTitle: "Album", // optional
         trackId: "stable-site-id", // optional
+        artworkUrl: "https://media.example.com/current-cover.jpg", // optional, browser-local
     };
 }
 
 siteReaders["music.example.com"] = readExample;
 ```
 
-The fixed transport continues to normalize text, authenticate, assign `producerId` and `producerRevision`, retry, heartbeat, and coordinate tabs. Do not duplicate those responsibilities in an adapter. Do not send `timeline`, artwork, remote URLs, account data, or playback controls: ingest v1 rejects fields outside its frozen shape.
+The fixed transport continues to normalize text, authenticate, assign `producerId` and `producerRevision`, retry, heartbeat, coordinate tabs, fetch supported artwork, and bind its byte upload to the accepted state revision. Do not duplicate those responsibilities in an adapter. `artworkUrl` is internal adapter data and is never serialized into `/ingest/v1/state`; do not add `timeline`, artwork JSON, remote URLs, account data, or playback controls to that payload.
 
-After adding a match or adapter, extend `integrations/tests/browser-producer.test.js`, run `node --test integrations/tests/browser-producer.test.js`, then run the repository check and a real Tampermonkey-to-Host browser acceptance.
+If a new adapter needs a cross-origin artwork CDN, add the narrow service domain to both the userscript metadata and `approvedArtworkDomains`; do not restore `@connect *`. After adding a match or adapter, extend `integrations/tests/browser-producer.test.js`, run `node --test integrations/tests/browser-producer.test.js`, then run the repository check and a real Tampermonkey-to-Host browser acceptance.

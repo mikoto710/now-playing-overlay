@@ -1,6 +1,6 @@
 # Local protocol version 3
 
-> Status: current output protocol and Custom Source input contract. Phase A and Phase B are implemented and accepted. PC-01/PC-02/PC-03 are committed on local `protocol-v3`; PC-03 remains ready for acceptance, and the branch has not been pushed. [`local-protocol-v2.md`](./local-protocol-v2.md) is historical only.
+> Status: current output protocol and Custom Source input contract. Phase A and Phase B are implemented and accepted. PC-01/PC-02/PC-03 and ART-01/ART-02/ART-03 are committed on local `protocol-v3`; PC-03 and the Artwork batch remain ready for acceptance, and the branch has not been pushed. [`local-protocol-v2.md`](./local-protocol-v2.md) is historical only.
 
 This document freezes the next local contract shared by the host and embedded browser client. The service remains bound only to `127.0.0.1`; the default port remains `13130`.
 
@@ -20,6 +20,7 @@ Phase A upgraded the host, embedded page, TypeScript parser, fixtures, and HTTP/
 | `GET`, `HEAD` | `/health` | `no-store` | Host and media-source readiness without track metadata |
 | `POST` | `/ingest/v1/state` | `no-store` | Authenticated Custom Source state claim or update |
 | `POST` | `/ingest/v1/heartbeat` | `no-store` | Authenticated renewal for the current Producer lease |
+| `POST` | `/ingest/v1/artwork` | `no-store` | Authenticated raw artwork bytes bound to the current state revision |
 
 Every `/api/v2/*` route now returns `404`. There is no redirect, compatibility fallback, content negotiation, or v2/v3 dual handler. The browser parser rejects a state payload with `protocolVersion: 2`.
 
@@ -194,16 +195,17 @@ Ordinary users should use the official [Browser Producer](./browser-producer.md)
 
 ### Authentication and transport
 
-Both endpoints require:
+All three endpoints require:
 
 ```http
 Authorization: Bearer <43-character base64url IngestKey>
-Content-Type: application/json; charset=utf-8
 ```
+
+State and heartbeat bodies additionally require `Content-Type: application/json; charset=utf-8`. Artwork uses its image media type and revision-binding headers as described below.
 
 The Host generates a 32-byte random key on first use, protects it with Windows DPAPI `CurrentUser`, and stores the protected document at `%LOCALAPPDATA%\NowPlayingOverlay\ingest-key.dat`. The key is never accepted in the URL. Settings exposes only a versioned connection code, `npo1:<port>:<key>`, for copying into the official userscript. Rotating the code atomically replaces the persisted key, rejects the old key immediately, and revokes the current lease.
 
-Only `127.0.0.1` is bound. Exact Host validation, no CORS opt-in, no forwarded-header trust, a 16 KiB body limit, five-second body-read timeout, JSON depth limit 8, strict property names, duplicate-property rejection, unknown-field rejection, and a global 20-request/one-second ingest limit apply. Track text is normalized by the Host and capped at 512 Unicode scalars.
+Only `127.0.0.1` is bound. Exact Host validation, no CORS opt-in, no forwarded-header trust, a five-second body-read timeout, strict content encoding, and bounded request concurrency apply to all ingest routes. JSON state/heartbeat requests additionally have a 16 KiB body limit, depth limit 8, strict property names, duplicate-property rejection, unknown-field rejection, and a shared 20-request/one-second rate limit. Track text is normalized by the Host and capped at 512 Unicode scalars. Artwork has its own byte, dimension, and rate limits.
 
 ### State
 
@@ -236,7 +238,23 @@ The input state matrix is:
 | `stopped` | Optional |
 | `idle` | Must be null |
 
-`timeline`, `artwork`, remote URLs, playback controls, account data, and provider-specific fields are not ingest v1 fields. Strict JSON rejects them instead of accepting and ignoring them.
+`timeline`, an `artwork` JSON property, remote URLs, playback controls, account data, and provider-specific fields are not state fields. Strict JSON rejects them instead of accepting and ignoring them. Artwork uses the separate byte endpoint below.
+
+### Artwork
+
+```http
+POST /ingest/v1/artwork
+Authorization: Bearer <IngestKey>
+Content-Type: image/png | image/jpeg | image/webp
+X-NPO-Producer-Id: f5b7d897-c655-4cdf-a93b-cd10bd0707d7
+X-NPO-Producer-Revision: 42
+
+<raw image bytes>
+```
+
+The Producer must first receive `204` for a state containing a track, then upload artwork for exactly that Producer ID and accepted state revision. The Host rechecks the active owner, exact revision, track presence, and current key generation after reading the body. Artwork does not claim or renew the lease. A newer state with the same track identity retains the accepted artwork; a changed track identity, idle state, expiry, revocation, or Source switch clears it.
+
+The body is raw PNG, JPEG, or WebP bytes, not JSON, base64, multipart data, or a URL. The declared media type must match the detected bytes. The Host accepts at most 5 MiB, 4096 pixels on either dimension, and 16,777,216 total pixels, with a separate limit of four artwork requests per ten seconds. Accepted bytes enter the existing `IArtworkReader -> ArtworkCache` path and are exposed only through the content-addressed `/api/v3/artwork/{artworkId}` output URL. The Host never fetches a Producer-controlled remote artwork URL.
 
 ### Heartbeat and lease
 
@@ -258,15 +276,15 @@ The production lease duration is 10 seconds, measured only with Host monotonic t
 
 | Status | Meaning |
 | --- | --- |
-| `204` | State accepted or owner heartbeat renewed |
-| `400` | Invalid JSON, schema, enum, UUID, revision, state matrix, or track value |
+| `204` | State or artwork accepted, or owner heartbeat renewed |
+| `400` | Invalid JSON/state value, artwork target header, empty/invalid image, or declared/detected image mismatch |
 | `401` | Missing or invalid bearer key |
 | `405` | Method other than `POST`; `Allow: POST` |
 | `408` | Body read timed out |
-| `409` | Stale/replayed state, foreign Producer, or heartbeat without the active owner |
-| `413` | Body exceeds 16 KiB |
+| `409` | Stale/replayed state, wrong Producer/revision, missing current track, or no active owner |
+| `413` | JSON body exceeds 16 KiB or artwork exceeds 5 MiB |
 | `415` | Unsupported content type, charset, or content encoding |
-| `429` | Ingest rate limit exceeded; includes `Retry-After` |
+| `429` | JSON or separate artwork rate limit exceeded; includes `Retry-After` |
 
 Common Host gates may also reject an invalid Host header, excessive headers, or exhausted concurrent-request capacity before the ingest handler runs. Responses contain no state or credential body and use `Cache-Control: no-store`.
 
@@ -274,4 +292,4 @@ Common Host gates may also reject an invalid Host header, excessive headers, or 
 
 Phase A added Timeline domain/pass-through and output protocol v3. Phase B made source configuration provider-neutral. PC-01 added strict external state and the single-owner lease; PC-02 added the protected IngestKey and fail-closed HTTP transport; PC-03 connects the production Source, Settings/Shell, application composition, embedded userscript asset, release package, and official site-aware Browser Producer.
 
-PC-03 intentionally does not add Custom Source Timeline or artwork, remote artwork URLs, a progress UI, playback controls, source registry, multiple logical sources, Producer winner arbitration, a new SDK/package/project, a bridge executable, or a WindowTitle Source. Future Timeline and bounded inline artwork use the existing `PlaybackTimeline` and `IArtworkReader -> ArtworkCache` boundaries only after separate contracts and authorization.
+ART-01 added revision-bound artwork state and the External artwork reader; ART-02 added the authenticated raw-byte route and bounded Host validation; ART-03 added site-aware browser extraction, browser-side retrieval, and byte upload after state acceptance. These changes do not add a remote URL to either ingest state or output state, and they do not add Timeline, a progress UI, playback controls, source registry, multiple logical sources, Producer winner arbitration, a new SDK/package/project, a bridge executable, or a WindowTitle Source.
