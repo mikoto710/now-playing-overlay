@@ -1,3 +1,5 @@
+using NowPlayingOverlay.Host.Artwork;
+
 namespace NowPlayingOverlay.Host.Media.External;
 
 internal enum ExternalLeaseStateResult
@@ -12,6 +14,15 @@ internal enum ExternalLeaseHeartbeatResult
     Renewed,
     NoActiveLease,
     ProducerConflict,
+}
+
+internal enum ExternalLeaseArtworkResult
+{
+    Accepted,
+    NoActiveLease,
+    ProducerConflict,
+    RevisionConflict,
+    MissingTrack,
 }
 
 internal sealed class ExternalProducerLease
@@ -77,9 +88,64 @@ internal sealed class ExternalProducerLease
             }
             else
             {
-                _state = state;
+                // Playback-only updates retain artwork; a new media identity clears it immediately.
+                _state = Equals(_state.Identity, state.Identity)
+                    ? state.WithArtwork(_state.Artwork)
+                    : state;
                 _renewedAtTimestamp = now;
                 result = ExternalLeaseStateResult.Accepted;
+                changed = true;
+            }
+        }
+
+        NotifyStateChanged(changed);
+        return result;
+    }
+
+    public ExternalLeaseArtworkResult ApplyArtwork(
+        Guid producerId,
+        long producerRevision,
+        ArtworkPayload artwork)
+    {
+        if (producerId == Guid.Empty)
+        {
+            throw new ArgumentException("Producer ID must not be empty.", nameof(producerId));
+        }
+
+        if (producerRevision <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(producerRevision),
+                producerRevision,
+                "Producer revision must be positive.");
+        }
+
+        ArgumentNullException.ThrowIfNull(artwork);
+        ExternalLeaseArtworkResult result;
+        var changed = false;
+        lock (_gate)
+        {
+            changed = ExpireLocked(_timeProvider.GetTimestamp());
+            if (_state is null)
+            {
+                result = ExternalLeaseArtworkResult.NoActiveLease;
+            }
+            else if (_state.ProducerId != producerId)
+            {
+                result = ExternalLeaseArtworkResult.ProducerConflict;
+            }
+            else if (_state.ProducerRevision != producerRevision)
+            {
+                result = ExternalLeaseArtworkResult.RevisionConflict;
+            }
+            else if (_state.Track is null)
+            {
+                result = ExternalLeaseArtworkResult.MissingTrack;
+            }
+            else
+            {
+                _state = _state.WithArtwork(artwork);
+                result = ExternalLeaseArtworkResult.Accepted;
                 changed = true;
             }
         }

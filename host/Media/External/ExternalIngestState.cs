@@ -1,3 +1,5 @@
+using NowPlayingOverlay.Host.Artwork;
+using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Media.External;
@@ -8,12 +10,14 @@ internal sealed record ExternalIngestState
         Guid producerId,
         long producerRevision,
         PlaybackState playback,
-        TrackMetadata? track)
+        TrackMetadata? track,
+        ArtworkPayload? artwork)
     {
         ProducerId = producerId;
         ProducerRevision = producerRevision;
         Playback = playback;
         Track = track;
+        Artwork = artwork;
     }
 
     public Guid ProducerId { get; }
@@ -23,6 +27,16 @@ internal sealed record ExternalIngestState
     public PlaybackState Playback { get; }
 
     public TrackMetadata? Track { get; }
+
+    public ArtworkPayload? Artwork { get; }
+
+    public TrackIdentity? Identity => Track is null
+        ? null
+        : new TrackIdentity(
+            SourceKey.ExternalPush(),
+            Track.Title,
+            Track.Artist,
+            Track.ProviderTrackId);
 
     public static ExternalIngestState Create(
         Guid producerId,
@@ -74,6 +88,21 @@ internal sealed record ExternalIngestState
                 throw new ArgumentException("Idle must not contain track metadata.", nameof(title));
         }
 
-        return new ExternalIngestState(producerId, producerRevision, playback, track);
+        return new ExternalIngestState(producerId, producerRevision, playback, track, artwork: null);
+    }
+
+    public ExternalIngestState WithArtwork(ArtworkPayload? artwork)
+    {
+        if (artwork is not null && Track is null)
+        {
+            throw new ArgumentException("Artwork requires track metadata.", nameof(artwork));
+        }
+
+        return new ExternalIngestState(
+            ProducerId,
+            ProducerRevision,
+            Playback,
+            Track,
+            artwork);
     }
 }

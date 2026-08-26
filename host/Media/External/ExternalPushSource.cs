@@ -80,7 +80,11 @@ internal sealed class ExternalPushSource : IMediaSourceProvider
         var state = _lease.GetCurrentState();
         return ValueTask.FromResult(state is null
             ? SessionObservation.Create(selection, PlaybackState.Unavailable)
-            : SessionObservation.Create(selection, state.Playback, state.Track));
+            : SessionObservation.Create(
+                selection,
+                state.Playback,
+                state.Track,
+                state.Artwork is null ? null : new ExternalArtworkReader(state.Artwork)));
     }
 
     public async ValueTask DisposeAsync()

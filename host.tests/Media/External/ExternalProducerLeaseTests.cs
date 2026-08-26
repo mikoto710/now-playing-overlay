@@ -1,3 +1,4 @@
+using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Media.External;
 using NowPlayingOverlay.Host.Models;
 
@@ -73,6 +74,66 @@ public sealed class ExternalProducerLeaseTests
     }
 
     [Fact]
+    public void ArtworkRequiresTheCurrentOwnerRevisionAndDoesNotRenewLease()
+    {
+        var lease = CreateLease(out var clock);
+        lease.ApplyState(Playing(FirstProducer, 4, "Owner"));
+        clock.Advance(TimeSpan.FromSeconds(9));
+        var artwork = ArtworkPayload.Create([1, 2, 3]);
+
+        var foreign = lease.ApplyArtwork(SecondProducer, 4, artwork);
+        var stale = lease.ApplyArtwork(FirstProducer, 3, artwork);
+        var accepted = lease.ApplyArtwork(FirstProducer, 4, artwork);
+        clock.Advance(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(ExternalLeaseArtworkResult.ProducerConflict, foreign);
+        Assert.Equal(ExternalLeaseArtworkResult.RevisionConflict, stale);
+        Assert.Equal(ExternalLeaseArtworkResult.Accepted, accepted);
+        Assert.True(lease.TryExpire());
+        Assert.Null(lease.GetCurrentState());
+    }
+
+    [Fact]
+    public void ArtworkSurvivesPlaybackUpdatesButNotAChangedTrackIdentity()
+    {
+        var lease = CreateLease(out _);
+        lease.ApplyState(Playing(FirstProducer, 1, "Track"));
+        var artwork = ArtworkPayload.Create([1, 2, 3]);
+        Assert.Equal(
+            ExternalLeaseArtworkResult.Accepted,
+            lease.ApplyArtwork(FirstProducer, 1, artwork));
+
+        lease.ApplyState(ExternalIngestState.Create(
+            FirstProducer,
+            2,
+            PlaybackState.Paused,
+            "Track",
+            "Artist"));
+        var paused = lease.GetCurrentState()!;
+        lease.ApplyState(Playing(FirstProducer, 3, "Replacement"));
+
+        Assert.Same(artwork, paused.Artwork);
+        Assert.Null(lease.GetCurrentState()!.Artwork);
+    }
+
+    [Fact]
+    public void ArtworkRejectsMissingLeaseAndAStateWithoutTrack()
+    {
+        var lease = CreateLease(out _);
+        var artwork = ArtworkPayload.Create([1, 2, 3]);
+
+        var missing = lease.ApplyArtwork(FirstProducer, 1, artwork);
+        lease.ApplyState(ExternalIngestState.Create(
+            FirstProducer,
+            1,
+            PlaybackState.Idle));
+        var trackless = lease.ApplyArtwork(FirstProducer, 1, artwork);
+
+        Assert.Equal(ExternalLeaseArtworkResult.NoActiveLease, missing);
+        Assert.Equal(ExternalLeaseArtworkResult.MissingTrack, trackless);
+    }
+
+    [Fact]
     public void ExpiryClearsOwnerAndAllowsAnotherProducerToClaim()
     {
         var lease = CreateLease(out var clock);
@@ -117,12 +178,13 @@ public sealed class ExternalProducerLeaseTests
 
         lease.ApplyState(Playing(FirstProducer, 1, "Owner"));
         lease.Heartbeat(FirstProducer);
+        lease.ApplyArtwork(FirstProducer, 1, ArtworkPayload.Create([1, 2, 3]));
         lease.ApplyState(Playing(FirstProducer, 1, "Replay"));
         lease.ApplyState(Playing(SecondProducer, 2, "Foreign"));
         clock.Advance(TimeSpan.FromSeconds(10));
         lease.TryExpire();
 
-        Assert.Equal(2, changes);
+        Assert.Equal(3, changes);
     }
 
     [Fact]

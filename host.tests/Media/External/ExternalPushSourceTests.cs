@@ -1,3 +1,4 @@
+using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Media.External;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
@@ -10,7 +11,7 @@ public sealed class ExternalPushSourceTests
         Guid.Parse("b7f24a32-f0d6-465c-ac31-5d14f684c1b0");
 
     [Fact]
-    public async Task FixedSelectionMapsLeaseStateWithoutTimelineOrArtwork()
+    public async Task FixedSelectionMapsLeaseStateAndArtworkWithoutTimeline()
     {
         var lease = new ExternalProducerLease(TimeSpan.FromSeconds(10));
         await using var source = new ExternalPushSource(lease, NeverDelayAsync);
@@ -24,6 +25,8 @@ public sealed class ExternalPushSourceTests
             artist: "Artist",
             albumTitle: "Album",
             trackId: "track-1"));
+        var artwork = ArtworkPayload.Create([1, 2, 3]);
+        lease.ApplyArtwork(ProducerId, producerRevision: 1, artwork);
 
         var observation = await source.ReadAsync(CancellationToken.None);
 
@@ -33,7 +36,9 @@ public sealed class ExternalPushSourceTests
         Assert.Equal("Track", observation.Track!.Title);
         Assert.Equal("track-1", observation.Identity!.ProviderTrackId);
         Assert.Null(observation.Timeline);
-        Assert.Null(observation.ArtworkReader);
+        Assert.Same(
+            artwork,
+            await observation.ArtworkReader!.ReadAsync(CancellationToken.None));
         Assert.Equal(SourceStatus.Available, source.GetState().Status);
     }
 
