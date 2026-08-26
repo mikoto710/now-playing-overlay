@@ -1,16 +1,16 @@
 # Browser Producer
 
-`NowPlayingOverlay.user.js` is the ordinary-user entry point for Custom Source. Its source is embedded in the Host, served from `/NowPlayingOverlay.user.js`, and installed through **Install Browser Producer...**. It is not duplicated in the release ZIP, and there is no second executable, bridge service, SDK, npm package, or separate project.
+`NowPlayingOverlay.user.js` is the ordinary-user entry point for Browser Player. Its source is embedded in the Host, served from `/NowPlayingOverlay.user.js`, and installed through **Install Browser Producer...**. It is not duplicated in the release ZIP, and there is no second executable, bridge service, SDK, npm package, or separate project.
 
 ## Install and connect
 
 1. Install Tampermonkey in the browser used for playback.
 2. Start `NowPlayingOverlay.exe`.
-3. Open tray **Settings...** and choose **Custom Source**.
+3. Open tray **Settings...** and choose **Browser Player**.
 4. Select **Install Browser Producer...** and confirm installation in Tampermonkey.
 5. Select **Copy Connection Code**.
 6. Open a supported player page. In Tampermonkey's userscript menu, choose **Configure Now Playing Overlay** and paste the code.
-7. Save **Custom Source** as the active provider and start playback.
+7. Save **Browser Player** as the active provider and start playback.
 
 The connection code has the opaque form `npo1:<port>:<key>`. It is configuration, not a URL. Do not publish it or paste it into OBS. If the Host port changes, copy the code again.
 

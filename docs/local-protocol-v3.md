@@ -1,6 +1,6 @@
 # Local protocol version 3
 
-> Status: current output protocol and Custom Source input contract. Phase A and Phase B are implemented and accepted. PC-01/PC-02/PC-03 and ART-01/ART-02/ART-03 are committed on local `protocol-v3`; PC-03 and the Artwork batch remain ready for acceptance, and the branch has not been pushed. [`local-protocol-v2.md`](./local-protocol-v2.md) is historical only.
+> Status: current output protocol and Browser Player input contract. Phase A and Phase B are implemented and accepted. PC-01/PC-02/PC-03 and ART-01/ART-02/ART-03 are committed on local `protocol-v3`; PC-03 and the Artwork batch remain ready for acceptance, and the branch has not been pushed. [`local-protocol-v2.md`](./local-protocol-v2.md) is historical only.
 
 This document freezes the next local contract shared by the host and embedded browser client. The service remains bound only to `127.0.0.1`; the default port remains `13130`.
 
@@ -18,7 +18,7 @@ Phase A upgraded the host, embedded page, TypeScript parser, fixtures, and HTTP/
 | `GET`, `HEAD` | `/api/v3/artwork/{artworkId}` | one year, `immutable` | Content-addressed PNG, JPEG, or WebP bytes |
 | `GET` | `/oauth/spotify/callback` | `no-store` | One-time callback for a pending Spotify PKCE authorization |
 | `GET`, `HEAD` | `/health` | `no-store` | Host and media-source readiness without track metadata |
-| `POST` | `/ingest/v1/state` | `no-store` | Authenticated Custom Source state claim or update |
+| `POST` | `/ingest/v1/state` | `no-store` | Authenticated Browser Player state claim or update |
 | `POST` | `/ingest/v1/heartbeat` | `no-store` | Authenticated renewal for the current Producer lease |
 | `POST` | `/ingest/v1/artwork` | `no-store` | Authenticated raw artwork bytes bound to the current state revision |
 
@@ -187,9 +187,9 @@ The initial event contains current state. `Last-Event-ID` remains diagnostic onl
 
 Health never exposes instance ID, external source ID, producer ID, display name, track metadata, Spotify account, Spotify Client ID, or `IngestKey`. Each provider adds and tests its health token only with its production implementation.
 
-## Custom Source input protocol
+## Browser Player input protocol
 
-Custom Source is displayed to users as one fixed Source and serialized to output as `external-push`. External input never posts the output state DTO. A Producer cannot control `serverInstanceId`, `snapshotRevision`, `observedAt`, `SourceKey`, output artwork identity, appearance, or the Host URL.
+Browser Player is the user-facing name for the fixed browser integration and is serialized to output as `external-push`. `ExternalPush` remains the internal provider/transport identity so future non-browser Producers can reuse the same low-level contract without changing persisted settings or the output protocol. External input never posts the output state DTO. A Producer cannot control `serverInstanceId`, `snapshotRevision`, `observedAt`, `SourceKey`, output artwork identity, appearance, or the Host URL.
 
 Ordinary users should use the official [Browser Producer](./browser-producer.md). Direct `/ingest/v1` calls are an advanced integration surface.
 
@@ -270,7 +270,7 @@ POST /ingest/v1/heartbeat
 
 The first accepted state claims the single Producer lease. The same Producer may update it only with a strictly greater revision. Its heartbeat renews ownership without changing the published media state or snapshot revision. A foreign state/heartbeat, stale revision, replay, or heartbeat without an active lease returns conflict and does not renew ownership.
 
-The production lease duration is 10 seconds, measured only with Host monotonic time. On expiry the Host clears the owner and state, publishes Custom Source as unavailable, and allows another Producer to claim. A Producer cannot submit `unavailable`. Host restart begins with no lease; the persisted key remains valid and the Producer must resend state.
+The production lease duration is 10 seconds, measured only with Host monotonic time. On expiry the Host clears the owner and state, publishes Browser Player as unavailable, and allows another Producer to claim. A Producer cannot submit `unavailable`. Host restart begins with no lease; the persisted key remains valid and the Producer must resend state.
 
 ### Responses
 

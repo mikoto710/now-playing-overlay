@@ -10,7 +10,7 @@ It supports three independent media sources:
 
 - **Windows Media** — reads a selected Windows media session, including Spotify, browsers, and other compatible players.
 - **Spotify API** — reads the current track from your Spotify account using your own Spotify Developer application Client ID.
-- **Custom Source** — receives browser playback metadata through the Host-provided Tampermonkey Producer.
+- **Browser Player** — receives playback metadata from supported browser players through the Host-provided Tampermonkey Producer.
 
 The overlay can customize its colors, typography, background, and artwork layout.
 
@@ -33,7 +33,7 @@ winget install Microsoft.DotNet.DesktopRuntime.10
 3. Select a provider:
    - **Windows Media:** start playback, select **Refresh**, and choose the player.
    - **Spotify API:** open **Spotify Connection...**, enter your Client ID, and authorize in the browser.
-   - **Custom Source:** install the browser Producer from the running Host, copy the connection code, and paste it into the userscript menu once.
+   - **Browser Player:** install the browser Producer from the running Host, copy the connection code, and paste it into the userscript menu once.
 4. Optionally customize the overlay on the **Appearance** tab, then select **Save**.
 5. Select **Copy OBS URL** from the tray menu.
 6. Add a **Browser** source in OBS, paste the URL, and set its size to `350 × 70`.
@@ -58,15 +58,15 @@ If you changed the application port, replace `13130` with the current port. The 
 
 Only the Client ID is required. Authorization uses the system browser and PKCE; no Client Secret is stored by the application.
 
-## Custom Source setup
+## Browser Player setup
 
-Custom Source is the simple browser-integration path. It does not require a separate bridge application or any manual ingest-protocol work:
+Browser Player is the simple browser-integration path. It does not require a separate bridge application or any manual ingest-protocol work:
 
 1. Install [Tampermonkey](https://www.tampermonkey.net/) in the browser that plays your music.
-2. Open **Settings...**, choose **Custom Source**, and select **Install Browser Producer...**.
+2. Open **Settings...**, choose **Browser Player**, and select **Install Browser Producer...**.
 3. Select **Copy Connection Code**.
 4. On a supported music page, open Tampermonkey's **Now Playing Overlay Browser Producer** menu, choose **Configure Now Playing Overlay**, and paste the code.
-5. Save **Custom Source** as the active provider and start playback.
+5. Save **Browser Player** as the active provider and start playback.
 
 The Producer has site-specific metadata and artwork readers for Spotify Web, YouTube/YouTube Music, SoundCloud, Deezer, Yandex Music, Pretzel, Plex, Chillhop, and Bilibili, followed by a general Media Session fallback. These readers use separate page fields for title and artist; they do not guess the order of an `Artist - Title` string.
 
@@ -79,7 +79,7 @@ The script manages authentication, Producer identity, ordering, heartbeat, retry
 - Pausing or stopping playback hides the overlay.
 - If OBS is blank, use **Open Overlay Preview** first, then refresh the Browser Source.
 - Settings and protected Spotify credentials are stored under `%LOCALAPPDATA%\NowPlayingOverlay`.
-- The Custom Source ingest key is protected for the current Windows user and is never placed in the overlay URL.
+- The Browser Player ingest key is protected for the current Windows user and is never placed in the overlay URL.
 
 ## Development
 
