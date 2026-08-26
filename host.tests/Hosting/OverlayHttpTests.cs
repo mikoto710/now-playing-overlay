@@ -208,20 +208,34 @@ public sealed class OverlayHttpTests
                     track = new { title = "Before rotation", artist = "Artist" },
                 });
             using var stateResponse = await client.SendAsync(stateRequest);
+            using var artworkRequest = CreateArtworkRequest(
+                initialToken,
+                producerId,
+                producerRevision: 1,
+                OnePixelPng);
+            using var artworkResponse = await client.SendAsync(artworkRequest);
             using var published = await WaitForStateAsync(
                 client,
                 root => root.GetProperty("track").ValueKind == JsonValueKind.Object
                     && root.GetProperty("track").GetProperty("title").GetString()
                         == "Before rotation");
+            using var publishedArtwork = await WaitForStateAsync(
+                client,
+                root => root.GetProperty("artwork").ValueKind == JsonValueKind.Object);
+            using var artworkBytes = await client.GetAsync(
+                publishedArtwork.RootElement.GetProperty("artwork").GetProperty("url").GetString());
             using var health = await client.GetAsync("/health");
             using var healthJson = JsonDocument.Parse(await health.Content.ReadAsStringAsync());
 
             Assert.Equal(HttpStatusCode.NoContent, stateResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, artworkResponse.StatusCode);
             Assert.Equal(
                 "external-push",
                 published.RootElement.GetProperty("source").GetProperty("provider").GetString());
             Assert.Equal(JsonValueKind.Null, published.RootElement.GetProperty("timeline").ValueKind);
-            Assert.Equal(JsonValueKind.Null, published.RootElement.GetProperty("artwork").ValueKind);
+            Assert.Equal(JsonValueKind.Object, publishedArtwork.RootElement.GetProperty("artwork").ValueKind);
+            Assert.Equal("image/png", artworkBytes.Content.Headers.ContentType!.MediaType);
+            Assert.Equal(OnePixelPng, await artworkBytes.Content.ReadAsByteArrayAsync());
             Assert.Equal(
                 "external-push",
                 healthJson.RootElement.GetProperty("activeSourceProvider").GetString());
