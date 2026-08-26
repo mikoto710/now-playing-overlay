@@ -107,50 +107,37 @@ internal sealed class ExternalProducerLease
         long producerRevision,
         ArtworkPayload artwork)
     {
-        if (producerId == Guid.Empty)
-        {
-            throw new ArgumentException("Producer ID must not be empty.", nameof(producerId));
-        }
-
-        if (producerRevision <= 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(producerRevision),
-                producerRevision,
-                "Producer revision must be positive.");
-        }
-
+        ValidateArtworkTarget(producerId, producerRevision);
         ArgumentNullException.ThrowIfNull(artwork);
         ExternalLeaseArtworkResult result;
         var changed = false;
         lock (_gate)
         {
             changed = ExpireLocked(_timeProvider.GetTimestamp());
-            if (_state is null)
+            result = CheckArtworkTargetLocked(producerId, producerRevision);
+            if (result == ExternalLeaseArtworkResult.Accepted)
             {
-                result = ExternalLeaseArtworkResult.NoActiveLease;
-            }
-            else if (_state.ProducerId != producerId)
-            {
-                result = ExternalLeaseArtworkResult.ProducerConflict;
-            }
-            else if (_state.ProducerRevision != producerRevision)
-            {
-                result = ExternalLeaseArtworkResult.RevisionConflict;
-            }
-            else if (_state.Track is null)
-            {
-                result = ExternalLeaseArtworkResult.MissingTrack;
-            }
-            else
-            {
-                _state = _state.WithArtwork(artwork);
-                result = ExternalLeaseArtworkResult.Accepted;
+                _state = _state!.WithArtwork(artwork);
                 changed = true;
             }
         }
 
         NotifyStateChanged(changed);
+        return result;
+    }
+
+    public ExternalLeaseArtworkResult CheckArtworkTarget(Guid producerId, long producerRevision)
+    {
+        ValidateArtworkTarget(producerId, producerRevision);
+        ExternalLeaseArtworkResult result;
+        bool expired;
+        lock (_gate)
+        {
+            expired = ExpireLocked(_timeProvider.GetTimestamp());
+            result = CheckArtworkTargetLocked(producerId, producerRevision);
+        }
+
+        NotifyStateChanged(expired);
         return result;
     }
 
@@ -223,6 +210,46 @@ internal sealed class ExternalProducerLease
         _state = null;
         _renewedAtTimestamp = 0;
         return true;
+    }
+
+    private ExternalLeaseArtworkResult CheckArtworkTargetLocked(
+        Guid producerId,
+        long producerRevision)
+    {
+        if (_state is null)
+        {
+            return ExternalLeaseArtworkResult.NoActiveLease;
+        }
+
+        if (_state.ProducerId != producerId)
+        {
+            return ExternalLeaseArtworkResult.ProducerConflict;
+        }
+
+        if (_state.ProducerRevision != producerRevision)
+        {
+            return ExternalLeaseArtworkResult.RevisionConflict;
+        }
+
+        return _state.Track is null
+            ? ExternalLeaseArtworkResult.MissingTrack
+            : ExternalLeaseArtworkResult.Accepted;
+    }
+
+    private static void ValidateArtworkTarget(Guid producerId, long producerRevision)
+    {
+        if (producerId == Guid.Empty)
+        {
+            throw new ArgumentException("Producer ID must not be empty.", nameof(producerId));
+        }
+
+        if (producerRevision <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(producerRevision),
+                producerRevision,
+                "Producer revision must be positive.");
+        }
     }
 
     private void NotifyStateChanged(bool changed)

@@ -1,7 +1,9 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Media.External;
 using NowPlayingOverlay.Host.Models;
 
@@ -11,17 +13,29 @@ internal sealed record ExternalIngestLimits
 {
     public int MaximumBodyBytes { get; init; } = 16 * 1024;
 
+    public int MaximumArtworkBodyBytes { get; init; } =
+        ArtworkCacheOptions.DefaultMaximumItemBytes;
+
     public TimeSpan BodyReadTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
     public int MaximumRequestsPerWindow { get; init; } = 20;
 
     public TimeSpan RateLimitWindow { get; init; } = TimeSpan.FromSeconds(1);
 
+    public int MaximumArtworkRequestsPerWindow { get; init; } = 4;
+
+    public TimeSpan ArtworkRateLimitWindow { get; init; } = TimeSpan.FromSeconds(10);
+
     public void Validate()
     {
         if (MaximumBodyBytes <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(MaximumBodyBytes));
+        }
+
+        if (MaximumArtworkBodyBytes is <= 0 or > ArtworkCacheOptions.DefaultMaximumItemBytes)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaximumArtworkBodyBytes));
         }
 
         if (BodyReadTimeout <= TimeSpan.Zero)
@@ -38,20 +52,42 @@ internal sealed record ExternalIngestLimits
         {
             throw new ArgumentOutOfRangeException(nameof(RateLimitWindow));
         }
+
+        if (MaximumArtworkRequestsPerWindow <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaximumArtworkRequestsPerWindow));
+        }
+
+        if (ArtworkRateLimitWindow <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ArtworkRateLimitWindow));
+        }
     }
+}
+
+internal enum ExternalIngestRequestKind
+{
+    State,
+    Heartbeat,
+    Artwork,
 }
 
 internal sealed class ExternalIngestHttpHandler : IDisposable
 {
     public const string StatePath = "/ingest/v1/state";
     public const string HeartbeatPath = "/ingest/v1/heartbeat";
+    public const string ArtworkPath = "/ingest/v1/artwork";
+    public const string ProducerIdHeader = "X-NPO-Producer-Id";
+    public const string ProducerRevisionHeader = "X-NPO-Producer-Revision";
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
     private readonly object _keyGate = new();
     private IngestKey? _key;
     private long _keyGeneration;
     private readonly ExternalProducerLease _lease;
     private readonly ExternalIngestLimits _limits;
-    private readonly FixedWindowRateLimiter _rateLimiter;
+    private readonly ArtworkCacheOptions _artworkValidationOptions;
+    private readonly FixedWindowRateLimiter _jsonRateLimiter;
+    private readonly FixedWindowRateLimiter _artworkRateLimiter;
     private int _disposed;
 
     public ExternalIngestHttpHandler(
@@ -64,10 +100,20 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
         _lease = lease ?? throw new ArgumentNullException(nameof(lease));
         _limits = limits ?? new ExternalIngestLimits();
         _limits.Validate();
-        _rateLimiter = new FixedWindowRateLimiter(
+        var clock = timeProvider ?? TimeProvider.System;
+        _artworkValidationOptions = new ArtworkCacheOptions
+        {
+            MaximumItemBytes = _limits.MaximumArtworkBodyBytes,
+        };
+        _artworkValidationOptions.Validate();
+        _jsonRateLimiter = new FixedWindowRateLimiter(
             _limits.MaximumRequestsPerWindow,
             _limits.RateLimitWindow,
-            timeProvider ?? TimeProvider.System);
+            clock);
+        _artworkRateLimiter = new FixedWindowRateLimiter(
+            _limits.MaximumArtworkRequestsPerWindow,
+            _limits.ArtworkRateLimitWindow,
+            clock);
     }
 
     public string ExportKey()
@@ -99,7 +145,7 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
 
     public async Task HandleAsync(
         HttpListenerContext context,
-        bool heartbeat,
+        ExternalIngestRequestKind requestKind,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -114,7 +160,10 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
             return;
         }
 
-        if (!_rateLimiter.TryAcquire(out var retryAfterSeconds))
+        var rateLimiter = requestKind == ExternalIngestRequestKind.Artwork
+            ? _artworkRateLimiter
+            : _jsonRateLimiter;
+        if (!rateLimiter.TryAcquire(out var retryAfterSeconds))
         {
             response.StatusCode = 429;
             response.Headers[HttpResponseHeader.RetryAfter] = retryAfterSeconds.ToString();
@@ -125,6 +174,17 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
         if (!TryAuthorize(request.Headers["Authorization"], out var keyGeneration))
         {
             WriteUnauthorized(response);
+            return;
+        }
+
+        if (requestKind == ExternalIngestRequestKind.Artwork)
+        {
+            await HandleArtworkAsync(
+                request,
+                response,
+                keyGeneration,
+                cancellationToken);
+            response.ContentLength64 = 0;
             return;
         }
 
@@ -146,7 +206,10 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
         byte[] body;
         try
         {
-            body = await ReadBodyAsync(request, cancellationToken);
+            body = await ReadBodyAsync(
+                request,
+                _limits.MaximumBodyBytes,
+                cancellationToken);
         }
         catch (RequestBodyTooLargeException)
         {
@@ -171,7 +234,7 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
                     return;
                 }
 
-                response.StatusCode = heartbeat
+                response.StatusCode = requestKind == ExternalIngestRequestKind.Heartbeat
                     ? HandleHeartbeat(body)
                     : HandleState(body);
             }
@@ -252,8 +315,101 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
             : 409;
     }
 
+    private async Task HandleArtworkAsync(
+        HttpListenerRequest request,
+        HttpListenerResponse response,
+        long keyGeneration,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetArtworkContentType(request, out var declaredContentType)
+            || !string.IsNullOrWhiteSpace(request.Headers["Content-Encoding"]))
+        {
+            response.StatusCode = 415;
+            return;
+        }
+
+        if (!TryReadArtworkTarget(request, out var producerId, out var producerRevision))
+        {
+            response.StatusCode = 400;
+            return;
+        }
+
+        if (_lease.CheckArtworkTarget(producerId, producerRevision)
+            != ExternalLeaseArtworkResult.Accepted)
+        {
+            response.StatusCode = 409;
+            return;
+        }
+
+        if (request.ContentLength64 > _limits.MaximumArtworkBodyBytes)
+        {
+            response.StatusCode = 413;
+            return;
+        }
+
+        byte[] body;
+        try
+        {
+            body = await ReadBodyAsync(
+                request,
+                _limits.MaximumArtworkBodyBytes,
+                cancellationToken);
+        }
+        catch (RequestBodyTooLargeException)
+        {
+            response.StatusCode = 413;
+            return;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            response.StatusCode = 408;
+            return;
+        }
+
+        ArtworkPayload payload;
+        try
+        {
+            payload = ArtworkPayload.Create(body);
+        }
+        catch (ArgumentException)
+        {
+            response.StatusCode = 400;
+            return;
+        }
+
+        if (!ArtworkPayloadValidator.TryValidate(
+                payload,
+                _artworkValidationOptions,
+                out var detectedContentType)
+            || !string.Equals(
+                declaredContentType,
+                detectedContentType,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            response.StatusCode = 400;
+            return;
+        }
+
+        lock (_keyGate)
+        {
+            if (keyGeneration != _keyGeneration)
+            {
+                WriteUnauthorized(response);
+                return;
+            }
+
+            response.StatusCode = _lease.ApplyArtwork(
+                producerId,
+                producerRevision,
+                payload) == ExternalLeaseArtworkResult.Accepted
+                ? 204
+                : 409;
+        }
+    }
+
     private async Task<byte[]> ReadBodyAsync(
         HttpListenerRequest request,
+        int maximumBodyBytes,
         CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -261,7 +417,7 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
         using var body = request.ContentLength64 is > 0 and <= int.MaxValue
             ? new MemoryStream((int)request.ContentLength64)
             : new MemoryStream();
-        var buffer = new byte[Math.Min(4096, _limits.MaximumBodyBytes)];
+        var buffer = new byte[Math.Min(4096, maximumBodyBytes)];
         while (true)
         {
             var read = await request.InputStream.ReadAsync(buffer, timeout.Token);
@@ -270,7 +426,7 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
                 return body.ToArray();
             }
 
-            if (body.Length + read > _limits.MaximumBodyBytes)
+            if (body.Length + read > maximumBodyBytes)
             {
                 throw new RequestBodyTooLargeException();
             }
@@ -298,6 +454,45 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
 
         return contentType.CharSet is null
             || string.Equals(contentType.CharSet.Trim('"'), "utf-8", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryGetArtworkContentType(
+        HttpListenerRequest request,
+        out string contentType)
+    {
+        contentType = string.Empty;
+        if (!MediaTypeHeaderValue.TryParse(request.ContentType, out var parsed)
+            || parsed.Parameters.Count != 0
+            || parsed.MediaType is null)
+        {
+            return false;
+        }
+
+        contentType = parsed.MediaType;
+        return string.Equals(contentType, "image/png", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(contentType, "image/jpeg", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(contentType, "image/webp", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryReadArtworkTarget(
+        HttpListenerRequest request,
+        out Guid producerId,
+        out long producerRevision)
+    {
+        producerId = Guid.Empty;
+        producerRevision = 0;
+        var producerIds = request.Headers.GetValues(ProducerIdHeader);
+        var revisions = request.Headers.GetValues(ProducerRevisionHeader);
+        return producerIds is { Length: 1 }
+            && revisions is { Length: 1 }
+            && Guid.TryParseExact(producerIds[0], "D", out producerId)
+            && producerId != Guid.Empty
+            && long.TryParse(
+                revisions[0],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out producerRevision)
+            && producerRevision > 0;
     }
 
     private static JsonSerializerOptions CreateJsonOptions()

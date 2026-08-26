@@ -21,11 +21,7 @@ internal sealed class ArtworkCache
     {
         ArgumentNullException.ThrowIfNull(payload);
         var bytes = payload.Bytes;
-        if (bytes.Length > _options.MaximumItemBytes
-            || !ArtworkImageInspector.TryInspect(bytes.Span, out var contentType, out var width, out var height)
-            || width > _options.MaximumWidth
-            || height > _options.MaximumHeight
-            || (long)width * height > _options.MaximumPixels)
+        if (!ArtworkPayloadValidator.TryValidate(payload, _options, out var contentType))
         {
             entry = null;
             return false;

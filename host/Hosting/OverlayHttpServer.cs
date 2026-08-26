@@ -400,14 +400,28 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
 
         if (_externalIngestHandler is not null
             && (string.Equals(path, ExternalIngestHttpHandler.StatePath, StringComparison.Ordinal)
-                || string.Equals(path, ExternalIngestHttpHandler.HeartbeatPath, StringComparison.Ordinal)))
+                || string.Equals(path, ExternalIngestHttpHandler.HeartbeatPath, StringComparison.Ordinal)
+                || string.Equals(path, ExternalIngestHttpHandler.ArtworkPath, StringComparison.Ordinal)))
         {
-            await _externalIngestHandler.HandleAsync(
-                context,
-                heartbeat: string.Equals(
+            var requestKind = ExternalIngestRequestKind.State;
+            if (string.Equals(
                     path,
                     ExternalIngestHttpHandler.HeartbeatPath,
-                    StringComparison.Ordinal),
+                    StringComparison.Ordinal))
+            {
+                requestKind = ExternalIngestRequestKind.Heartbeat;
+            }
+            else if (string.Equals(
+                         path,
+                         ExternalIngestHttpHandler.ArtworkPath,
+                         StringComparison.Ordinal))
+            {
+                requestKind = ExternalIngestRequestKind.Artwork;
+            }
+
+            await _externalIngestHandler.HandleAsync(
+                context,
+                requestKind,
                 cancellationToken);
             return;
         }

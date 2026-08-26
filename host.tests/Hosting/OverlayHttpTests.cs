@@ -349,6 +349,40 @@ public sealed class OverlayHttpTests
     }
 
     [Fact]
+    public async Task AuthenticatedArtworkUploadBindsValidatedBytesToTheCurrentState()
+    {
+        var lease = new ExternalProducerLease(TimeSpan.FromMinutes(1));
+        var key = IngestKey.Generate();
+        var token = key.Export();
+        await using var host = await TestOverlayHost.StartAsync(
+            externalIngestHandler: new ExternalIngestHttpHandler(key, lease));
+        var producerId = Guid.Parse("8b2be001-8570-4a53-b418-fccf42162cf7");
+        using var stateRequest = CreateIngestRequest(
+            ExternalIngestHttpHandler.StatePath,
+            token,
+            new
+            {
+                producerId,
+                producerRevision = 1,
+                playback = "playing",
+                track = new { title = "Track", artist = "Artist" },
+            });
+        using var state = await host.Client.SendAsync(stateRequest);
+        using var artworkRequest = CreateArtworkRequest(
+            token,
+            producerId,
+            producerRevision: 1,
+            OnePixelPng);
+
+        using var artwork = await host.Client.SendAsync(artworkRequest);
+
+        Assert.Equal(HttpStatusCode.NoContent, state.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, artwork.StatusCode);
+        Assert.Equal("no-store", artwork.Headers.CacheControl!.ToString());
+        Assert.Equal(OnePixelPng, lease.GetCurrentState()!.Artwork!.Bytes.ToArray());
+    }
+
+    [Fact]
     public async Task IngestRequiresExactBearerAuthenticationBeforeReadingState()
     {
         var lease = new ExternalProducerLease(TimeSpan.FromMinutes(1));
@@ -394,7 +428,7 @@ public sealed class OverlayHttpTests
             producerRevision = 1,
             playback = "idle",
         });
-        var content = new BlockingJsonContent(payload);
+        var content = new BlockingContent(payload, "application/json", "utf-8");
         using var request = new HttpRequestMessage(HttpMethod.Post, ExternalIngestHttpHandler.StatePath)
         {
             Content = content,
@@ -406,6 +440,39 @@ public sealed class OverlayHttpTests
         var replacement = IngestKey.Generate();
         handler.ReplaceKey(replacement);
 
+        content.Release();
+        using var response = await send.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(lease.GetCurrentState());
+    }
+
+    [Fact]
+    public async Task KeyRotationRejectsAnOldArtworkRequestThatIsStillUploading()
+    {
+        var lease = new ExternalProducerLease(TimeSpan.FromMinutes(1));
+        var originalKey = IngestKey.Generate();
+        var originalToken = originalKey.Export();
+        var handler = new ExternalIngestHttpHandler(originalKey, lease);
+        await using var host = await TestOverlayHost.StartAsync(externalIngestHandler: handler);
+        var producerId = Guid.Parse("ae800ab7-c57f-4f7b-b54e-edf5ca077a32");
+        lease.ApplyState(ExternalIngestState.Create(
+            producerId,
+            1,
+            PlaybackState.Playing,
+            "Track",
+            "Artist"));
+        var content = new BlockingContent(OnePixelPng, "image/png");
+        using var request = CreateArtworkRequest(
+            originalToken,
+            producerId,
+            producerRevision: 1,
+            content);
+        var send = host.Client.SendAsync(request);
+        await content.FirstByteWritten.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(100);
+
+        handler.ReplaceKey(IngestKey.Generate());
         content.Release();
         using var response = await send.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -503,6 +570,90 @@ public sealed class OverlayHttpTests
         Assert.Equal(HttpStatusCode.UnsupportedMediaType, wrongCharsetResponse.StatusCode);
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, oversizedResponse.StatusCode);
         Assert.Null(lease.GetCurrentState());
+    }
+
+    [Fact]
+    public async Task ArtworkIngestRejectsInvalidTargetsTypesAndBodies()
+    {
+        var lease = new ExternalProducerLease(TimeSpan.FromMinutes(1));
+        var key = IngestKey.Generate();
+        var token = key.Export();
+        await using var host = await TestOverlayHost.StartAsync(
+            externalIngestHandler: new ExternalIngestHttpHandler(
+                key,
+                lease,
+                new ExternalIngestLimits
+                {
+                    MaximumArtworkBodyBytes = OnePixelPng.Length,
+                    MaximumArtworkRequestsPerWindow = 5,
+                }));
+        var producerId = Guid.Parse("1c39c02a-1f95-4a92-9f72-f2a67aa82cbd");
+        lease.ApplyState(ExternalIngestState.Create(
+            producerId,
+            1,
+            PlaybackState.Playing,
+            "Track"));
+        using var missingHeaders = new HttpRequestMessage(
+            HttpMethod.Post,
+            ExternalIngestHttpHandler.ArtworkPath)
+        {
+            Content = new ByteArrayContent(OnePixelPng),
+        };
+        missingHeaders.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        missingHeaders.Content.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+        using var wrongRevision = CreateArtworkRequest(token, producerId, 2, OnePixelPng);
+        using var unsupported = CreateArtworkRequest(token, producerId, 1, OnePixelPng, "image/gif");
+        using var mismatched = CreateArtworkRequest(token, producerId, 1, OnePixelPng, "image/jpeg");
+        using var oversized = CreateArtworkRequest(
+            token,
+            producerId,
+            1,
+            [.. OnePixelPng, 0]);
+
+        using var missingHeadersResponse = await host.Client.SendAsync(missingHeaders);
+        using var wrongRevisionResponse = await host.Client.SendAsync(wrongRevision);
+        using var unsupportedResponse = await host.Client.SendAsync(unsupported);
+        using var mismatchedResponse = await host.Client.SendAsync(mismatched);
+        using var oversizedResponse = await host.Client.SendAsync(oversized);
+
+        Assert.Equal(HttpStatusCode.BadRequest, missingHeadersResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, wrongRevisionResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, unsupportedResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, mismatchedResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, oversizedResponse.StatusCode);
+        Assert.Null(lease.GetCurrentState()!.Artwork);
+    }
+
+    [Fact]
+    public async Task ArtworkRateLimitDoesNotConsumeHeartbeatCapacity()
+    {
+        var lease = new ExternalProducerLease(TimeSpan.FromMinutes(1));
+        var key = IngestKey.Generate();
+        var token = key.Export();
+        await using var host = await TestOverlayHost.StartAsync(
+            externalIngestHandler: new ExternalIngestHttpHandler(
+                key,
+                lease,
+                new ExternalIngestLimits { MaximumArtworkRequestsPerWindow = 1 }));
+        var producerId = Guid.Parse("c39c1e64-7097-4c97-8dc2-94ea8a1efebe");
+        lease.ApplyState(ExternalIngestState.Create(
+            producerId,
+            1,
+            PlaybackState.Playing,
+            "Track"));
+        using var acceptedRequest = CreateArtworkRequest(token, producerId, 1, OnePixelPng);
+        using var accepted = await host.Client.SendAsync(acceptedRequest);
+        using var limitedRequest = CreateArtworkRequest(token, producerId, 1, OnePixelPng);
+        using var limited = await host.Client.SendAsync(limitedRequest);
+        using var heartbeatRequest = CreateIngestRequest(
+            ExternalIngestHttpHandler.HeartbeatPath,
+            token,
+            new { producerId });
+        using var heartbeat = await host.Client.SendAsync(heartbeatRequest);
+
+        Assert.Equal(HttpStatusCode.NoContent, accepted.StatusCode);
+        Assert.Equal((HttpStatusCode)429, limited.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, heartbeat.StatusCode);
     }
 
     [Fact]
@@ -1113,6 +1264,40 @@ public sealed class OverlayHttpTests
         return request;
     }
 
+    private static HttpRequestMessage CreateArtworkRequest(
+        string token,
+        Guid producerId,
+        long producerRevision,
+        byte[] body,
+        string contentType = "image/png")
+    {
+        var content = new ByteArrayContent(body);
+        content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        return CreateArtworkRequest(token, producerId, producerRevision, content);
+    }
+
+    private static HttpRequestMessage CreateArtworkRequest(
+        string token,
+        Guid producerId,
+        long producerRevision,
+        HttpContent content)
+    {
+        var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            ExternalIngestHttpHandler.ArtworkPath)
+        {
+            Content = content,
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Headers.Add(
+            ExternalIngestHttpHandler.ProducerIdHeader,
+            producerId.ToString("D"));
+        request.Headers.Add(
+            ExternalIngestHttpHandler.ProducerRevisionHeader,
+            producerRevision.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return request;
+    }
+
     private static async Task<JsonDocument> WaitForStateAsync(
         HttpClient client,
         Func<JsonElement, bool> predicate)
@@ -1150,7 +1335,7 @@ public sealed class OverlayHttpTests
         }
     }
 
-    private sealed class BlockingJsonContent : HttpContent
+    private sealed class BlockingContent : HttpContent
     {
         private readonly byte[] _body;
         private readonly TaskCompletionSource _release =
@@ -1158,12 +1343,12 @@ public sealed class OverlayHttpTests
         private readonly TaskCompletionSource _firstByteWritten =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public BlockingJsonContent(byte[] body)
+        public BlockingContent(byte[] body, string contentType, string? charset = null)
         {
             _body = body;
-            Headers.ContentType = new MediaTypeHeaderValue("application/json")
+            Headers.ContentType = new MediaTypeHeaderValue(contentType)
             {
-                CharSet = "utf-8",
+                CharSet = charset,
             };
         }
 
