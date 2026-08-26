@@ -1,8 +1,6 @@
 # Browser Producer
 
-> Status: PC-03 implementation, committed locally on `protocol-v3` and ready for acceptance. The branch has not been pushed.
-
-`NowPlayingOverlay.user.js` is the ordinary-user entry point for Custom Source. It is one standalone Tampermonkey userscript shipped in the same release ZIP as the Host. There is no second executable, bridge service, SDK, npm package, or separate project.
+`NowPlayingOverlay.user.js` is the ordinary-user entry point for Custom Source. Its source is embedded in the Host, served from `/NowPlayingOverlay.user.js`, and installed through **Install Browser Producer...**. It is not duplicated in the release ZIP, and there is no second executable, bridge service, SDK, npm package, or separate project.
 
 ## Install and connect
 
@@ -30,7 +28,7 @@ The userscript has explicit matches for:
 - Chillhop;
 - Bilibili.
 
-There is no unrestricted all-sites match. The first adapter reads `navigator.mediaSession` plus the active page audio/video element to produce `playing`, `paused`, `stopped`, or `idle` and the available title, artist, and album. A matched site that does not expose useful Media Session metadata will remain idle until a reviewed site adapter is added.
+There is no unrestricted all-sites match. The Producer first uses a reviewed reader for the current site, then falls back to `navigator.mediaSession` plus active page audio/video elements. The readers use independent title and artist fields rather than guessing the order of a combined window title. Missing or stale site elements do not block the Media Session fallback.
 
 ## Lifecycle and multi-tab behavior
 
@@ -57,26 +55,26 @@ The script stores the connection code in Tampermonkey storage and sends the key 
 - Use the userscript menu **Show Now Playing Overlay status** to confirm the configured port and whether the tab owns the lease.
 - If the Host port changed, copy and paste a new connection code.
 - If code rotation occurred, paste the newly copied code.
-- If the page is matched but no track appears, check whether `navigator.mediaSession.metadata` is populated in that site/browser combination.
+- If the page is matched but no track appears, check whether the site's player elements or `navigator.mediaSession.metadata` are populated in that browser combination.
 - If another tab is actively playing, that tab intentionally owns the overlay.
 - Open the Host logs from the tray only for Host-side failures; the userscript writes concise warnings to the browser console for rejected codes.
 
 ## Adding a site adapter
 
-Adapters are metadata readers, not protocol clients. A new adapter belongs before the Media Session fallback and implements two operations:
+Site readers extract metadata only; they are not protocol clients. Add a reader to the fixed site map and let the existing Media Session reader remain the fallback:
 
 ```javascript
-{
-    id: "site-name",
-    matches: () => location.hostname === "music.example.com",
-    read: () => ({
+function readExample(context) {
+    return {
         playback: "playing", // playing | paused | stopped | idle
         title: "Track title",
         artist: "Artist",
         albumTitle: "Album", // optional
         trackId: "stable-site-id", // optional
-    }),
+    };
 }
+
+siteReaders["music.example.com"] = readExample;
 ```
 
 The fixed transport continues to normalize text, authenticate, assign `producerId` and `producerRevision`, retry, heartbeat, and coordinate tabs. Do not duplicate those responsibilities in an adapter. Do not send `timeline`, artwork, remote URLs, account data, or playback controls: ingest v1 rejects fields outside its frozen shape.

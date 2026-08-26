@@ -10,7 +10,7 @@ It supports three independent media sources:
 
 - **Windows Media** — reads a selected Windows media session, including Spotify, browsers, and other compatible players.
 - **Spotify API** — reads the current track from your Spotify account using your own Spotify Developer application Client ID.
-- **Custom Source** — receives browser Media Session metadata through the included Tampermonkey Producer.
+- **Custom Source** — receives browser playback metadata through the Host-provided Tampermonkey Producer.
 
 The overlay can customize its colors, typography, background, and artwork layout.
 
@@ -33,7 +33,7 @@ winget install Microsoft.DotNet.DesktopRuntime.10
 3. Select a provider:
    - **Windows Media:** start playback, select **Refresh**, and choose the player.
    - **Spotify API:** open **Spotify Connection...**, enter your Client ID, and authorize in the browser.
-   - **Custom Source:** install the included browser Producer, copy the connection code, and paste it into the userscript menu once.
+   - **Custom Source:** install the browser Producer from the running Host, copy the connection code, and paste it into the userscript menu once.
 4. Optionally customize the overlay on the **Appearance** tab, then select **Save**.
 5. Select **Copy OBS URL** from the tray menu.
 6. Add a **Browser** source in OBS, paste the URL, and set its size to `350 × 70`.
@@ -68,7 +68,7 @@ Custom Source is the simple browser-integration path. It does not require a sepa
 4. On a supported music page, open Tampermonkey's **Now Playing Overlay Browser Producer** menu, choose **Configure Now Playing Overlay**, and paste the code.
 5. Save **Custom Source** as the active provider and start playback.
 
-The Producer uses browser Media Session metadata. It currently runs on explicit matches for Spotify Web, YouTube/YouTube Music, SoundCloud, Deezer, Yandex Music, Pretzel, Plex, Chillhop, and Bilibili. A site must expose usable Media Session metadata; site-specific DOM adapters can be added later without changing the Host transport.
+The Producer has site-specific metadata readers for Spotify Web, YouTube/YouTube Music, SoundCloud, Deezer, Yandex Music, Pretzel, Plex, Chillhop, and Bilibili, followed by a general Media Session fallback. These readers use separate page fields for title and artist; they do not guess the order of an `Artist - Title` string.
 
 The script manages authentication, Producer identity, ordering, heartbeat, retry, Host restart recovery, and multi-tab ownership internally. Its key is stored in userscript-private storage and is sent only to `127.0.0.1`. Use **Rotate Code...** to invalidate the old code, clear the active lease, and copy a replacement. See [Browser Producer](docs/browser-producer.md) for troubleshooting and adapter guidance.
 
@@ -95,9 +95,15 @@ Requires the .NET 10 SDK, Node.js 22, and npm.
 - `publish-fast.ps1` creates a quick Debug executable without tests.
 - `publish.ps1` runs release validation and creates the release package.
 
-The release ZIP contains `NowPlayingOverlay.exe`, the standalone `NowPlayingOverlay.user.js`, the README, and the license.
+The release ZIP contains `NowPlayingOverlay.exe`, the README, and the license. The userscript remains embedded in the executable and is installed through **Install Browser Producer...** while the Host is running.
 
 Protocol and release details live in [`docs`](docs), not in this README.
+
+## Acknowledgements
+
+This project draws inspiration from [Snip](https://github.com/dlrudie/Snip) and [Tuna](https://github.com/univrsal/tuna) for now-playing metadata and source-integration patterns. The Browser Producer's site extraction behavior is independently implemented for this project's local protocol.
+
+The front-end overlay presentation was inspired by [Zyphen's Now Playing](https://github.com/ZyphenVisuals/zyphens-now-playing).
 
 ## License
 

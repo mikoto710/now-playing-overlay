@@ -11,7 +11,7 @@ Phase A upgraded the host, embedded page, TypeScript parser, fixtures, and HTTP/
 | Method | Path | Cache policy | Purpose |
 | --- | --- | --- | --- |
 | `GET`, `HEAD` | `/NowPlaying.html` | `no-store` | Embedded production overlay page |
-| `GET`, `HEAD` | `/NowPlayingOverlay.user.js` | `no-store` | Official standalone Tampermonkey Browser Producer |
+| `GET`, `HEAD` | `/NowPlayingOverlay.user.js` | `no-store` | Official Host-embedded Tampermonkey Browser Producer |
 | `GET`, `HEAD` | `/api/v3/state` | `no-store` | Latest complete state snapshot |
 | `GET`, `HEAD` | `/api/v3/appearance` | `no-store` | Complete effective presentation configuration read once at page load |
 | `GET` | `/api/v3/events` | `no-store` | Server-Sent Events containing complete state snapshots |
@@ -272,6 +272,6 @@ Common Host gates may also reject an invalid Host header, excessive headers, or 
 
 ## Implemented phase boundary
 
-Phase A added Timeline domain/pass-through and output protocol v3. Phase B made source configuration provider-neutral. PC-01 added strict external state and the single-owner lease; PC-02 added the protected IngestKey and fail-closed HTTP transport; PC-03 connects the production Source, Settings/Shell, application composition, embedded userscript asset, release package, and official Media Session Browser Producer.
+Phase A added Timeline domain/pass-through and output protocol v3. Phase B made source configuration provider-neutral. PC-01 added strict external state and the single-owner lease; PC-02 added the protected IngestKey and fail-closed HTTP transport; PC-03 connects the production Source, Settings/Shell, application composition, embedded userscript asset, release package, and official site-aware Browser Producer.
 
 PC-03 intentionally does not add Custom Source Timeline or artwork, remote artwork URLs, a progress UI, playback controls, source registry, multiple logical sources, Producer winner arbitration, a new SDK/package/project, a bridge executable, or a WindowTitle Source. Future Timeline and bounded inline artwork use the existing `PlaybackTimeline` and `IArtworkReader -> ArtworkCache` boundaries only after separate contracts and authorization.
