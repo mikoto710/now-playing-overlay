@@ -2,7 +2,7 @@
 // @name         Now Playing Overlay Browser Producer
 // @namespace    https://github.com/mikoto710/now-playing-overlay
 // @version      0.2.0
-// @description  Send browser Media Session metadata to the local Now Playing Overlay host.
+// @description  Send browser playback metadata to the local Now Playing Overlay host.
 // @author       Now Playing Overlay contributors
 // @license      GPL-3.0-or-later
 // @match        https://open.spotify.com/*
@@ -93,6 +93,241 @@
         };
     }
 
+    function firstElement(root, selectors) {
+        for (const selector of selectors) {
+            const element = root.querySelector(selector);
+            if (element) {
+                return element;
+            }
+        }
+        return null;
+    }
+
+    function elementText(element, attributes = []) {
+        if (!element) {
+            return null;
+        }
+
+        for (const attribute of attributes) {
+            const value = typeof element.getAttribute === "function"
+                ? element.getAttribute(attribute)
+                : element[attribute];
+            const normalized = cleanText(value);
+            if (normalized) {
+                return normalized;
+            }
+        }
+        return cleanText(element.textContent ?? element.innerText);
+    }
+
+    function joinedElementText(elements) {
+        return [...new Set(Array.from(elements, element => elementText(element)).filter(Boolean))].join(", ") || null;
+    }
+
+    function readPlayback(documentRoot, mediaSession) {
+        const media = Array.from(documentRoot.querySelectorAll("audio, video"));
+        const activeMedia = media.find(element => !element.paused && !element.ended);
+        const pausedMedia = media.find(element => element.paused && !element.ended && element.readyState > 0);
+        const sessionState = mediaSession?.playbackState;
+        return sessionState === "playing" || activeMedia
+            ? "playing"
+            : sessionState === "paused" || pausedMedia
+                ? "paused"
+                : "stopped";
+    }
+
+    function readMediaSessionState(context, playback = null) {
+        const metadata = context.mediaSession?.metadata;
+        if (!cleanText(metadata?.title)) {
+            return null;
+        }
+
+        return {
+            playback: playback ?? readPlayback(context.document, context.mediaSession),
+            title: metadata.title,
+            artist: metadata.artist,
+            albumTitle: metadata.album,
+        };
+    }
+
+    function readSoundCloud(context) {
+        const title = elementText(
+            context.document.querySelector(".playbackSoundBadge__titleLink"),
+            ["title"]);
+        if (!title) {
+            return null;
+        }
+
+        const playControl = context.document.querySelector(".playControl");
+        return {
+            playback: playControl?.classList?.contains("playing") ? "playing" : "stopped",
+            title,
+            artist: elementText(
+                context.document.querySelector(".playbackSoundBadge__lightLink"),
+                ["title"]),
+            albumTitle: elementText(firstElement(context.document, [
+                "div.playlist.playing .soundTitle__title",
+                ".fullListenHero .soundTitle__title",
+            ])),
+        };
+    }
+
+    function readYandexMusic(context) {
+        const title = elementText(
+            context.document.querySelector('[class*="VibePlayerbarMeta_trackNameText"]'));
+        if (!title) {
+            return null;
+        }
+
+        const playButton = context.document.querySelector('[class*="VibePlayerControls_playButton"]');
+        const playing = Array.from(playButton?.classList ?? []).some(name => name.includes("_playing"));
+        return {
+            playback: playing ? "playing" : "stopped",
+            title,
+            artist: elementText(context.document.querySelector('[class*="VibePage_text"]')),
+        };
+    }
+
+    function cleanYouTubeTitle(title, artist) {
+        let result = cleanText(title);
+        if (!result) {
+            return null;
+        }
+
+        if (artist) {
+            for (const decoration of [`${artist} - `, ` - ${artist}`, artist]) {
+                result = result.replace(decoration, "").trim();
+            }
+        }
+        for (const decoration of [
+            "(Official Audio)",
+            "(Official Music Video)",
+            "(Original Video)",
+            "(Original Mix)",
+        ]) {
+            result = result.replace(decoration, "").trim();
+        }
+        return result || null;
+    }
+
+    function readYouTube(context) {
+        const artist = elementText(firstElement(context.document, [
+            "#text > a",
+            "ytd-video-owner-renderer #channel-name a",
+            "#owner #channel-name a",
+        ]));
+        const title = cleanYouTubeTitle(elementText(firstElement(context.document, [
+            "#container > h1 > yt-formatted-string",
+            "h1.ytd-watch-metadata yt-formatted-string",
+            "h1 yt-formatted-string",
+        ])), artist);
+        if (!title) {
+            return null;
+        }
+
+        const media = context.document.querySelector("video") ?? context.document.querySelector("audio");
+        return {
+            playback: media ? (media.paused || media.ended ? "stopped" : "playing") : "stopped",
+            title,
+            artist,
+        };
+    }
+
+    function readYouTubeMusic(context) {
+        const title = elementText(
+            context.document.querySelector(".ytmusic-player-bar.title"),
+            ["title"]);
+        if (!title) {
+            return null;
+        }
+
+        const artists = joinedElementText(context.document.querySelectorAll([
+            '.ytmusic-player-bar.byline [href*="channel/"]:not([href*="channel/MPREb_"]):not([href*="browse/MPREb_"])',
+            '.ytmusic-player-bar.byline .yt-formatted-string:nth-child(2n+1):not([href*="browse/"]):not([href*="channel/"]):not(:nth-last-child(1)):not(:nth-last-child(3))',
+            '.ytmusic-player-bar.byline [href*="browse/FEmusic_library_privately_owned_artist_detaila_"]',
+        ].join(", ")));
+        const album = elementText(firstElement(context.document, [
+            '.ytmusic-player-bar [href*="browse/MPREb_"]',
+            '.ytmusic-player-bar [href*="browse/FEmusic_library_privately_owned_release_detailb_"]',
+        ]));
+        return {
+            playback: readPlayback(context.document, context.mediaSession),
+            title,
+            artist: artists,
+            albumTitle: album,
+        };
+    }
+
+    function readDeezer(context) {
+        const pauseButton = context.document.querySelector('[data-testid="play_button_pause"]');
+        const playButton = context.document.querySelector('[data-testid="play_button_play"]');
+        const playback = pauseButton ? "playing" : playButton ? "paused" : null;
+        return readMediaSessionState(context, playback);
+    }
+
+    function readPretzel(context) {
+        const pauseButton = context.document.querySelector('[data-heapid="music-player"] [data-testid="pause-button"]');
+        const playButton = context.document.querySelector('[data-heapid="music-player"] [data-testid="play-button"]');
+        const playback = pauseButton ? "playing" : playButton ? "stopped" : null;
+        return readMediaSessionState(context, playback);
+    }
+
+    function readBilibili(context) {
+        const titleElement = context.document.querySelector("h1.video-title");
+        const title = elementText(titleElement, ["data-title", "title"])
+            ?? cleanText(context.document.title);
+        if (!title) {
+            return null;
+        }
+
+        const primaryArtist = elementText(context.document.querySelector("a.up-name"));
+        const artist = primaryArtist
+            ?? joinedElementText(context.document.querySelectorAll("a.staff-name"));
+        const match = /\/video\/(BV[0-9A-Za-z]+)/.exec(context.locationHref ?? "")
+            ?? /[?&]bvid=(BV[0-9A-Za-z]+)/.exec(context.locationHref ?? "");
+        return {
+            playback: readPlayback(context.document, context.mediaSession),
+            title,
+            artist,
+            trackId: match?.[1] ?? null,
+        };
+    }
+
+    function readChillhop(context) {
+        const title = elementText(context.document.querySelector(".p-track-title"));
+        if (!title) {
+            return null;
+        }
+
+        return {
+            playback: context.document.querySelector("#p-btn-play")?.classList?.contains("playing")
+                ? "playing"
+                : "stopped",
+            title,
+            artist: elementText(context.document.querySelector(".p-track-artist")),
+        };
+    }
+
+    const siteReaders = {
+        "open.spotify.com": readMediaSessionState,
+        "soundcloud.com": readSoundCloud,
+        "music.yandex.com": readYandexMusic,
+        "music.yandex.ru": readYandexMusic,
+        "www.deezer.com": readDeezer,
+        "play.pretzel.rocks": readPretzel,
+        "www.youtube.com": readYouTube,
+        "music.youtube.com": readYouTubeMusic,
+        "app.plex.tv": readMediaSessionState,
+        "www.bilibili.com": readBilibili,
+        "chillhop.com": readChillhop,
+    };
+
+    function readSiteState(hostname, context) {
+        return Object.hasOwn(siteReaders, hostname)
+            ? siteReaders[hostname](context)
+            : null;
+    }
+
     function selectLeader(candidates, now) {
         const eligible = candidates.filter(candidate =>
             candidate
@@ -135,6 +370,9 @@
             parseConnectionCode,
             cleanText,
             normalizeAdapterState,
+            cleanYouTubeTitle,
+            readSiteState,
+            readMediaSessionState,
             selectLeader,
             candidateLifetimeMs,
         });
@@ -156,15 +394,26 @@
     let leaseClaimed = false;
     let stopped = false;
 
-    // Add future site-specific adapters before this fallback. Adapters only read metadata;
-    // authentication, ordering, retries, and ownership stay in the transport below.
     const adapters = [
+        {
+            id: "site",
+            matches: () => Object.hasOwn(siteReaders, window.location.hostname),
+            read: () => readSiteState(window.location.hostname, currentAdapterContext()),
+        },
         {
             id: "media-session",
             matches: () => "mediaSession" in navigator,
-            read: readMediaSession,
+            read: () => readMediaSessionState(currentAdapterContext()),
         },
     ];
+
+    function currentAdapterContext() {
+        return {
+            document,
+            mediaSession: navigator.mediaSession,
+            locationHref: window.location.href,
+        };
+    }
 
     GM_registerMenuCommand("Configure Now Playing Overlay", configureConnection);
     GM_registerMenuCommand("Show Now Playing Overlay status", showStatus);
@@ -300,10 +549,14 @@
     }
 
     function readCurrentState() {
+        observeMediaElements();
         for (const adapter of adapters) {
             try {
                 if (adapter.matches()) {
-                    return normalizeAdapterState(adapter.read());
+                    const value = adapter.read();
+                    if (value) {
+                        return normalizeAdapterState(value);
+                    }
                 }
             }
             catch (error) {
@@ -311,30 +564,6 @@
             }
         }
         return { playback: "idle", track: null };
-    }
-
-    function readMediaSession() {
-        observeMediaElements();
-        const metadata = navigator.mediaSession?.metadata;
-        if (!metadata) {
-            return { playback: "idle" };
-        }
-
-        const media = Array.from(document.querySelectorAll("audio, video"));
-        const activeMedia = media.find(element => !element.paused && !element.ended);
-        const pausedMedia = media.find(element => element.paused && !element.ended && element.readyState > 0);
-        const sessionState = navigator.mediaSession.playbackState;
-        const playback = sessionState === "playing" || activeMedia
-            ? "playing"
-            : sessionState === "paused" || pausedMedia
-                ? "paused"
-                : "stopped";
-        return {
-            playback,
-            title: metadata.title,
-            artist: metadata.artist,
-            albumTitle: metadata.album,
-        };
     }
 
     function observeMediaElements() {
