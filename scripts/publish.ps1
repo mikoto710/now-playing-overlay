@@ -275,8 +275,7 @@ function New-ReleasePackage {
 
     $readmePath = Join-Path $repositoryRoot "README.md"
     $licensePath = Join-Path $repositoryRoot "LICENSE"
-    $browserProducerPath = Join-Path $repositoryRoot "integrations\NowPlayingOverlay.user.js"
-    foreach ($requiredPath in @($readmePath, $licensePath, $browserProducerPath)) {
+    foreach ($requiredPath in @($readmePath, $licensePath)) {
         if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
             throw "Release package input is missing at '$requiredPath'."
         }
@@ -287,7 +286,6 @@ function New-ReleasePackage {
     Copy-Item -LiteralPath $Executable.FullName -Destination $stagingDirectory
     Copy-Item -LiteralPath $readmePath -Destination $stagingDirectory
     Copy-Item -LiteralPath $licensePath -Destination $stagingDirectory
-    Copy-Item -LiteralPath $browserProducerPath -Destination $stagingDirectory
 
     $archivePath = Join-Path $Directory $ArchiveName
     $packageFiles = @(Get-ChildItem -LiteralPath $stagingDirectory -File)
@@ -298,7 +296,7 @@ function New-ReleasePackage {
     $archive = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
     try {
         $actualEntries = @($archive.Entries | ForEach-Object FullName | Sort-Object)
-        $expectedEntries = @("LICENSE", "NowPlayingOverlay.exe", "NowPlayingOverlay.user.js", "README.md")
+        $expectedEntries = @("LICENSE", "NowPlayingOverlay.exe", "README.md")
         if (($actualEntries -join "`n") -cne ($expectedEntries -join "`n")) {
             throw "Unexpected release archive entries: $($actualEntries -join ', ')"
         }

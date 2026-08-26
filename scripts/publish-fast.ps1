@@ -10,7 +10,7 @@ $artifactsDirectory = [System.IO.Path]::GetFullPath(
     (Join-Path $repositoryRoot "artifacts")
 )
 $publishDirectory = [System.IO.Path]::GetFullPath(
-    (Join-Path $artifactsDirectory "quick-publish")
+    (Join-Path $artifactsDirectory "publish\win-x64")
 )
 $expectedExecutable = Join-Path $publishDirectory "NowPlayingOverlay.exe"
 
@@ -33,7 +33,7 @@ if (-not $publishDirectory.StartsWith(
     "$artifactsDirectory$([System.IO.Path]::DirectorySeparatorChar)",
     [System.StringComparison]::OrdinalIgnoreCase
 )) {
-    throw "Refusing to use unexpected quick-publish directory '$publishDirectory'."
+    throw "Refusing to use unexpected publish directory '$publishDirectory'."
 }
 
 if (-not (Test-Path -LiteralPath $hostProject -PathType Leaf)) {
@@ -79,7 +79,7 @@ try {
     }
 
     $sizeMiB = [Math]::Round($publishedExecutable.Length / 1MB, 1)
-    Write-Host "Quick-published $($publishedExecutable.FullName) ($sizeMiB MiB)"
+    Write-Host "Fast-published $($publishedExecutable.FullName) ($sizeMiB MiB)"
     Write-Host "Tests and release packaging were skipped."
 }
 finally {
