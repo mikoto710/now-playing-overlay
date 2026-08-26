@@ -184,8 +184,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
                         _controller.RefreshSourcesAsync,
                         _controller.AuthorizeSpotifyAsync,
                         _controller.DisconnectSpotifyAsync,
-                        _controller.GetCustomSourceConnectionCode,
-                        _controller.RotateCustomSourceConnectionCode,
+                        _controller.GetBrowserPlayerConnectionCode,
+                        _controller.RotateBrowserPlayerConnectionCode,
                         () => OpenWithShell(_controller.BrowserProducerUrl),
                         _clipboard.SetText);
                     if (dialog.ShowDialog() != DialogResult.OK)
@@ -201,7 +201,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                     if (result.PortChanged)
                     {
                         MessageBox.Show(
-                            $"Settings were saved and the server moved to port {dialog.SelectedPort} without restarting. Loaded overlay pages were asked to follow the new URL:\n\n{result.OverlayUrl}\n\nUpdate the saved OBS Browser Source URL so future reloads and OBS restarts use the new port. If you use the browser Producer, copy its connection code again from Custom Source settings.",
+                            $"Settings were saved and the server moved to port {dialog.SelectedPort} without restarting. Loaded overlay pages were asked to follow the new URL:\n\n{result.OverlayUrl}\n\nUpdate the saved OBS Browser Source URL so future reloads and OBS restarts use the new port. If Browser Player is configured, copy its connection code again from its settings.",
                             "Settings Saved",
                             MessageBoxButtons.OK,
                             MessageBoxIcon.Information);

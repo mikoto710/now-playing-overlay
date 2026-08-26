@@ -96,7 +96,7 @@ internal sealed record SourceSelectionSettings
                     SourceKey.ExternalPush().InstanceId,
                     StringComparison.Ordinal):
                     throw new InvalidDataException(
-                        "The configured Custom Source instance is invalid.");
+                        "The configured Browser Player instance is invalid.");
             }
         }
         catch (ArgumentException error)

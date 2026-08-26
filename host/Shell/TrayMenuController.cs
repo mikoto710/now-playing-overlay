@@ -162,12 +162,12 @@ internal sealed class TrayMenuController
         return new SpotifyConnectionSnapshot(clientId, _getSpotifyConnectionState(typedClientId));
     }
 
-    public string GetCustomSourceConnectionCode()
+    public string GetBrowserPlayerConnectionCode()
     {
         return ExternalIngestConnectionCode.Create(EffectivePort, _exportIngestKey());
     }
 
-    public string RotateCustomSourceConnectionCode()
+    public string RotateBrowserPlayerConnectionCode()
     {
         return ExternalIngestConnectionCode.Create(EffectivePort, _rotateIngestKey());
     }

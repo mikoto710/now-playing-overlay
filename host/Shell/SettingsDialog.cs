@@ -12,8 +12,8 @@ internal sealed class SettingsDialog : Form
     private readonly Func<string, bool, CancellationToken, Task<SpotifyConnectionSnapshot>>
         _authorizeSpotify;
     private readonly Func<CancellationToken, Task<SpotifyConnectionSnapshot>> _disconnectSpotify;
-    private readonly Func<string> _getCustomSourceConnectionCode;
-    private readonly Func<string> _rotateCustomSourceConnectionCode;
+    private readonly Func<string> _getBrowserPlayerConnectionCode;
+    private readonly Func<string> _rotateBrowserPlayerConnectionCode;
     private readonly Action _openBrowserProducer;
     private readonly Action<string> _setClipboardText;
     private readonly int _effectivePort;
@@ -64,8 +64,8 @@ internal sealed class SettingsDialog : Form
         Func<SourceProvider, CancellationToken, Task<SourceDiscoveryResult>> refreshSources,
         Func<string, bool, CancellationToken, Task<SpotifyConnectionSnapshot>> authorizeSpotify,
         Func<CancellationToken, Task<SpotifyConnectionSnapshot>> disconnectSpotify,
-        Func<string>? getCustomSourceConnectionCode = null,
-        Func<string>? rotateCustomSourceConnectionCode = null,
+        Func<string>? getBrowserPlayerConnectionCode = null,
+        Func<string>? rotateBrowserPlayerConnectionCode = null,
         Action? openBrowserProducer = null,
         Action<string>? setClipboardText = null)
     {
@@ -84,9 +84,9 @@ internal sealed class SettingsDialog : Form
         _refreshSources = refreshSources ?? throw new ArgumentNullException(nameof(refreshSources));
         _authorizeSpotify = authorizeSpotify ?? throw new ArgumentNullException(nameof(authorizeSpotify));
         _disconnectSpotify = disconnectSpotify ?? throw new ArgumentNullException(nameof(disconnectSpotify));
-        _getCustomSourceConnectionCode = getCustomSourceConnectionCode ?? (() => string.Empty);
-        _rotateCustomSourceConnectionCode = rotateCustomSourceConnectionCode
-            ?? _getCustomSourceConnectionCode;
+        _getBrowserPlayerConnectionCode = getBrowserPlayerConnectionCode ?? (() => string.Empty);
+        _rotateBrowserPlayerConnectionCode = rotateBrowserPlayerConnectionCode
+            ?? _getBrowserPlayerConnectionCode;
         _openBrowserProducer = openBrowserProducer ?? (() => { });
         _setClipboardText = setClipboardText ?? new ClipboardTextWriter().SetText;
         _effectivePort = currentPort;
@@ -125,7 +125,7 @@ internal sealed class SettingsDialog : Form
             AutoSize = true,
             Margin = new Padding(0, 0, 0, 12),
             MaximumSize = new Size(680, 0),
-            Text = "Choose the loopback port and one complete media source. Spotify and Custom Source connection changes take effect immediately; Save applies the selected provider.",
+            Text = "Choose the loopback port and one complete media source. Spotify and Browser Player connection changes take effect immediately; Save applies the selected provider.",
         };
         var portLabel = CreateLabel("Port:");
         _port = new NumericUpDown
@@ -288,7 +288,7 @@ internal sealed class SettingsDialog : Form
             Padding = new Padding(8, 2, 8, 2),
             Text = "Install Browser Producer...",
         };
-        installBrowserProducer.Click += (_, _) => RunCustomSourceAction(_openBrowserProducer);
+        installBrowserProducer.Click += (_, _) => RunBrowserPlayerAction(_openBrowserProducer);
         var copyConnectionCode = new Button
         {
             AutoSize = true,
@@ -297,7 +297,7 @@ internal sealed class SettingsDialog : Form
             Padding = new Padding(8, 2, 8, 2),
             Text = "Copy Connection Code",
         };
-        copyConnectionCode.Click += (_, _) => CopyCustomSourceConnectionCode(rotate: false);
+        copyConnectionCode.Click += (_, _) => CopyBrowserPlayerConnectionCode(rotate: false);
         var rotateConnectionCode = new Button
         {
             AutoSize = true,
@@ -306,7 +306,7 @@ internal sealed class SettingsDialog : Form
             Padding = new Padding(8, 2, 8, 2),
             Text = "Rotate Code...",
         };
-        rotateConnectionCode.Click += (_, _) => CopyCustomSourceConnectionCode(rotate: true);
+        rotateConnectionCode.Click += (_, _) => CopyBrowserPlayerConnectionCode(rotate: true);
         var externalButtons = new TableLayoutPanel
         {
             AutoSize = true,
@@ -344,7 +344,7 @@ internal sealed class SettingsDialog : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Dock = DockStyle.Top,
             Margin = Padding.Empty,
-            Text = "Custom Source",
+            Text = "Browser Player",
         };
         _externalSourceGroup.Controls.Add(externalLayout);
 
@@ -844,14 +844,14 @@ internal sealed class SettingsDialog : Form
         }
     }
 
-    private void CopyCustomSourceConnectionCode(bool rotate)
+    private void CopyBrowserPlayerConnectionCode(bool rotate)
     {
         if (rotate)
         {
             var confirmation = MessageBox.Show(
                 this,
                 "Rotating the connection code immediately disconnects every existing browser Producer. Continue?",
-                "Rotate Custom Source Connection",
+                "Rotate Browser Player Connection",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
             if (confirmation != DialogResult.Yes)
@@ -860,24 +860,24 @@ internal sealed class SettingsDialog : Form
             }
         }
 
-        RunCustomSourceAction(() =>
+        RunBrowserPlayerAction(() =>
         {
             var code = rotate
-                ? _rotateCustomSourceConnectionCode()
-                : _getCustomSourceConnectionCode();
+                ? _rotateBrowserPlayerConnectionCode()
+                : _getBrowserPlayerConnectionCode();
             _setClipboardText(code);
             MessageBox.Show(
                 this,
                 rotate
                     ? "A new connection code was copied. Reconfigure the browser Producer from its Tampermonkey menu."
                     : "The connection code was copied. Paste it into Configure Now Playing Overlay in the Tampermonkey menu.",
-                "Custom Source Connection",
+                "Browser Player Connection",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         });
     }
 
-    private void RunCustomSourceAction(Action action)
+    private void RunBrowserPlayerAction(Action action)
     {
         try
         {
@@ -887,8 +887,8 @@ internal sealed class SettingsDialog : Form
         {
             MessageBox.Show(
                 this,
-                $"The Custom Source action could not be completed. {error.Message}",
-                "Custom Source",
+                $"The Browser Player action could not be completed. {error.Message}",
+                "Browser Player",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }

@@ -43,7 +43,7 @@ public sealed class HostStatusServiceTests
     }
 
     [Fact]
-    public async Task CustomSourceMissingStatusExplainsTheUserAction()
+    public async Task BrowserPlayerMissingStatusExplainsTheUserAction()
     {
         var source = new FakeSessionSource();
         var store = new NowPlayingStore(
@@ -57,7 +57,7 @@ public sealed class HostStatusServiceTests
         var service = new HostStatusService(runtime, coordinator, source, store);
 
         Assert.Equal(
-            "Custom Source: Waiting for Browser Producer",
+            "Browser Player: Waiting for Browser Producer",
             service.GetCurrent().Text);
 
         await coordinator.DisposeAsync();

@@ -145,7 +145,7 @@ public sealed class ApplicationSettingsStoreTests
     }
 
     [Fact]
-    public void SaveAndLoadRoundTripsFixedCustomSourceSelection()
+    public void SaveAndLoadRoundTripsFixedExternalPushSelection()
     {
         using var directory = new TemporaryDirectory();
         var path = Path.Combine(directory.Path, "settings.json");

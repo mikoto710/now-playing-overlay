@@ -149,7 +149,7 @@ internal sealed class ExternalPushSource : IMediaSourceProvider
         if (selection is not null && selection.Key != SourceKey.ExternalPush())
         {
             throw new ArgumentException(
-                "External Push only accepts the fixed Custom Source descriptor.",
+                "External Push only accepts the fixed Browser Player descriptor.",
                 nameof(selection));
         }
     }

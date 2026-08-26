@@ -31,7 +31,7 @@ internal static class SourceProviderExtensions
         {
             SourceProvider.WindowsMedia => "Windows Media",
             SourceProvider.SpotifyApi => "Spotify API",
-            SourceProvider.ExternalPush => "Custom Source",
+            SourceProvider.ExternalPush => "Browser Player",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(provider),
                 provider,

@@ -271,7 +271,7 @@ public sealed class TrayMenuControllerTests
     }
 
     [Fact]
-    public async Task CustomSourceUsesOneConnectionCodeAndDoesNotRequireSpotify()
+    public async Task BrowserPlayerUsesOneConnectionCodeAndDoesNotRequireSpotify()
     {
         using var directory = new TemporaryDirectory();
         var path = Path.Combine(directory.Path, "settings.json");
@@ -282,7 +282,7 @@ public sealed class TrayMenuControllerTests
         var controller = new TrayMenuController(
             () => 14567,
             store,
-            () => new HostStatus("Custom Source: Selected Player Not Available", IsFaulted: false),
+            () => new HostStatus("Browser Player: Selected Player Not Available", IsFaulted: false),
             directory.Path,
             (_, _, _) => Task.CompletedTask,
             selectSource: source => activatedSource = source,
@@ -295,8 +295,8 @@ public sealed class TrayMenuControllerTests
             SourceKey.ExternalPush().InstanceId,
             new AppearanceSettings());
 
-        Assert.Equal($"npo1:14567:{firstKey}", controller.GetCustomSourceConnectionCode());
-        Assert.Equal($"npo1:14567:{rotatedKey}", controller.RotateCustomSourceConnectionCode());
+        Assert.Equal($"npo1:14567:{firstKey}", controller.GetBrowserPlayerConnectionCode());
+        Assert.Equal($"npo1:14567:{rotatedKey}", controller.RotateBrowserPlayerConnectionCode());
         Assert.Equal(
             "http://127.0.0.1:14567/NowPlayingOverlay.user.js",
             controller.BrowserProducerUrl);

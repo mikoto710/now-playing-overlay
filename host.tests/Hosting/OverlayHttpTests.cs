@@ -177,7 +177,7 @@ public sealed class OverlayHttpTests
     }
 
     [Fact]
-    public async Task ProductionCustomSourceSurvivesKeyRotationAndHostRestart()
+    public async Task ProductionBrowserPlayerSurvivesKeyRotationAndHostRestart()
     {
         using var directory = new TemporaryDirectory();
         var paths = new ApplicationPaths(directory.Path);
