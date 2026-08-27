@@ -22,6 +22,8 @@ public sealed class ApplicationSettingsStoreTests
         Assert.Equal(
             CustomAppearanceSettings.DefaultArtistColor,
             result.Settings.Appearance.Custom.ArtistColor);
+        Assert.Empty(result.Settings.Outputs.Text);
+        Assert.False(result.Settings.Outputs.Json.Enabled);
         Assert.Null(result.Warning);
     }
 
@@ -56,6 +58,83 @@ public sealed class ApplicationSettingsStoreTests
         Assert.Null(result.Warning);
         Assert.False(File.Exists(path + ".tmp"));
         Assert.Contains("\"port\": 13000", File.ReadAllText(path), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SaveAndLoadRoundTripsOutputSettings()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var textPath = Path.Combine(directory.Path, "now-playing.txt");
+        var jsonPath = Path.Combine(directory.Path, "state.json");
+        var store = new ApplicationSettingsStore(path);
+        store.Save(new ApplicationSettings
+        {
+            Outputs = new OutputSettings
+            {
+                Text =
+                [
+                    new TextOutputSettings
+                    {
+                        Enabled = true,
+                        Name = "Current",
+                        FilePath = textPath,
+                        Template = "{artist} - {title}",
+                        NoMediaBehavior = NoMediaOutputBehavior.KeepLast,
+                    },
+                ],
+                Json = new JsonOutputSettings
+                {
+                    Enabled = true,
+                    FilePath = jsonPath,
+                    Format = JsonOutputFormat.Indented,
+                },
+            },
+        });
+
+        var loaded = store.Load();
+
+        Assert.Null(loaded.Warning);
+        Assert.Single(loaded.Settings.Outputs.Text);
+        Assert.Equal(textPath, loaded.Settings.Outputs.Text[0].FilePath);
+        Assert.Equal(
+            NoMediaOutputBehavior.KeepLast,
+            loaded.Settings.Outputs.Text[0].NoMediaBehavior);
+        Assert.Equal(JsonOutputFormat.Indented, loaded.Settings.Outputs.Json.Format);
+        var json = File.ReadAllText(path);
+        Assert.Contains("\"noMediaBehavior\": \"keep-last\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"format\": \"indented\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InvalidOutputsAreDisabledWithoutDiscardingOtherSettings()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        File.WriteAllText(
+            path,
+            """
+            {
+              "port": 13001,
+              "outputs": {
+                "text": [],
+                "json": {
+                  "enabled": true,
+                  "filePath": "relative.json",
+                  "format": "compact"
+                },
+                "artwork": {},
+                "history": {}
+              }
+            }
+            """);
+        var store = new ApplicationSettingsStore(path);
+
+        var loaded = store.Load();
+
+        Assert.Equal(13001, loaded.Settings.Port);
+        Assert.False(loaded.Settings.Outputs.Json.Enabled);
+        Assert.Contains("outputs will remain disabled", loaded.Warning, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -25,6 +25,15 @@ internal sealed class ApplicationSettingsStore
             new JsonStringEnumConverter<ArtworkFit>(
                 JsonNamingPolicy.KebabCaseLower,
                 allowIntegerValues: false),
+            new JsonStringEnumConverter<NoMediaOutputBehavior>(
+                JsonNamingPolicy.KebabCaseLower,
+                allowIntegerValues: false),
+            new JsonStringEnumConverter<JsonOutputFormat>(
+                JsonNamingPolicy.KebabCaseLower,
+                allowIntegerValues: false),
+            new JsonStringEnumConverter<MissingArtworkBehavior>(
+                JsonNamingPolicy.KebabCaseLower,
+                allowIntegerValues: false),
         },
     };
     private readonly object _gate = new();
@@ -83,6 +92,7 @@ internal sealed class ApplicationSettingsStore
                 document.WindowsMedia,
                 migratedWindowsMediaInstanceId);
             var appearance = ReadAppearance(document.Appearance, out var appearanceWarning);
+            var outputs = ReadOutputs(document.Outputs, out var outputsWarning);
             var settings = new ApplicationSettings
             {
                 Port = document.Port,
@@ -91,9 +101,12 @@ internal sealed class ApplicationSettingsStore
                 Spotify = document.Spotify
                     ?? throw new InvalidDataException("The configured Spotify connection must not be null."),
                 Appearance = appearance,
+                Outputs = outputs,
             };
             settings.Validate();
-            return new ApplicationSettingsLoadResult(settings, appearanceWarning);
+            return new ApplicationSettingsLoadResult(
+                settings,
+                CombineWarnings(appearanceWarning, outputsWarning));
         }
         catch (Exception error) when (error is IOException
             or UnauthorizedAccessException
@@ -202,6 +215,37 @@ internal sealed class ApplicationSettingsStore
         }
     }
 
+    private OutputSettings ReadOutputs(
+        JsonElement? element,
+        out string? warning)
+    {
+        warning = null;
+        if (element is null || element.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return new OutputSettings();
+        }
+
+        try
+        {
+            var outputs = element.Value.Deserialize<OutputSettings>(JsonOptions)
+                ?? throw new InvalidDataException("The configured outputs are empty.");
+            outputs.Validate();
+            return outputs;
+        }
+        catch (Exception error) when (error is JsonException or InvalidDataException)
+        {
+            warning =
+                $"Could not read the outputs in '{_filePath}'; outputs will remain disabled. {error.Message}";
+            return new OutputSettings();
+        }
+    }
+
+    private static string? CombineWarnings(params string?[] warnings)
+    {
+        var present = warnings.Where(warning => !string.IsNullOrEmpty(warning)).ToArray();
+        return present.Length == 0 ? null : string.Join(" ", present);
+    }
+
     private void SaveCore(ApplicationSettings settings)
     {
         settings.Validate();
@@ -237,6 +281,8 @@ internal sealed class ApplicationSettingsStore
         public SpotifyConnectionSettings? Spotify { get; init; } = new();
 
         public JsonElement? Appearance { get; init; }
+
+        public JsonElement? Outputs { get; init; }
     }
 
     private sealed record SourceSelectionSettingsDocument

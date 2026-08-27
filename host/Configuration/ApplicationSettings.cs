@@ -15,6 +15,8 @@ internal sealed record ApplicationSettings
 
     public AppearanceSettings Appearance { get; init; } = new();
 
+    public OutputSettings Outputs { get; init; } = new();
+
     public void Validate()
     {
         if (Port is < 1 or > 65535)
@@ -62,6 +64,13 @@ internal sealed record ApplicationSettings
         }
 
         Appearance.Validate();
+
+        if (Outputs is null)
+        {
+            throw new InvalidDataException("The configured outputs must not be null.");
+        }
+
+        Outputs.Validate();
     }
 }
 
