@@ -6,7 +6,9 @@ The Host can write the committed now-playing state to local files without requir
 
 ## Text output
 
-One UTF-8 `.txt` file can be enabled directly. Choose its path, edit the text format, select the no-media behavior, and turn on **Write to TXT**. The default format is `{nowPlaying}`; use `{title}` for title-only output. There is no add/remove step or named output list.
+One UTF-8 `.txt` file can be enabled directly. Its path is initially filled with `%LOCALAPPDATA%\NowPlayingOverlay\NowPlaying.txt`; edit the text format, select the no-media behavior, and turn on **Write to TXT**. The default format is `{nowPlaying}`; use `{title}` for title-only output. There is no add/remove step or named output list.
+
+JSON, artwork, and History are initially filled with `NowPlaying.json`, `Artwork.png`, and `History.txt` in the same directory. All four outputs remain off until their individual checkboxes are enabled and the settings are saved. Existing custom paths are not replaced.
 
 Supported tokens are:
 
