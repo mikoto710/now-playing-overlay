@@ -22,7 +22,7 @@ public sealed class ApplicationSettingsStoreTests
         Assert.Equal(
             CustomAppearanceSettings.DefaultArtistColor,
             result.Settings.Appearance.Custom.ArtistColor);
-        Assert.Empty(result.Settings.Outputs.Text);
+        Assert.False(result.Settings.Outputs.Text.Enabled);
         Assert.False(result.Settings.Outputs.Json.Enabled);
         Assert.Null(result.Warning);
     }
@@ -72,17 +72,13 @@ public sealed class ApplicationSettingsStoreTests
         {
             Outputs = new OutputSettings
             {
-                Text =
-                [
-                    new TextOutputSettings
-                    {
-                        Enabled = true,
-                        Name = "Current",
-                        FilePath = textPath,
-                        Template = "{artist} - {title}",
-                        NoMediaBehavior = NoMediaOutputBehavior.KeepLast,
-                    },
-                ],
+                Text = new TextOutputSettings
+                {
+                    Enabled = true,
+                    FilePath = textPath,
+                    Template = "{artist} - {title}",
+                    NoMediaBehavior = NoMediaOutputBehavior.KeepLast,
+                },
                 Json = new JsonOutputSettings
                 {
                     Enabled = true,
@@ -95,15 +91,62 @@ public sealed class ApplicationSettingsStoreTests
         var loaded = store.Load();
 
         Assert.Null(loaded.Warning);
-        Assert.Single(loaded.Settings.Outputs.Text);
-        Assert.Equal(textPath, loaded.Settings.Outputs.Text[0].FilePath);
+        Assert.Equal(textPath, loaded.Settings.Outputs.Text.FilePath);
         Assert.Equal(
             NoMediaOutputBehavior.KeepLast,
-            loaded.Settings.Outputs.Text[0].NoMediaBehavior);
+            loaded.Settings.Outputs.Text.NoMediaBehavior);
         Assert.Equal(JsonOutputFormat.Indented, loaded.Settings.Outputs.Json.Format);
         var json = File.ReadAllText(path);
+        Assert.Contains("\"text\": {", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"text\": [", json, StringComparison.Ordinal);
         Assert.Contains("\"noMediaBehavior\": \"keep-last\"", json, StringComparison.Ordinal);
         Assert.Contains("\"format\": \"indented\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PrototypeTextOutputArrayMigratesToSingleDirectOutput()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var firstPath = Path.Combine(directory.Path, "now-playing.txt");
+        var secondPath = Path.Combine(directory.Path, "title.txt");
+        File.WriteAllText(
+            path,
+            $$"""
+            {
+              "outputs": {
+                "text": [
+                  {
+                    "enabled": true,
+                    "name": "Now Playing",
+                    "filePath": "{{firstPath.Replace("\\", "\\\\", StringComparison.Ordinal)}}",
+                    "template": "{nowPlaying}",
+                    "noMediaBehavior": "clear",
+                    "noMediaTemplate": ""
+                  },
+                  {
+                    "enabled": true,
+                    "name": "Title",
+                    "filePath": "{{secondPath.Replace("\\", "\\\\", StringComparison.Ordinal)}}",
+                    "template": "{title}",
+                    "noMediaBehavior": "clear",
+                    "noMediaTemplate": ""
+                  }
+                ],
+                "json": {},
+                "artwork": {},
+                "history": {}
+              }
+            }
+            """);
+        var store = new ApplicationSettingsStore(path);
+
+        var loaded = store.Load();
+
+        Assert.True(loaded.Settings.Outputs.Text.Enabled);
+        Assert.Equal(firstPath, loaded.Settings.Outputs.Text.FilePath);
+        Assert.Equal("{nowPlaying}", loaded.Settings.Outputs.Text.Template);
+        Assert.Contains("only the first was retained", loaded.Warning, StringComparison.Ordinal);
     }
 
     [Fact]

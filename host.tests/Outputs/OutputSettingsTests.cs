@@ -12,7 +12,7 @@ public sealed class OutputSettingsTests
 
         settings.Validate();
 
-        Assert.Empty(settings.Text);
+        Assert.False(settings.Text.Enabled);
         Assert.False(settings.Json.Enabled);
         Assert.False(settings.Artwork.Enabled);
         Assert.False(settings.History.Enabled);
@@ -23,14 +23,11 @@ public sealed class OutputSettingsTests
     {
         Assert.Throws<InvalidDataException>(() => new OutputSettings
         {
-            Text =
-            [
-                new TextOutputSettings
-                {
-                    Enabled = true,
-                    FilePath = "relative.txt",
-                },
-            ],
+            Text = new TextOutputSettings
+            {
+                Enabled = true,
+                FilePath = "relative.txt",
+            },
         }.Validate());
 
         using var directory = new TemporaryDirectory();
@@ -51,15 +48,11 @@ public sealed class OutputSettingsTests
         var path = Path.Combine(directory.Path, "now-playing.txt");
         var settings = new OutputSettings
         {
-            Text =
-            [
-                new TextOutputSettings
-                {
-                    Enabled = true,
-                    Name = "Current",
-                    FilePath = path,
-                },
-            ],
+            Text = new TextOutputSettings
+            {
+                Enabled = true,
+                FilePath = path,
+            },
             History = new HistoryOutputSettings
             {
                 Enabled = true,

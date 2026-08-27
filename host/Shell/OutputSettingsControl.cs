@@ -7,7 +7,12 @@ namespace NowPlayingOverlay.Host.Shell;
 internal sealed class OutputSettingsControl : UserControl
 {
     private readonly Func<string, string> _renderPreview;
-    private readonly DataGridView _textOutputs;
+    private readonly CheckBox _textEnabled;
+    private readonly TextBox _textPath;
+    private readonly TextBox _textTemplate;
+    private readonly ComboBox _noMediaBehavior;
+    private readonly TextBox _textPlaceholder;
+    private readonly TableLayoutPanel _textPlaceholderRow;
     private readonly TextBox _preview;
     private readonly CheckBox _jsonEnabled;
     private readonly TextBox _jsonPath;
@@ -31,81 +36,73 @@ internal sealed class OutputSettingsControl : UserControl
         Dock = DockStyle.Fill;
         AutoScroll = true;
 
-        var explanation = new Label
-        {
-            AutoSize = true,
-            MaximumSize = new Size(700, 0),
-            Text = "Write current metadata for OBS and other local tools. Outputs are off until you enable them and choose absolute file paths.",
-        };
         var statusLabel = new Label
         {
             AutoSize = true,
-            ForeColor = status.IsFaulted ? Color.Firebrick : SystemColors.ControlText,
-            Margin = new Padding(0, 6, 0, 0),
+            ForeColor = Color.Firebrick,
             MaximumSize = new Size(700, 0),
-            Text = status.Summary,
+            Text = "Some files could not be updated. Check the logs for details.",
         };
 
-        _textOutputs = CreateTextOutputsGrid();
-        foreach (var output in current.Text)
+        _textEnabled = new CheckBox
         {
-            _textOutputs.Rows.Add(
-                output.Enabled,
-                output.Name,
-                output.FilePath ?? string.Empty,
-                output.Template,
-                output.NoMediaBehavior,
-                output.NoMediaTemplate);
-        }
-
-        _textOutputs.SelectionChanged += (_, _) => UpdatePreview();
-        _textOutputs.CellValueChanged += (_, _) => UpdatePreview();
-        _textOutputs.CurrentCellDirtyStateChanged += (_, _) =>
-        {
-            if (_textOutputs.IsCurrentCellDirty)
-            {
-                _textOutputs.CommitEdit(DataGridViewDataErrorContexts.Commit);
-            }
+            AutoSize = true,
+            Checked = current.Text.Enabled,
+            Text = "Write to TXT",
         };
-
-        var addNowPlaying = CreateButton(
-            "Add Now Playing",
-            (_, _) => AddTextOutput("Now Playing", OutputTemplate.DefaultNowPlaying));
-        var addTitle = CreateButton(
-            "Add Title",
-            (_, _) => AddTextOutput("Title", "{title}"));
-        var removeText = CreateButton("Remove", (_, _) => RemoveSelectedTextOutput());
-        var browseText = CreateButton("Browse...", (_, _) => BrowseSelectedTextOutput());
-        var textButtons = CreateButtonRow(addNowPlaying, addTitle, removeText, browseText);
+        _textPath = CreatePathBox(current.Text.FilePath);
+        _textTemplate = CreatePathBox(current.Text.Template);
+        _textTemplate.SelectionStart = _textTemplate.TextLength;
+        _noMediaBehavior = CreateEnumComboBox(
+            current.Text.NoMediaBehavior,
+            FormatNoMediaBehavior);
+        _noMediaBehavior.MinimumSize = new Size(240, 0);
+        _textPlaceholder = CreatePathBox(current.Text.NoMediaTemplate);
+        _textPlaceholderRow = CreateLabeledControlRow(
+            "Placeholder:",
+            _textPlaceholder);
         _preview = new TextBox
         {
-            Dock = DockStyle.Top,
-            Margin = new Padding(0, 8, 0, 0),
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+            MinimumSize = new Size(0, 52),
             Multiline = true,
             ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical,
-            Height = 52,
+            ScrollBars = ScrollBars.None,
         };
-        var textLayout = CreateVerticalLayout(4);
+        var textLayout = CreateVerticalLayout(7);
+        textLayout.Controls.Add(_textEnabled);
+        textLayout.Controls.Add(CreateLabeledControlRow(
+            "File:",
+            CreatePathRow(
+                _textPath,
+                (_, _) => BrowsePath(_textPath, "Text files (*.txt)|*.txt", "txt"))));
+        textLayout.Controls.Add(CreateLabeledControlRow("Contents:", _textTemplate));
+        textLayout.Controls.Add(CreateLabeledControlRow(
+            "When nothing is playing:",
+            _noMediaBehavior));
+        textLayout.Controls.Add(_textPlaceholderRow);
+        textLayout.Controls.Add(CreateLabeledControlRow("Preview:", _preview));
         textLayout.Controls.Add(new Label
         {
             AutoSize = true,
-            Text = "Add up to eight TXT files. Tokens include {nowPlaying}, {title}, {artist}, {albumTitle}, {playback}, {position}, {duration}, and {observedAt}.",
-            MaximumSize = new Size(680, 0),
+            Margin = new Padding(0, 6, 0, 0),
+            Text = "Fields: {title}, {artist}, {albumTitle}, {newline}",
         });
-        textLayout.Controls.Add(_textOutputs);
-        textLayout.Controls.Add(textButtons);
-        textLayout.Controls.Add(_preview);
         var textGroup = CreateGroup("Text", textLayout);
+
+        _textTemplate.TextChanged += (_, _) => UpdatePreview();
+        _noMediaBehavior.SelectedIndexChanged += (_, _) => UpdatePlaceholderAvailability();
+        UpdatePlaceholderAvailability();
 
         _jsonEnabled = new CheckBox
         {
             AutoSize = true,
             Checked = current.Json.Enabled,
-            Text = "Write protocol v3 JSON",
+            Text = "Write to JSON",
         };
         _jsonPath = CreatePathBox(current.Json.FilePath);
-        _jsonFormat = CreateEnumComboBox<JsonOutputFormat>(current.Json.Format);
+        _jsonFormat = CreateEnumComboBox(current.Json.Format, FormatJsonOutputFormat);
         var jsonLayout = CreateFileOutputLayout(
             _jsonEnabled,
             _jsonPath,
@@ -118,11 +115,12 @@ internal sealed class OutputSettingsControl : UserControl
         {
             AutoSize = true,
             Checked = current.Artwork.Enabled,
-            Text = "Write current artwork as PNG",
+            Text = "Save artwork",
         };
         _artworkPath = CreatePathBox(current.Artwork.FilePath);
-        _missingArtworkBehavior = CreateEnumComboBox<MissingArtworkBehavior>(
-            current.Artwork.MissingArtworkBehavior);
+        _missingArtworkBehavior = CreateEnumComboBox(
+            current.Artwork.MissingArtworkBehavior,
+            FormatMissingArtworkBehavior);
         var artworkLayout = CreateFileOutputLayout(
             _artworkEnabled,
             _artworkPath,
@@ -135,7 +133,7 @@ internal sealed class OutputSettingsControl : UserControl
         {
             AutoSize = true,
             Checked = current.History.Enabled,
-            Text = "Append track history",
+            Text = "Save track history",
         };
         _historyPath = CreatePathBox(current.History.FilePath);
         _historyTemplate = new TextBox
@@ -159,21 +157,25 @@ internal sealed class OutputSettingsControl : UserControl
         };
         historyTemplateRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         historyTemplateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        historyTemplateRow.Controls.Add(CreateLabel("Record:"), 0, 0);
+        historyTemplateRow.Controls.Add(CreateLabel("Line:"), 0, 0);
         historyTemplateRow.Controls.Add(_historyTemplate, 1, 0);
         historyLayout.Controls.Add(historyTemplateRow);
         historyLayout.Controls.Add(new Label
         {
             AutoSize = true,
+            Margin = new Padding(0, 10, 0, 0),
             MaximumSize = new Size(680, 0),
-            Text = "One line is appended when the committed track identity changes. Pause, timeline, and artwork updates do not add duplicates.",
+            Text = "Adds one line when the track changes.",
         });
         var historyGroup = CreateGroup("History", historyLayout);
 
-        var root = CreateVerticalLayout(6);
-        root.Padding = new Padding(12);
-        root.Controls.Add(explanation);
-        root.Controls.Add(statusLabel);
+        var root = CreateVerticalLayout(status.IsFaulted ? 5 : 4);
+        root.Padding = new Padding(12, 12, 12, 24);
+        if (status.IsFaulted)
+        {
+            root.Controls.Add(statusLabel);
+        }
+
         root.Controls.Add(textGroup);
         root.Controls.Add(jsonGroup);
         root.Controls.Add(artworkGroup);
@@ -186,27 +188,18 @@ internal sealed class OutputSettingsControl : UserControl
     {
         get
         {
-            _textOutputs.EndEdit();
-            var text = new List<TextOutputSettings>();
-            foreach (DataGridViewRow row in _textOutputs.Rows)
-            {
-                text.Add(new TextOutputSettings
-                {
-                    Enabled = GetCellValue(row, 0, false),
-                    Name = GetCellText(row, 1).Trim(),
-                    FilePath = NullIfEmpty(GetCellText(row, 2)),
-                    Template = GetCellText(row, 3),
-                    NoMediaBehavior = GetCellValue(
-                        row,
-                        4,
-                        NoMediaOutputBehavior.Clear),
-                    NoMediaTemplate = GetCellText(row, 5),
-                });
-            }
-
             var settings = new OutputSettings
             {
-                Text = text.ToArray(),
+                Text = new TextOutputSettings
+                {
+                    Enabled = _textEnabled.Checked,
+                    FilePath = NullIfEmpty(_textPath.Text),
+                    Template = _textTemplate.Text,
+                    NoMediaBehavior = GetSelectedEnum(
+                        _noMediaBehavior,
+                        NoMediaOutputBehavior.Clear),
+                    NoMediaTemplate = _textPlaceholder.Text,
+                },
                 Json = new JsonOutputSettings
                 {
                     Enabled = _jsonEnabled.Checked,
@@ -233,146 +226,21 @@ internal sealed class OutputSettingsControl : UserControl
         }
     }
 
-    private static DataGridView CreateTextOutputsGrid()
+    private void UpdatePlaceholderAvailability()
     {
-        var grid = new DataGridView
-        {
-            AllowUserToAddRows = false,
-            AllowUserToDeleteRows = false,
-            AllowUserToResizeRows = false,
-            AutoGenerateColumns = false,
-            ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize,
-            Dock = DockStyle.Top,
-            Height = 190,
-            Margin = new Padding(0, 8, 0, 0),
-            MultiSelect = false,
-            RowHeadersVisible = false,
-            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
-        };
-        grid.Columns.Add(new DataGridViewCheckBoxColumn
-        {
-            HeaderText = "On",
-            Width = 42,
-        });
-        grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            HeaderText = "Name",
-            Width = 110,
-        });
-        grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            HeaderText = "TXT file",
-            Width = 190,
-        });
-        grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            HeaderText = "Template",
-            Width = 180,
-        });
-        grid.Columns.Add(new DataGridViewComboBoxColumn
-        {
-            DataSource = Enum.GetValues<NoMediaOutputBehavior>(),
-            HeaderText = "No media",
-            Width = 90,
-        });
-        grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            HeaderText = "Placeholder",
-            Width = 130,
-        });
-        return grid;
-    }
-
-    private void AddTextOutput(string name, string template)
-    {
-        if (_textOutputs.Rows.Count >= OutputSettings.MaximumTextOutputs)
-        {
-            MessageBox.Show(
-                this,
-                $"At most {OutputSettings.MaximumTextOutputs} text outputs can be configured.",
-                "Text Outputs",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            return;
-        }
-
-        var index = _textOutputs.Rows.Add(
-            false,
-            GetUniqueTextOutputName(name),
-            string.Empty,
-            template,
-            NoMediaOutputBehavior.Clear,
-            string.Empty);
-        _textOutputs.ClearSelection();
-        _textOutputs.Rows[index].Selected = true;
-    }
-
-    private string GetUniqueTextOutputName(string baseName)
-    {
-        var names = _textOutputs.Rows
-            .Cast<DataGridViewRow>()
-            .Select(row => GetCellText(row, 1))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (!names.Contains(baseName))
-        {
-            return baseName;
-        }
-
-        for (var suffix = 2; suffix <= OutputSettings.MaximumTextOutputs; suffix++)
-        {
-            var candidate = $"{baseName} {suffix}";
-            if (!names.Contains(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        return $"{baseName} {_textOutputs.Rows.Count + 1}";
-    }
-
-    private void RemoveSelectedTextOutput()
-    {
-        if (_textOutputs.SelectedRows.Count == 1)
-        {
-            _textOutputs.Rows.Remove(_textOutputs.SelectedRows[0]);
-        }
-    }
-
-    private void BrowseSelectedTextOutput()
-    {
-        if (_textOutputs.SelectedRows.Count != 1)
-        {
-            return;
-        }
-
-        var row = _textOutputs.SelectedRows[0];
-        using var dialog = CreateSaveDialog(
-            GetCellText(row, 2),
-            "Text files (*.txt)|*.txt",
-            "txt");
-        if (dialog.ShowDialog(this) == DialogResult.OK)
-        {
-            row.Cells[2].Value = dialog.FileName;
-        }
+        var visible = GetSelectedEnum(
+            _noMediaBehavior,
+            NoMediaOutputBehavior.Clear) == NoMediaOutputBehavior.Placeholder;
+        _textPlaceholder.Enabled = visible;
+        _textPlaceholderRow.Visible = visible;
     }
 
     private void UpdatePreview()
     {
-        if (_preview is null || _textOutputs.SelectedRows.Count != 1)
-        {
-            if (_preview is not null)
-            {
-                _preview.Text = "Select a text output to preview its template.";
-            }
-
-            return;
-        }
-
-        var template = GetCellText(_textOutputs.SelectedRows[0], 3);
         try
         {
-            var rendered = _renderPreview(template);
-            _preview.Text = rendered.Length == 0 ? "(empty for the current state)" : rendered;
+            var rendered = _renderPreview(_textTemplate.Text);
+            _preview.Text = rendered.Length == 0 ? "(empty)" : rendered;
         }
         catch (FormatException error)
         {
@@ -494,18 +362,22 @@ internal sealed class OutputSettingsControl : UserControl
         return layout;
     }
 
-    private static FlowLayoutPanel CreateButtonRow(params Button[] buttons)
+    private static TableLayoutPanel CreateLabeledControlRow(string label, Control content)
     {
-        var row = new FlowLayoutPanel
+        content.Margin = Padding.Empty;
+        var layout = new TableLayoutPanel
         {
             AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            FlowDirection = FlowDirection.LeftToRight,
-            Margin = new Padding(0, 8, 0, 0),
-            WrapContents = false,
+            ColumnCount = 2,
+            Dock = DockStyle.Top,
+            Margin = new Padding(0, 6, 0, 0),
+            RowCount = 1,
         };
-        row.Controls.AddRange(buttons);
-        return row;
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.Controls.Add(CreateLabel(label), 0, 0);
+        layout.Controls.Add(content, 1, 0);
+        return layout;
     }
 
     private static Button CreateButton(string text, EventHandler clicked)
@@ -543,28 +415,59 @@ internal sealed class OutputSettingsControl : UserControl
         };
     }
 
-    private static ComboBox CreateEnumComboBox<T>(T selected)
+    private static ComboBox CreateEnumComboBox<T>(T selected, Func<T, string> format)
         where T : struct, Enum
     {
         var combo = new ComboBox
         {
             Anchor = AnchorStyles.Left,
             DropDownStyle = ComboBoxStyle.DropDownList,
+            DropDownWidth = 220,
+            FormattingEnabled = true,
             Margin = Padding.Empty,
+            MinimumSize = new Size(190, 0),
         };
         combo.Items.AddRange(Enum.GetValues<T>().Cast<object>().ToArray());
+        combo.Format += (_, eventArgs) =>
+        {
+            if (eventArgs.ListItem is T value)
+            {
+                eventArgs.Value = format(value);
+            }
+        };
         combo.SelectedItem = selected;
         return combo;
     }
 
-    private static T GetCellValue<T>(DataGridViewRow row, int index, T fallback)
+    private static string FormatNoMediaBehavior(NoMediaOutputBehavior behavior)
     {
-        return row.Cells[index].Value is T value ? value : fallback;
+        return behavior switch
+        {
+            NoMediaOutputBehavior.Clear => "Clear file",
+            NoMediaOutputBehavior.Placeholder => "Write placeholder",
+            NoMediaOutputBehavior.KeepLast => "Keep last text",
+            _ => behavior.ToString(),
+        };
     }
 
-    private static string GetCellText(DataGridViewRow row, int index)
+    private static string FormatJsonOutputFormat(JsonOutputFormat format)
     {
-        return row.Cells[index].Value?.ToString() ?? string.Empty;
+        return format switch
+        {
+            JsonOutputFormat.Compact => "Compact",
+            JsonOutputFormat.Indented => "Readable",
+            _ => format.ToString(),
+        };
+    }
+
+    private static string FormatMissingArtworkBehavior(MissingArtworkBehavior behavior)
+    {
+        return behavior switch
+        {
+            MissingArtworkBehavior.Delete => "Delete file",
+            MissingArtworkBehavior.KeepLast => "Keep last image",
+            _ => behavior.ToString(),
+        };
     }
 
     private static T GetSelectedEnum<T>(ComboBox combo, T fallback)
@@ -577,4 +480,5 @@ internal sealed class OutputSettingsControl : UserControl
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
+
 }

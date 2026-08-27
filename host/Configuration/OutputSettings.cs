@@ -4,9 +4,7 @@ namespace NowPlayingOverlay.Host.Configuration;
 
 internal sealed record OutputSettings
 {
-    public const int MaximumTextOutputs = 8;
-
-    public TextOutputSettings[] Text { get; init; } = [];
+    public TextOutputSettings Text { get; init; } = new();
 
     public JsonOutputSettings Json { get; init; } = new();
 
@@ -16,26 +14,8 @@ internal sealed record OutputSettings
 
     public void Validate()
     {
-        if (Text is null)
-        {
-            throw new InvalidDataException("The configured text outputs must not be null.");
-        }
-
-        if (Text.Length > MaximumTextOutputs)
-        {
-            throw new InvalidDataException(
-                $"At most {MaximumTextOutputs} text outputs can be configured.");
-        }
-
-        if (Text.Any(output => output is null))
-        {
-            throw new InvalidDataException("A configured text output must not be null.");
-        }
-
-        foreach (var output in Text)
-        {
-            output.Validate();
-        }
+        (Text ?? throw new InvalidDataException(
+            "The configured text output must not be null.")).Validate();
 
         (Json ?? throw new InvalidDataException(
             "The configured JSON output must not be null.")).Validate();
@@ -53,23 +33,13 @@ internal sealed record OutputSettings
                     "Each enabled output must use a different target file.");
             }
         }
-
-        var enabledNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var output in Text.Where(output => output.Enabled))
-        {
-            if (!enabledNames.Add(output.Name.Trim()))
-            {
-                throw new InvalidDataException(
-                    "Each enabled text output must use a different name.");
-            }
-        }
     }
 
     private IEnumerable<string> GetEnabledPaths()
     {
-        foreach (var output in Text.Where(output => output.Enabled))
+        if (Text.Enabled)
         {
-            yield return output.FilePath!;
+            yield return Text.FilePath!;
         }
 
         if (Json.Enabled)
@@ -91,11 +61,7 @@ internal sealed record OutputSettings
 
 internal sealed record TextOutputSettings
 {
-    public const int MaximumNameLength = 64;
-
     public bool Enabled { get; init; }
-
-    public string Name { get; init; } = "Now Playing";
 
     public string? FilePath { get; init; }
 
@@ -108,12 +74,6 @@ internal sealed record TextOutputSettings
 
     public void Validate()
     {
-        if (string.IsNullOrWhiteSpace(Name) || Name.Trim().Length > MaximumNameLength)
-        {
-            throw new InvalidDataException(
-                $"A text output name must contain 1 to {MaximumNameLength} characters.");
-        }
-
         ValidateTemplate(Template, "text output");
         if (!Enum.IsDefined(NoMediaBehavior))
         {

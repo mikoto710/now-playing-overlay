@@ -13,10 +13,9 @@ namespace NowPlayingOverlay.Host.Tests.Outputs;
 public sealed class OutputManagerTests
 {
     [Fact]
-    public async Task WritesMultipleTextTargetsAndExactProtocolV3Json()
+    public async Task WritesTextTargetAndExactProtocolV3Json()
     {
         using var directory = new TemporaryDirectory();
-        var titlePath = Path.Combine(directory.Path, "title.txt");
         var nowPlayingPath = Path.Combine(directory.Path, "now-playing.txt");
         var jsonPath = Path.Combine(directory.Path, "state.json");
         var store = CreateStore();
@@ -25,23 +24,12 @@ public sealed class OutputManagerTests
             new ArtworkCache(),
             new OutputSettings
             {
-                Text =
-                [
-                    new TextOutputSettings
-                    {
-                        Enabled = true,
-                        Name = "Title",
-                        FilePath = titlePath,
-                        Template = "{title}",
-                    },
-                    new TextOutputSettings
-                    {
-                        Enabled = true,
-                        Name = "Now Playing",
-                        FilePath = nowPlayingPath,
-                        Template = "{nowPlaying}",
-                    },
-                ],
+                Text = new TextOutputSettings
+                {
+                    Enabled = true,
+                    FilePath = nowPlayingPath,
+                    Template = "{nowPlaying}",
+                },
                 Json = new JsonOutputSettings
                 {
                     Enabled = true,
@@ -59,10 +47,8 @@ public sealed class OutputManagerTests
             out var committed);
 
         await WaitForAsync(() => File.Exists(jsonPath)
-            && File.Exists(titlePath)
             && File.Exists(nowPlayingPath));
 
-        Assert.Equal("Title", await File.ReadAllTextAsync(titlePath));
         Assert.Equal("Artist - Title", await File.ReadAllTextAsync(nowPlayingPath));
         var json = await File.ReadAllTextAsync(jsonPath);
         using var document = JsonDocument.Parse(json);
@@ -80,30 +66,24 @@ public sealed class OutputManagerTests
         await manager.DisposeAsync();
     }
 
-    [Fact]
-    public async Task NoMediaPoliciesClearPlaceholderOrKeepTheirOwnTargets()
+    [Theory]
+    [InlineData((int)NoMediaOutputBehavior.Clear, "", "")]
+    [InlineData((int)NoMediaOutputBehavior.Placeholder, "Nothing playing", "Nothing playing")]
+    [InlineData((int)NoMediaOutputBehavior.KeepLast, "", "Artist - Title")]
+    public async Task TextNoMediaPolicyProducesExpectedContent(
+        int behaviorValue,
+        string placeholder,
+        string expected)
     {
+        var behavior = (NoMediaOutputBehavior)behaviorValue;
         using var directory = new TemporaryDirectory();
-        var clearPath = Path.Combine(directory.Path, "clear.txt");
-        var placeholderPath = Path.Combine(directory.Path, "placeholder.txt");
-        var keepPath = Path.Combine(directory.Path, "keep.txt");
+        var textPath = Path.Combine(directory.Path, "now-playing.txt");
+        var jsonPath = Path.Combine(directory.Path, "state.json");
         var store = CreateStore();
         await using var manager = new OutputManager(
             store,
             new ArtworkCache(),
-            new OutputSettings
-            {
-                Text =
-                [
-                    CreateTextOutput("Clear", clearPath, NoMediaOutputBehavior.Clear),
-                    CreateTextOutput(
-                        "Placeholder",
-                        placeholderPath,
-                        NoMediaOutputBehavior.Placeholder,
-                        "Nothing playing"),
-                    CreateTextOutput("Keep", keepPath, NoMediaOutputBehavior.KeepLast),
-                ],
-            });
+            new OutputSettings());
         manager.Start();
         var source = SourceDescriptor.WindowsMedia("Player.App");
         store.TryCommit(
@@ -113,9 +93,19 @@ public sealed class OutputManagerTests
             artwork: null,
             DateTimeOffset.UtcNow,
             out _);
-        await WaitForAsync(() => File.Exists(clearPath)
-            && File.Exists(placeholderPath)
-            && File.Exists(keepPath));
+        manager.UpdateSettings(new OutputSettings
+        {
+            Text = CreateTextOutput(textPath, behavior, placeholder),
+            Json = new JsonOutputSettings
+            {
+                Enabled = true,
+                FilePath = jsonPath,
+            },
+        });
+        await WaitForAsync(() => File.Exists(textPath)
+            && File.ReadAllText(textPath) == "Artist - Title"
+            && File.Exists(jsonPath)
+            && File.ReadAllText(jsonPath).Contains("\"title\":\"Title\"", StringComparison.Ordinal));
         store.TryCommit(
             source,
             PlaybackState.Idle,
@@ -123,12 +113,10 @@ public sealed class OutputManagerTests
             artwork: null,
             DateTimeOffset.UtcNow,
             out _);
-        await WaitForAsync(() => File.ReadAllText(clearPath).Length == 0
-            && File.ReadAllText(placeholderPath) == "Nothing playing");
+        await WaitForAsync(() => File.ReadAllText(jsonPath)
+            .Contains("\"track\":null", StringComparison.Ordinal));
 
-        Assert.Equal(string.Empty, await File.ReadAllTextAsync(clearPath));
-        Assert.Equal("Nothing playing", await File.ReadAllTextAsync(placeholderPath));
-        Assert.Equal("Artist - Title", await File.ReadAllTextAsync(keepPath));
+        Assert.Equal(expected, await File.ReadAllTextAsync(textPath));
     }
 
     [Fact]
@@ -249,15 +237,11 @@ public sealed class OutputManagerTests
             new ArtworkCache(),
             new OutputSettings
             {
-                Text =
-                [
-                    new TextOutputSettings
-                    {
-                        Enabled = true,
-                        Name = "Locked",
-                        FilePath = lockedPath,
-                    },
-                ],
+                Text = new TextOutputSettings
+                {
+                    Enabled = true,
+                    FilePath = lockedPath,
+                },
                 Json = new JsonOutputSettings
                 {
                     Enabled = true,
@@ -303,15 +287,11 @@ public sealed class OutputManagerTests
             out _);
         manager.UpdateSettings(new OutputSettings
         {
-            Text =
-            [
-                new TextOutputSettings
-                {
-                    Enabled = true,
-                    Name = "Current",
-                    FilePath = textPath,
-                },
-            ],
+            Text = new TextOutputSettings
+            {
+                Enabled = true,
+                FilePath = textPath,
+            },
             History = new HistoryOutputSettings
             {
                 Enabled = true,
@@ -342,7 +322,6 @@ public sealed class OutputManagerTests
     }
 
     private static TextOutputSettings CreateTextOutput(
-        string name,
         string path,
         NoMediaOutputBehavior behavior,
         string placeholder = "")
@@ -350,7 +329,6 @@ public sealed class OutputManagerTests
         return new TextOutputSettings
         {
             Enabled = true,
-            Name = name,
             FilePath = path,
             NoMediaBehavior = behavior,
             NoMediaTemplate = placeholder,

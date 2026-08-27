@@ -9,7 +9,7 @@ namespace NowPlayingOverlay.Host.Tests.Shell;
 public sealed class SettingsDialogTests
 {
     [Fact]
-    public void SettingsIncludesASeparateOutputsPageWithAllFourGroups()
+    public void SettingsIncludesDirectSingleTextOutputAndAllFourGroups()
     {
         RunSta(() =>
         {
@@ -36,7 +36,56 @@ public sealed class SettingsDialogTests
             Assert.Contains("JSON", groupNames);
             Assert.Contains("Artwork", groupNames);
             Assert.Contains("History", groupNames);
-            Assert.Empty(dialog.SelectedOutputs.Text);
+            Assert.False(dialog.SelectedOutputs.Text.Enabled);
+            Assert.Equal("{nowPlaying}", dialog.SelectedOutputs.Text.Template);
+            Assert.Null(dialog.SelectedOutputs.Text.FilePath);
+            Assert.Empty(FindControls<DataGridView>(outputs));
+            Assert.Empty(FindControls<ListBox>(outputs));
+            Assert.Contains(
+                FindControls<CheckBox>(outputs),
+                checkBox => checkBox.Text == "Write to TXT");
+            Assert.DoesNotContain(
+                FindControls<Button>(outputs),
+                button => button.Text.StartsWith("Add ", StringComparison.Ordinal)
+                    || button.Text == "Remove");
+            var visibleText = string.Join(
+                ' ',
+                FindControls<Control>(outputs).Select(control => control.Text));
+            Assert.DoesNotContain("protocol v", visibleText, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("UTF-8", visibleText, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("for OBS", visibleText, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(
+                FindControls<Label>(outputs),
+                label => label.Text == "Fields: {title}, {artist}, {albumTitle}, {newline}");
+            Assert.DoesNotContain("Insert field:", visibleText, StringComparison.Ordinal);
+            var historyHelp = FindControls<Label>(outputs)
+                .Single(label => label.Text == "Adds one line when the track changes.");
+            Assert.True(historyHelp.Margin.Top >= 10);
+            Assert.Equal(
+                ScrollBars.None,
+                FindControls<TextBox>(outputs).Single(textBox => textBox is
+                {
+                    Multiline: true,
+                    ReadOnly: true,
+                }).ScrollBars);
+
+            dialog.Opacity = 0;
+            dialog.Show();
+            tabs.SelectedTab = outputs;
+            Application.DoEvents();
+            var placeholderLabel = FindControls<Label>(outputs)
+                .Single(label => label.Text == "Placeholder:");
+            Assert.False(placeholderLabel.Parent!.Visible);
+            var noMediaCombo = FindControls<ComboBox>(outputs).Single(combo =>
+                combo.Items.Contains(NoMediaOutputBehavior.Placeholder));
+            Assert.True(noMediaCombo.MinimumSize.Width >= 240);
+            noMediaCombo.SelectedItem = NoMediaOutputBehavior.Placeholder;
+            Application.DoEvents();
+            Assert.True(placeholderLabel.Parent!.Visible);
+
+            Assert.All(
+                FindControls<ComboBox>(outputs),
+                combo => Assert.True(combo.MinimumSize.Width >= 190));
         });
     }
 

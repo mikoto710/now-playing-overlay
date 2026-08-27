@@ -186,7 +186,7 @@ internal sealed class OutputManager : IAsyncDisposable
 
                 lastProcessedRevision = snapshot.SnapshotRevision;
                 var settings = GetSettings(out var settingsGeneration);
-                await WriteTextOutputsAsync(
+                await WriteTextOutputAsync(
                     settings.Text,
                     snapshot,
                     settingsGeneration,
@@ -266,65 +266,57 @@ internal sealed class OutputManager : IAsyncDisposable
         }
     }
 
-    private async Task WriteTextOutputsAsync(
-        IReadOnlyList<TextOutputSettings> outputs,
+    private async Task WriteTextOutputAsync(
+        TextOutputSettings output,
         NowPlayingSnapshot snapshot,
         long settingsGeneration,
         CancellationToken cancellationToken)
     {
-        for (var index = 0; index < outputs.Count; index++)
+        if (!output.Enabled)
         {
-            var output = outputs[index];
-            if (!output.Enabled)
+            return;
+        }
+
+        try
+        {
+            string? rendered;
+            if (snapshot.Track is not null)
             {
-                continue;
+                rendered = OutputTemplate.Parse(
+                    output.Template,
+                    allowLineBreaks: true).Render(snapshot);
+            }
+            else
+            {
+                rendered = output.NoMediaBehavior switch
+                {
+                    NoMediaOutputBehavior.Clear => string.Empty,
+                    NoMediaOutputBehavior.Placeholder => OutputTemplate.Parse(
+                        output.NoMediaTemplate,
+                        allowLineBreaks: true).Render(snapshot),
+                    NoMediaOutputBehavior.KeepLast => null,
+                    _ => throw new InvalidOperationException(
+                        "The text output no-media behavior is invalid."),
+                };
             }
 
-            var key = $"text:{index}";
-            try
+            if (rendered is not null)
             {
-                string? rendered;
-                if (snapshot.Track is not null)
-                {
-                    rendered = OutputTemplate.Parse(
-                        output.Template,
-                        allowLineBreaks: true).Render(snapshot);
-                }
-                else
-                {
-                    rendered = output.NoMediaBehavior switch
-                    {
-                        NoMediaOutputBehavior.Clear => string.Empty,
-                        NoMediaOutputBehavior.Placeholder => OutputTemplate.Parse(
-                            output.NoMediaTemplate,
-                            allowLineBreaks: true).Render(snapshot),
-                        NoMediaOutputBehavior.KeepLast => null,
-                        _ => throw new InvalidOperationException(
-                            "The text output no-media behavior is invalid."),
-                    };
-                }
-
-                if (rendered is not null)
-                {
-                    await WriteIfChangedAsync(
-                        output.FilePath!,
-                        Utf8WithoutBom.GetBytes(rendered),
-                        cancellationToken);
-                }
-
-                SetHealthy(
-                    key,
-                    $"Text output {index + 1} is up to date.",
-                    settingsGeneration);
+                await WriteIfChangedAsync(
+                    output.FilePath!,
+                    Utf8WithoutBom.GetBytes(rendered),
+                    cancellationToken);
             }
-            catch (Exception error) when (IsOutputFailure(error, cancellationToken))
-            {
-                SetFault(
-                    key,
-                    $"Text output {index + 1} could not be written.",
-                    error,
-                    settingsGeneration);
-            }
+
+            SetHealthy("text", "Text output is up to date.", settingsGeneration);
+        }
+        catch (Exception error) when (IsOutputFailure(error, cancellationToken))
+        {
+            SetFault(
+                "text",
+                "Text output could not be written.",
+                error,
+                settingsGeneration);
         }
     }
 
@@ -488,7 +480,7 @@ internal sealed class OutputManager : IAsyncDisposable
 
     private static OutputSettings CloneSettings(OutputSettings settings)
     {
-        return settings with { Text = settings.Text.ToArray() };
+        return settings with { Text = settings.Text with { } };
     }
 
     private void SetHealthy(string key, string message, long settingsGeneration)

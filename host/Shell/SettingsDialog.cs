@@ -647,10 +647,7 @@ internal sealed class SettingsDialog : Form
             AutoScroll = true,
         };
         appearanceTab.Controls.Add(appearanceLayout);
-        var outputsTab = new TabPage("Outputs")
-        {
-            AutoScroll = true,
-        };
+        var outputsTab = new TabPage("Outputs");
         outputsTab.Controls.Add(_outputs);
         tabs.TabPages.AddRange([generalTab, appearanceTab, outputsTab]);
 

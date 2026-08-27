@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using NowPlayingOverlay.Host.Media.Sources;
+using NowPlayingOverlay.Host.Outputs;
 
 namespace NowPlayingOverlay.Host.Configuration;
 
@@ -227,6 +228,12 @@ internal sealed class ApplicationSettingsStore
 
         try
         {
+            if (element.Value.TryGetProperty("text", out var textElement)
+                && textElement.ValueKind == JsonValueKind.Array)
+            {
+                return ReadLegacyOutputs(element.Value, out warning);
+            }
+
             var outputs = element.Value.Deserialize<OutputSettings>(JsonOptions)
                 ?? throw new InvalidDataException("The configured outputs are empty.");
             outputs.Validate();
@@ -238,6 +245,31 @@ internal sealed class ApplicationSettingsStore
                 $"Could not read the outputs in '{_filePath}'; outputs will remain disabled. {error.Message}";
             return new OutputSettings();
         }
+    }
+
+    private OutputSettings ReadLegacyOutputs(JsonElement element, out string? warning)
+    {
+        var legacy = element.Deserialize<LegacyOutputSettingsDocument>(JsonOptions)
+            ?? throw new InvalidDataException("The configured outputs are empty.");
+        var textOutputs = legacy.Text
+            ?? throw new InvalidDataException("The configured text outputs must not be null.");
+        var outputs = new OutputSettings
+        {
+            Text = textOutputs.Length == 0
+                ? new TextOutputSettings()
+                : textOutputs[0].ToSettings(),
+            Json = legacy.Json
+                ?? throw new InvalidDataException("The configured JSON output must not be null."),
+            Artwork = legacy.Artwork
+                ?? throw new InvalidDataException("The configured artwork output must not be null."),
+            History = legacy.History
+                ?? throw new InvalidDataException("The configured history output must not be null."),
+        };
+        outputs.Validate();
+        warning = textOutputs.Length > 1
+            ? "Multiple prototype TXT outputs were found; only the first was retained after switching to the simpler single-output settings."
+            : null;
+        return outputs;
     }
 
     private static string? CombineWarnings(params string?[] warnings)
@@ -292,6 +324,45 @@ internal sealed class ApplicationSettingsStore
         public string? InstanceId { get; init; }
 
         public string? SourceAppUserModelId { get; init; }
+    }
+
+    private sealed record LegacyOutputSettingsDocument
+    {
+        public LegacyTextOutputSettingsDocument[]? Text { get; init; } = [];
+
+        public JsonOutputSettings? Json { get; init; } = new();
+
+        public ArtworkOutputSettings? Artwork { get; init; } = new();
+
+        public HistoryOutputSettings? History { get; init; } = new();
+    }
+
+    private sealed record LegacyTextOutputSettingsDocument
+    {
+        public bool Enabled { get; init; }
+
+        public string Name { get; init; } = "Now Playing";
+
+        public string? FilePath { get; init; }
+
+        public string Template { get; init; } = OutputTemplate.DefaultNowPlaying;
+
+        public NoMediaOutputBehavior NoMediaBehavior { get; init; } =
+            NoMediaOutputBehavior.Clear;
+
+        public string NoMediaTemplate { get; init; } = string.Empty;
+
+        public TextOutputSettings ToSettings()
+        {
+            return new TextOutputSettings
+            {
+                Enabled = Enabled,
+                FilePath = FilePath,
+                Template = Template,
+                NoMediaBehavior = NoMediaBehavior,
+                NoMediaTemplate = NoMediaTemplate,
+            };
+        }
     }
 }
 
