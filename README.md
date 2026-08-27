@@ -12,7 +12,7 @@ It supports three independent media sources:
 - **Spotify API** — reads the current track from your Spotify account using your own Spotify Developer application Client ID.
 - **Browser Player** — receives playback metadata from supported browser players through the Host-provided Tampermonkey Producer.
 
-The overlay can customize its colors, typography, background, and artwork layout.
+The overlay can customize its colors, typography, background, and artwork layout. The Host can also write templated text, protocol JSON, current artwork, and track history to local files.
 
 ## Requirements
 
@@ -34,7 +34,7 @@ winget install Microsoft.DotNet.DesktopRuntime.10
    - **Windows Media:** start playback, select **Refresh**, and choose the player.
    - **Spotify API:** open **Spotify Connection...**, enter your Client ID, and authorize in the browser.
    - **Browser Player:** install the browser Producer from the running Host, copy the connection code, and paste it into the userscript menu once.
-4. Optionally customize the overlay on the **Appearance** tab, then select **Save**.
+4. Optionally customize the overlay on **Appearance** or configure local files on **Outputs**, then select **Save**.
 5. Select **Copy OBS URL** from the tray menu.
 6. Add a **Browser** source in OBS, paste the URL, and set its size to `350 × 70`.
 
@@ -81,6 +81,14 @@ The script manages authentication, Producer identity, ordering, heartbeat, retry
 - Settings and protected Spotify credentials are stored under `%LOCALAPPDATA%\NowPlayingOverlay`.
 - The Browser Player ingest key is protected for the current Windows user and is never placed in the overlay URL.
 
+## Local outputs
+
+Open **Settings... > Outputs** to configure up to eight templated TXT files, one Local Protocol v3 JSON file, one stable current-artwork PNG, and one append-only History file. Outputs are disabled by default and work even when no OBS Browser Source is open.
+
+TXT templates use tokens such as `{nowPlaying}`, `{title}`, `{artist}`, `{albumTitle}`, `{playback}`, `{position}`, and `{observedAt}`. Current files are replaced atomically; History adds one line only when the committed track identity changes. A failure in one target does not stop media sources, the overlay, or other outputs.
+
+See [Local outputs](docs/outputs.md) for the complete token syntax, no-media behavior, file semantics, and OBS acceptance checklist.
+
 ## Development
 
 Requires the .NET 10 SDK, Node.js 22, and npm.
@@ -97,7 +105,7 @@ Requires the .NET 10 SDK, Node.js 22, and npm.
 
 The release ZIP contains `NowPlayingOverlay.exe`, the README, and the license. The userscript remains embedded in the executable and is installed through **Install Browser Producer...** while the Host is running.
 
-Protocol and release details live in [`docs`](docs), not in this README.
+Protocol, Outputs, and release details live in [`docs`](docs), not in this README.
 
 ## Acknowledgements
 
