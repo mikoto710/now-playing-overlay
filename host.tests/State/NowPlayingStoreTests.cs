@@ -185,6 +185,51 @@ public sealed class NowPlayingStoreTests
     }
 
     [Fact]
+    public async Task OrderedSubscriptionPreservesEveryCommittedSnapshot()
+    {
+        var store = CreateStore(ServerInstanceId);
+        using var subscription = store.SubscribeOrdered(capacity: 4);
+        var initial = await subscription.Reader.ReadAsync();
+        store.TryCommit(
+            SourceDescriptor.WindowsMedia("Player.App"),
+            PlaybackState.Playing,
+            TrackMetadata.Create("A", "Artist", null),
+            artwork: null,
+            DateTimeOffset.UtcNow,
+            out var first);
+        store.TryCommit(
+            SourceDescriptor.WindowsMedia("Player.App"),
+            PlaybackState.Playing,
+            TrackMetadata.Create("B", "Artist", null),
+            artwork: null,
+            DateTimeOffset.UtcNow,
+            out var second);
+
+        Assert.Equal(0, initial.SnapshotRevision);
+        Assert.Same(first, await subscription.Reader.ReadAsync());
+        Assert.Same(second, await subscription.Reader.ReadAsync());
+    }
+
+    [Fact]
+    public async Task OrderedSubscriptionFaultsInsteadOfSilentlyDroppingOverflow()
+    {
+        var store = CreateStore(ServerInstanceId);
+        using var subscription = store.SubscribeOrdered(capacity: 1);
+
+        store.TryCommit(
+            SourceDescriptor.WindowsMedia("Player.App"),
+            PlaybackState.Playing,
+            TrackMetadata.Create("A", "Artist", null),
+            artwork: null,
+            DateTimeOffset.UtcNow,
+            out _);
+
+        Assert.Equal(0, (await subscription.Reader.ReadAsync()).SnapshotRevision);
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await subscription.Reader.Completion);
+    }
+
+    [Fact]
     public void NewServerInstanceCanStartFromRevisionZero()
     {
         var firstStore = CreateStore(ServerInstanceId);

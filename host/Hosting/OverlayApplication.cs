@@ -9,6 +9,7 @@ using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Media.Spotify.Playback;
 using NowPlayingOverlay.Host.Media.Windows;
 using NowPlayingOverlay.Host.Models;
+using NowPlayingOverlay.Host.Outputs;
 using NowPlayingOverlay.Host.State;
 
 namespace NowPlayingOverlay.Host.Hosting;
@@ -26,6 +27,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
     private readonly HostRuntimeState _runtimeState;
     private readonly AppearanceState _appearanceState;
     private readonly OverlayHttpServer _httpServer;
+    private readonly OutputManager _outputManager;
     private bool _started;
     private bool _disposed;
 
@@ -42,6 +44,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
         ExternalIngestHttpHandler? externalIngestHandler,
         HostRuntimeState runtimeState,
         AppearanceState appearanceState,
+        OutputManager outputManager,
         OverlayHttpServer httpServer)
     {
         Options = options;
@@ -56,6 +59,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
         _externalIngestHandler = externalIngestHandler;
         _runtimeState = runtimeState;
         _appearanceState = appearanceState;
+        _outputManager = outputManager;
         _httpServer = httpServer;
     }
 
@@ -112,7 +116,8 @@ internal sealed class OverlayApplication : IAsyncDisposable
             ingestKeyStore,
             spotifyCallbackBroker,
             externalIngestHandler,
-            appearance: settings.Appearance);
+            appearance: settings.Appearance,
+            outputs: settings.Outputs);
     }
 
     internal static OverlayApplication Build(
@@ -136,7 +141,8 @@ internal sealed class OverlayApplication : IAsyncDisposable
             spotifyCallbackBroker: spotifyCallbackBroker
                 ?? new SpotifyAuthorizationCallbackBroker(),
             externalIngestHandler: externalIngestHandler,
-            appearance: new AppearanceSettings());
+            appearance: new AppearanceSettings(),
+            outputs: new OutputSettings());
     }
 
     private static OverlayApplication Build(
@@ -152,15 +158,18 @@ internal sealed class OverlayApplication : IAsyncDisposable
         IngestKeyStore? ingestKeyStore,
         SpotifyAuthorizationCallbackBroker spotifyCallbackBroker,
         ExternalIngestHttpHandler? externalIngestHandler,
-        AppearanceSettings appearance)
+        AppearanceSettings appearance,
+        OutputSettings outputs)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(sessionSource);
         ArgumentNullException.ThrowIfNull(pageAsset);
         ArgumentNullException.ThrowIfNull(spotifyCallbackBroker);
         ArgumentNullException.ThrowIfNull(appearance);
+        ArgumentNullException.ThrowIfNull(outputs);
         options.Validate();
         appearance.Validate();
+        outputs.Validate();
 
         var timeProvider = TimeProvider.System;
         var runtimeState = new HostRuntimeState(timeProvider);
@@ -168,6 +177,11 @@ internal sealed class OverlayApplication : IAsyncDisposable
             NowPlayingSnapshot.CreateInitial(Guid.NewGuid(), timeProvider.GetUtcNow()),
             CreateLogger<NowPlayingStore>(loggerProvider));
         var artworkCache = new ArtworkCache();
+        var outputManager = new OutputManager(
+            store,
+            artworkCache,
+            outputs,
+            logger: CreateLogger<OutputManager>(loggerProvider));
         var coordinator = new NowPlayingCoordinator(
             sessionSource,
             store,
@@ -213,6 +227,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
             externalIngestHandler,
             runtimeState,
             appearanceState,
+            outputManager,
             httpServer);
     }
 
@@ -296,6 +311,24 @@ internal sealed class OverlayApplication : IAsyncDisposable
         _appearanceState.Set(appearance);
     }
 
+    public void SetOutputs(OutputSettings outputs)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _outputManager.UpdateSettings(outputs);
+    }
+
+    public OutputStatusSnapshot GetOutputStatus()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _outputManager.GetStatus();
+    }
+
+    public string RenderOutputPreview(string template)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return _outputManager.RenderPreview(template);
+    }
+
     public string ExportIngestKey()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -335,12 +368,14 @@ internal sealed class OverlayApplication : IAsyncDisposable
         await _httpServer.StartAsync(cancellationToken);
         try
         {
+            _outputManager.Start();
             _coordinator.Start();
             _runtimeState.MarkReady();
             _started = true;
         }
         catch
         {
+            await _outputManager.StopAsync();
             await _httpServer.StopAsync(cancellationToken);
             throw;
         }
@@ -365,6 +400,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
         _started = false;
         await _httpServer.StopAsync(cancellationToken);
         await _coordinator.DisposeAsync();
+        await _outputManager.StopAsync();
     }
 
     public async ValueTask DisposeAsync()
@@ -376,6 +412,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
 
         await StopAsync();
         await _httpServer.DisposeAsync();
+        await _outputManager.DisposeAsync();
         _disposed = true;
     }
 
