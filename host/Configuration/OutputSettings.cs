@@ -12,6 +12,39 @@ internal sealed record OutputSettings
 
     public HistoryOutputSettings History { get; init; } = new();
 
+    public OutputSettings WithDefaultFilePaths(string directory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        var fullDirectory = Path.GetFullPath(directory);
+        return this with
+        {
+            Text = Text with
+            {
+                FilePath = string.IsNullOrWhiteSpace(Text.FilePath)
+                    ? Path.Combine(fullDirectory, "NowPlaying.txt")
+                    : Text.FilePath,
+            },
+            Json = Json with
+            {
+                FilePath = string.IsNullOrWhiteSpace(Json.FilePath)
+                    ? Path.Combine(fullDirectory, "NowPlaying.json")
+                    : Json.FilePath,
+            },
+            Artwork = Artwork with
+            {
+                FilePath = string.IsNullOrWhiteSpace(Artwork.FilePath)
+                    ? Path.Combine(fullDirectory, "Artwork.png")
+                    : Artwork.FilePath,
+            },
+            History = History with
+            {
+                FilePath = string.IsNullOrWhiteSpace(History.FilePath)
+                    ? Path.Combine(fullDirectory, "History.txt")
+                    : History.FilePath,
+            },
+        };
+    }
+
     public void Validate()
     {
         (Text ?? throw new InvalidDataException(

@@ -64,7 +64,9 @@ internal static class Program
         ApplicationPaths paths,
         BoundedLogFile logFile)
     {
-        var settingsStore = new ApplicationSettingsStore(paths.SettingsFilePath);
+        var settingsStore = new ApplicationSettingsStore(
+            paths.SettingsFilePath,
+            paths.RootDirectory);
         var loadedSettings = settingsStore.Load();
         if (loadedSettings.Warning is not null)
         {

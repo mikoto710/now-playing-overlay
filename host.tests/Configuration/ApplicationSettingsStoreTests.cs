@@ -10,7 +10,9 @@ public sealed class ApplicationSettingsStoreTests
     public void MissingSettingsUseDocumentedDefault()
     {
         using var directory = new TemporaryDirectory();
-        var store = new ApplicationSettingsStore(Path.Combine(directory.Path, "settings.json"));
+        var store = new ApplicationSettingsStore(
+            Path.Combine(directory.Path, "settings.json"),
+            directory.Path);
 
         var result = store.Load();
 
@@ -23,7 +25,21 @@ public sealed class ApplicationSettingsStoreTests
             CustomAppearanceSettings.DefaultArtistColor,
             result.Settings.Appearance.Custom.ArtistColor);
         Assert.False(result.Settings.Outputs.Text.Enabled);
+        Assert.Equal(
+            Path.Combine(directory.Path, "NowPlaying.txt"),
+            result.Settings.Outputs.Text.FilePath);
         Assert.False(result.Settings.Outputs.Json.Enabled);
+        Assert.Equal(
+            Path.Combine(directory.Path, "NowPlaying.json"),
+            result.Settings.Outputs.Json.FilePath);
+        Assert.False(result.Settings.Outputs.Artwork.Enabled);
+        Assert.Equal(
+            Path.Combine(directory.Path, "Artwork.png"),
+            result.Settings.Outputs.Artwork.FilePath);
+        Assert.False(result.Settings.Outputs.History.Enabled);
+        Assert.Equal(
+            Path.Combine(directory.Path, "History.txt"),
+            result.Settings.Outputs.History.FilePath);
         Assert.Null(result.Warning);
     }
 
@@ -33,7 +49,7 @@ public sealed class ApplicationSettingsStoreTests
         using var directory = new TemporaryDirectory();
         var path = Path.Combine(directory.Path, "settings.json");
         File.WriteAllText(path, "{\"port\":10598}");
-        var store = new ApplicationSettingsStore(path);
+        var store = new ApplicationSettingsStore(path, directory.Path);
 
         var result = store.Load();
 
@@ -41,6 +57,9 @@ public sealed class ApplicationSettingsStoreTests
         Assert.Equal(SourceProvider.WindowsMedia, result.Settings.Source.Provider);
         Assert.Null(result.Settings.Source.InstanceId);
         Assert.Null(result.Settings.WindowsMedia.LastInstanceId);
+        Assert.Equal(
+            Path.Combine(directory.Path, "NowPlaying.txt"),
+            result.Settings.Outputs.Text.FilePath);
         Assert.Null(result.Warning);
     }
 

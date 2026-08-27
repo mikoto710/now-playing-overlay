@@ -38,12 +38,16 @@ internal sealed class ApplicationSettingsStore
         },
     };
     private readonly object _gate = new();
+    private readonly string? _defaultOutputDirectory;
     private readonly string _filePath;
 
-    public ApplicationSettingsStore(string filePath)
+    public ApplicationSettingsStore(string filePath, string? defaultOutputDirectory = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
         _filePath = Path.GetFullPath(filePath);
+        _defaultOutputDirectory = defaultOutputDirectory is null
+            ? null
+            : Path.GetFullPath(defaultOutputDirectory);
     }
 
     public ApplicationSettingsLoadResult Load()
@@ -80,7 +84,7 @@ internal sealed class ApplicationSettingsStore
     {
         if (!File.Exists(_filePath))
         {
-            return new ApplicationSettingsLoadResult(new ApplicationSettings(), Warning: null);
+            return new ApplicationSettingsLoadResult(CreateDefaultSettings(), Warning: null);
         }
 
         try
@@ -93,7 +97,8 @@ internal sealed class ApplicationSettingsStore
                 document.WindowsMedia,
                 migratedWindowsMediaInstanceId);
             var appearance = ReadAppearance(document.Appearance, out var appearanceWarning);
-            var outputs = ReadOutputs(document.Outputs, out var outputsWarning);
+            var outputs = ApplyDefaultOutputPaths(
+                ReadOutputs(document.Outputs, out var outputsWarning));
             var settings = new ApplicationSettings
             {
                 Port = document.Port,
@@ -115,9 +120,24 @@ internal sealed class ApplicationSettingsStore
             or InvalidDataException)
         {
             return new ApplicationSettingsLoadResult(
-                new ApplicationSettings(),
+                CreateDefaultSettings(),
                 $"Could not read '{_filePath}'; the default settings will be used. {error.Message}");
         }
+    }
+
+    private ApplicationSettings CreateDefaultSettings()
+    {
+        return new ApplicationSettings
+        {
+            Outputs = ApplyDefaultOutputPaths(new OutputSettings()),
+        };
+    }
+
+    private OutputSettings ApplyDefaultOutputPaths(OutputSettings outputs)
+    {
+        return _defaultOutputDirectory is null
+            ? outputs
+            : outputs.WithDefaultFilePaths(_defaultOutputDirectory);
     }
 
     private SourceSelectionSettings ReadSource(
