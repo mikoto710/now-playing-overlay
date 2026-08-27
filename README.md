@@ -83,7 +83,7 @@ The script manages authentication, Producer identity, ordering, heartbeat, retry
 
 ## Local outputs
 
-Open **Settings... > Outputs** to configure up to eight templated TXT files, one Local Protocol v3 JSON file, one stable current-artwork PNG, and one append-only History file. Outputs are disabled by default and work even when no OBS Browser Source is open.
+Open **Settings... > Outputs** to configure one templated TXT file, one Local Protocol v3 JSON file, one stable current-artwork PNG, and one append-only History file. Outputs are disabled by default and work even when no OBS Browser Source is open.
 
 TXT templates use tokens such as `{nowPlaying}`, `{title}`, `{artist}`, `{albumTitle}`, `{playback}`, `{position}`, and `{observedAt}`. Current files are replaced atomically; History adds one line only when the committed track identity changes. A failure in one target does not stop media sources, the overlay, or other outputs.
 

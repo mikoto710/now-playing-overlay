@@ -4,9 +4,9 @@
 
 The Host can write the committed now-playing state to local files without requiring the overlay page. Open **Settings... > Outputs** to configure each output. Outputs are disabled by default and require absolute file paths.
 
-## Text outputs
+## Text output
 
-Up to eight independent UTF-8 `.txt` files can be enabled. Each item has a name, path, template, and no-media behavior. The built-in **Add Now Playing** and **Add Title** actions start with `{nowPlaying}` and `{title}` respectively.
+One UTF-8 `.txt` file can be enabled directly. Choose its path, edit the text format, select the no-media behavior, and turn on **Write to TXT**. The default format is `{nowPlaying}`; use `{title}` for title-only output. There is no add/remove step or named output list.
 
 Supported tokens are:
 
