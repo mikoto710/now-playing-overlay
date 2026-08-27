@@ -1,6 +1,6 @@
 # Local protocol version 3
 
-> Status: current output protocol and Browser Player input contract. Phase A and Phase B are implemented and accepted. PC-01/PC-02/PC-03 and ART-01/ART-02/ART-03 are committed on local `protocol-v3`; PC-03 and the Artwork batch remain ready for acceptance, and the branch has not been pushed. [`local-protocol-v2.md`](./local-protocol-v2.md) is historical only.
+> Status: current output protocol and Browser Player input contract. Phase A, Phase B, PC-01/PC-02/PC-03, and ART-01/ART-02/ART-03 are implemented and accepted. The local `protocol-v3` branch has not been pushed. [`local-protocol-v2.md`](./local-protocol-v2.md) is historical only.
 
 This document freezes the next local contract shared by the host and embedded browser client. The service remains bound only to `127.0.0.1`; the default port remains `13130`.
 
