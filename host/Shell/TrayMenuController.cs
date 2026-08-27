@@ -3,6 +3,7 @@ using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Media.External;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
+using NowPlayingOverlay.Host.Outputs;
 using OverlayHostOptions = NowPlayingOverlay.Host.Configuration.HostOptions;
 
 namespace NowPlayingOverlay.Host.Shell;
@@ -35,6 +36,9 @@ internal sealed class TrayMenuController
     private readonly Func<string> _exportIngestKey;
     private readonly Func<string> _rotateIngestKey;
     private readonly Action<AppearanceSettings> _setAppearance;
+    private readonly Func<OutputStatusSnapshot> _getOutputStatus;
+    private readonly Func<string, string> _renderOutputPreview;
+    private readonly Action<OutputSettings> _setOutputs;
 
     public TrayMenuController(
         Func<int> getEffectivePort,
@@ -50,7 +54,10 @@ internal sealed class TrayMenuController
         Func<CancellationToken, Task> disconnectSpotify,
         Func<string> exportIngestKey,
         Func<string> rotateIngestKey,
-        Action<AppearanceSettings> setAppearance)
+        Action<AppearanceSettings> setAppearance,
+        Func<OutputStatusSnapshot> getOutputStatus,
+        Func<string, string> renderOutputPreview,
+        Action<OutputSettings> setOutputs)
         : this(
             getEffectivePort,
             settingsStore,
@@ -67,7 +74,10 @@ internal sealed class TrayMenuController
             disconnectSpotify,
             exportIngestKey,
             rotateIngestKey,
-            setAppearance)
+            setAppearance,
+            getOutputStatus,
+            renderOutputPreview,
+            setOutputs)
     {
     }
 
@@ -86,7 +96,10 @@ internal sealed class TrayMenuController
         Func<CancellationToken, Task>? disconnectSpotify = null,
         Func<string>? exportIngestKey = null,
         Func<string>? rotateIngestKey = null,
-        Action<AppearanceSettings>? setAppearance = null)
+        Action<AppearanceSettings>? setAppearance = null,
+        Func<OutputStatusSnapshot>? getOutputStatus = null,
+        Func<string, string>? renderOutputPreview = null,
+        Action<OutputSettings>? setOutputs = null)
     {
         _getEffectivePort = getEffectivePort ?? throw new ArgumentNullException(nameof(getEffectivePort));
         _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
@@ -105,6 +118,10 @@ internal sealed class TrayMenuController
         _exportIngestKey = exportIngestKey ?? (() => new string('A', IngestKey.EncodedLength));
         _rotateIngestKey = rotateIngestKey ?? _exportIngestKey;
         _setAppearance = setAppearance ?? (_ => { });
+        _getOutputStatus = getOutputStatus
+            ?? (() => new OutputStatusSnapshot(0, "Outputs are ready. No output errors are recorded."));
+        _renderOutputPreview = renderOutputPreview ?? (_ => string.Empty);
+        _setOutputs = setOutputs ?? (_ => { });
         LogDirectory = Path.GetFullPath(
             logDirectory ?? throw new ArgumentNullException(nameof(logDirectory)));
     }
@@ -148,6 +165,16 @@ internal sealed class TrayMenuController
     public ApplicationSettings GetSettings()
     {
         return _settingsStore.Load().Settings;
+    }
+
+    public OutputStatusSnapshot GetOutputStatus()
+    {
+        return _getOutputStatus();
+    }
+
+    public string RenderOutputPreview(string template)
+    {
+        return _renderOutputPreview(template);
     }
 
     public SpotifyConnectionSnapshot GetSpotifyConnection()
@@ -251,6 +278,7 @@ internal sealed class TrayMenuController
         SourceProvider provider,
         string? instanceId,
         AppearanceSettings appearance,
+        OutputSettings? outputs = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(appearance);
@@ -260,6 +288,7 @@ internal sealed class TrayMenuController
             InstanceId = instanceId,
         };
         var currentSettings = _settingsStore.Load().Settings;
+        outputs ??= currentSettings.Outputs;
         var windowsMedia = provider == SourceProvider.WindowsMedia
             ? currentSettings.WindowsMedia with { LastInstanceId = instanceId }
             : currentSettings.WindowsMedia;
@@ -269,6 +298,7 @@ internal sealed class TrayMenuController
             Source = source,
             WindowsMedia = windowsMedia,
             Appearance = appearance,
+            Outputs = outputs,
         };
         settings.Validate();
         if (provider == SourceProvider.SpotifyApi)
@@ -292,6 +322,7 @@ internal sealed class TrayMenuController
                     Source = source,
                     WindowsMedia = windowsMedia,
                     Appearance = appearance,
+                    Outputs = outputs,
                 }),
                 cancellationToken);
         }
@@ -303,6 +334,7 @@ internal sealed class TrayMenuController
                 Source = source,
                 WindowsMedia = windowsMedia,
                 Appearance = appearance,
+                Outputs = outputs,
             });
         }
 
@@ -316,6 +348,7 @@ internal sealed class TrayMenuController
         }
 
         _setAppearance(appearance);
+        _setOutputs(outputs);
 
         return new SettingsChangeResult(portChanged, OverlayUrl);
     }

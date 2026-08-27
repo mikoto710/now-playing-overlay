@@ -2,6 +2,7 @@ using System.Windows.Forms;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
+using NowPlayingOverlay.Host.Outputs;
 
 namespace NowPlayingOverlay.Host.Shell;
 
@@ -30,6 +31,7 @@ internal sealed class SettingsDialog : Form
     private readonly Label _spotifyStatus;
     private readonly Button _spotifyConnection;
     private readonly Button _save;
+    private readonly OutputSettingsControl _outputs;
     private readonly RadioButton _defaultAppearance;
     private readonly RadioButton _customAppearance;
     private readonly Button _artistColor;
@@ -67,7 +69,10 @@ internal sealed class SettingsDialog : Form
         Func<string>? getBrowserPlayerConnectionCode = null,
         Func<string>? rotateBrowserPlayerConnectionCode = null,
         Action? openBrowserProducer = null,
-        Action<string>? setClipboardText = null)
+        Action<string>? setClipboardText = null,
+        OutputSettings? currentOutputs = null,
+        OutputStatusSnapshot? outputStatus = null,
+        Func<string, string>? renderOutputPreview = null)
     {
         ArgumentNullException.ThrowIfNull(discovery);
         ArgumentNullException.ThrowIfNull(currentSource);
@@ -89,6 +94,14 @@ internal sealed class SettingsDialog : Form
             ?? _getBrowserPlayerConnectionCode;
         _openBrowserProducer = openBrowserProducer ?? (() => { });
         _setClipboardText = setClipboardText ?? new ClipboardTextWriter().SetText;
+        currentOutputs ??= new OutputSettings();
+        currentOutputs.Validate();
+        _outputs = new OutputSettingsControl(
+            currentOutputs,
+            outputStatus ?? new OutputStatusSnapshot(
+                0,
+                "Outputs are ready. No output errors are recorded."),
+            renderOutputPreview ?? (_ => string.Empty));
         _effectivePort = currentPort;
         _selectedWindowsMediaInstanceId = windowsMedia.LastInstanceId;
         _hasPendingSourceSelection = true;
@@ -634,7 +647,12 @@ internal sealed class SettingsDialog : Form
             AutoScroll = true,
         };
         appearanceTab.Controls.Add(appearanceLayout);
-        tabs.TabPages.AddRange([generalTab, appearanceTab]);
+        var outputsTab = new TabPage("Outputs")
+        {
+            AutoScroll = true,
+        };
+        outputsTab.Controls.Add(_outputs);
+        tabs.TabPages.AddRange([generalTab, appearanceTab, outputsTab]);
 
         _save = new Button
         {
@@ -727,6 +745,8 @@ internal sealed class SettingsDialog : Form
         }
     }
 
+    public OutputSettings SelectedOutputs => _outputs.SelectedOutputs;
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)
@@ -789,6 +809,21 @@ internal sealed class SettingsDialog : Form
                 MessageBoxIcon.Warning);
             _fontFamily.Focus();
             _fontFamily.DroppedDown = true;
+            return;
+        }
+
+        try
+        {
+            _ = SelectedOutputs;
+        }
+        catch (InvalidDataException error)
+        {
+            MessageBox.Show(
+                this,
+                error.Message,
+                "Check Output Settings",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
             return;
         }
 

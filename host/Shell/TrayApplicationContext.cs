@@ -187,7 +187,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
                         _controller.GetBrowserPlayerConnectionCode,
                         _controller.RotateBrowserPlayerConnectionCode,
                         () => OpenWithShell(_controller.BrowserProducerUrl),
-                        _clipboard.SetText);
+                        _clipboard.SetText,
+                        settings.Outputs,
+                        _controller.GetOutputStatus(),
+                        _controller.RenderOutputPreview);
                     if (dialog.ShowDialog() != DialogResult.OK)
                     {
                         return;
@@ -197,7 +200,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
                         dialog.SelectedPort,
                         dialog.SelectedProvider,
                         dialog.SelectedInstanceId,
-                        dialog.SelectedAppearance);
+                        dialog.SelectedAppearance,
+                        dialog.SelectedOutputs);
                     if (result.PortChanged)
                     {
                         MessageBox.Show(

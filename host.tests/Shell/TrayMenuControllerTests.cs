@@ -162,6 +162,7 @@ public sealed class TrayMenuControllerTests
         store.Save(new ApplicationSettings { Port = 13000 });
         SourceSelectionSettings? activatedSource = null;
         AppearanceSettings? activatedAppearance = null;
+        OutputSettings? activatedOutputs = null;
         var controller = new TrayMenuController(
             () => 13000,
             store,
@@ -169,7 +170,8 @@ public sealed class TrayMenuControllerTests
             directory.Path,
             (_, _, _) => Task.CompletedTask,
             selectSource: value => activatedSource = value,
-            setAppearance: value => activatedAppearance = value);
+            setAppearance: value => activatedAppearance = value,
+            setOutputs: value => activatedOutputs = value);
         var appearance = new AppearanceSettings
         {
             Preset = AppearancePreset.Custom,
@@ -182,21 +184,33 @@ public sealed class TrayMenuControllerTests
                 CornerRadius = 12,
             },
         };
+        var outputs = new OutputSettings
+        {
+            Json = new JsonOutputSettings
+            {
+                Enabled = true,
+                FilePath = Path.Combine(directory.Path, "state.json"),
+            },
+        };
 
         var result = await controller.SaveSettingsAsync(
             13000,
             SourceProvider.WindowsMedia,
             "Player.App!Exact",
-            appearance);
+            appearance,
+            outputs);
 
         var saved = store.Load().Settings;
         Assert.False(result.PortChanged);
         Assert.Equal("Player.App!Exact", saved.Source.InstanceId);
         Assert.Equal("Player.App!Exact", saved.WindowsMedia.LastInstanceId);
         Assert.Equal(appearance, saved.Appearance);
+        Assert.True(saved.Outputs.Json.Enabled);
+        Assert.Equal(outputs.Json.FilePath, saved.Outputs.Json.FilePath);
         Assert.Equal(SourceProvider.WindowsMedia, activatedSource?.Provider);
         Assert.Equal("Player.App!Exact", activatedSource?.InstanceId);
         Assert.Equal(appearance, activatedAppearance);
+        Assert.Equal(outputs, activatedOutputs);
     }
 
     [Fact]

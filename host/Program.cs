@@ -96,7 +96,10 @@ internal static class Program
                 app.DisconnectSpotifyAsync,
                 app.ExportIngestKey,
                 app.RotateIngestKey,
-                app.SetAppearance);
+                app.SetAppearance,
+                app.GetOutputStatus,
+                app.RenderOutputPreview,
+                app.SetOutputs);
             var logger = new BoundedFileLoggerProvider(logFile).CreateLogger<TrayApplicationContext>();
             using var tray = new TrayApplicationContext(controller, logger);
             Application.Run(tray);
