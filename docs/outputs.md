@@ -20,6 +20,8 @@ position duration observedAt newline
 
 `nowPlaying` renders `Artist - Title` when artist is present and only `Title` otherwise. `position` and `duration` use `M:SS` or `H:MM:SS`; `observedAt` is UTC ISO 8601. Missing optional fields render as empty text.
 
+Window Title uses this same output path. Its explicit parser fills `title` and `artist`, after which `{title}`, `{artist}`, `{nowPlaying}`, JSON, and History work without a source-specific writer or second TXT setting.
+
 Tokens can use these modifiers in order:
 
 ```text

@@ -6,11 +6,12 @@
 
 A small Windows tray application that shows the current track and artwork in an OBS Browser Source.
 
-It supports three independent media sources:
+It supports four independent media sources:
 
 - **Windows Media** — reads a selected Windows media session, including Spotify, browsers, and other compatible players.
 - **Spotify API** — reads the current track from your Spotify account using your own Spotify Developer application Client ID.
 - **Browser Player** — receives playback metadata from supported browser players through the Host-provided Tampermonkey Producer.
+- **Window Title** — reads one selected desktop application's window title and optionally splits it into title and artist fields.
 
 The overlay can customize its colors, typography, background, and artwork layout. The Host can also write templated text, protocol JSON, current artwork, and track history to local files.
 
@@ -34,6 +35,7 @@ winget install Microsoft.DotNet.DesktopRuntime.10
    - **Windows Media:** start playback, select **Refresh**, and choose the player.
    - **Spotify API:** open **Spotify Connection...**, enter your Client ID, and authorize in the browser.
    - **Browser Player:** install the browser Producer from the running Host, copy the connection code, and paste it into the userscript menu once.
+   - **Window Title:** choose a window, then keep its complete title or explicitly configure a separator and field order.
 4. Optionally customize the overlay on **Appearance** or configure local files on **Outputs**, then select **Save**.
 5. Select **Copy OBS URL** from the tray menu.
 6. Add a **Browser** source in OBS, paste the URL, and set its size to `350 × 70`.
@@ -72,11 +74,24 @@ The Producer has site-specific metadata and artwork readers for Spotify Web, You
 
 The script manages authentication, Producer identity, ordering, heartbeat, retry, Host restart recovery, multi-tab ownership, and current-cover transfer internally. Artwork URLs stay in the browser: the script retrieves supported images and uploads only validated bytes to the local Host. Its key is stored in userscript-private storage and is sent only to `127.0.0.1`. Use **Rotate Code...** to invalidate the old code, clear the active lease, and copy a replacement. See [Browser Producer](docs/browser-producer.md) for troubleshooting and adapter guidance.
 
+## Window Title setup
+
+Window Title is the fallback for desktop players that expose useful text in a normal top-level window but do not publish a Windows media session:
+
+1. Open the player and make sure its main window has a title.
+2. Open **Settings...**, choose **Window Title**, select **Refresh**, and choose the application window.
+3. Keep **Use whole title** to publish the complete caption as the track title, or choose **Split title**.
+4. For split mode, enter the exact separator, choose its first or last occurrence, and specify whether the left side is the title or artist.
+5. Check the Title and Artist preview, then select **Save**.
+
+The Host does not guess whether a caption is `Artist - Title` or `Title - Artist`. Split mode publishes no track when the configured separator is absent or either side is empty. Window titles do not provide reliable pause, timeline, or artwork information, so this source treats a usable caption as playing. See [Window Title](docs/window-title.md) for target matching and limitations.
+
 ## Notes
 
 - The local server listens only on `127.0.0.1`.
 - Only one instance runs for each Windows user.
 - Pausing or stopping playback hides the overlay.
+- Window Title is a best-effort exception: it cannot detect real pause state and remains visible while a usable caption exists.
 - If OBS is blank, use **Open Overlay Preview** first, then refresh the Browser Source.
 - Settings and protected Spotify credentials are stored under `%LOCALAPPDATA%\NowPlayingOverlay`.
 - The Browser Player ingest key is protected for the current Windows user and is never placed in the overlay URL.
@@ -105,7 +120,7 @@ Requires the .NET 10 SDK, Node.js 22, and npm.
 
 The release ZIP contains `NowPlayingOverlay.exe`, the README, and the license. The userscript remains embedded in the executable and is installed through **Install Browser Producer...** while the Host is running.
 
-Protocol, Outputs, and release details live in [`docs`](docs), not in this README.
+Protocol, source, Outputs, and release details live in [`docs`](docs), not in this README.
 
 ## Acknowledgements
 

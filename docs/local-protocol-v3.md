@@ -74,9 +74,10 @@ The host keeps a strong internal `SourceProvider` enum. The output `source.provi
 windows-media
 spotify-api
 external-push
+window-title
 ```
 
-`window-title` is deferred and is not a production enum value. A future provider may add another canonical token without changing the token grammar.
+`window-title` identifies metadata read from a selected desktop window caption. The full target identity, executable path, window class, and current raw caption remain Host-internal.
 
 A token is 1 to 64 ASCII characters and must match:
 
@@ -183,7 +184,7 @@ The initial event contains current state. `Last-Event-ID` remains diagnostic onl
 
 ## Health
 
-`/health` remains unversioned. `activeSourceProvider` uses the same canonical serializer as `source.provider`; current non-null values are `windows-media`, `spotify-api`, and `external-push`.
+`/health` remains unversioned. `activeSourceProvider` uses the same canonical serializer as `source.provider`; current non-null values are `windows-media`, `spotify-api`, `external-push`, and `window-title`.
 
 Health never exposes instance ID, external source ID, producer ID, display name, track metadata, Spotify account, Spotify Client ID, or `IngestKey`. Each provider adds and tests its health token only with its production implementation.
 
