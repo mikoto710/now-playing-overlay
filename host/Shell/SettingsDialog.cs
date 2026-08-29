@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Windows.Forms;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Media.Sources;
@@ -9,6 +10,8 @@ namespace NowPlayingOverlay.Host.Shell;
 
 internal sealed class SettingsDialog : Form
 {
+    internal const string ProjectUrl = "https://github.com/mikoto710/now-playing-overlay";
+
     private readonly Func<SourceProvider, CancellationToken, Task<SourceDiscoveryResult>>
         _refreshSources;
     private readonly Func<string, bool, CancellationToken, Task<SpotifyConnectionSnapshot>>
@@ -80,7 +83,8 @@ internal sealed class SettingsDialog : Form
         Func<string, string>? renderOutputPreview = null,
         WindowTitleSettings? currentWindowTitle = null,
         WindowTitleDiscoveryResult? windowTitleDiscovery = null,
-        Func<CancellationToken, Task<WindowTitleDiscoveryResult>>? refreshWindowTitles = null)
+        Func<CancellationToken, Task<WindowTitleDiscoveryResult>>? refreshWindowTitles = null,
+        Action? openProjectPage = null)
     {
         ArgumentNullException.ThrowIfNull(discovery);
         ArgumentNullException.ThrowIfNull(currentSource);
@@ -121,6 +125,7 @@ internal sealed class SettingsDialog : Form
             currentWindowTitle,
             windowTitleDiscovery);
         _windowTitleSettings.RefreshRequested += WindowTitleRefreshRequested;
+        openProjectPage ??= () => { };
         _effectivePort = currentPort;
         _selectedWindowsMediaInstanceId = windowsMedia.LastInstanceId;
         _hasPendingSourceSelection = true;
@@ -684,7 +689,37 @@ internal sealed class SettingsDialog : Form
         appearanceTab.Controls.Add(appearanceLayout);
         var outputsTab = new TabPage("Outputs");
         outputsTab.Controls.Add(_outputs);
-        tabs.TabPages.AddRange([generalTab, appearanceTab, outputsTab]);
+        var aboutProject = new LinkLabel
+        {
+            AutoSize = true,
+            Margin = new Padding(0, 12, 0, 12),
+            Text = ProjectUrl,
+        };
+        aboutProject.LinkClicked += (_, _) => openProjectPage();
+        var aboutLayout = new FlowLayoutPanel
+        {
+            AutoScroll = true,
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            Padding = new Padding(24),
+            WrapContents = false,
+        };
+        aboutLayout.Controls.AddRange(
+        [
+            new Label { AutoSize = true, Text = "Now Playing Overlay" },
+            new Label { AutoSize = true, Text = $"Version {CurrentVersion}" },
+            new Label
+            {
+                AutoSize = true,
+                Margin = new Padding(0, 12, 0, 0),
+                Text = "Shows the current track and artwork from supported players.",
+            },
+            aboutProject,
+            new Label { AutoSize = true, Text = "GNU General Public License v3.0" },
+        ]);
+        var aboutTab = new TabPage("About");
+        aboutTab.Controls.Add(aboutLayout);
+        tabs.TabPages.AddRange([generalTab, appearanceTab, outputsTab, aboutTab]);
 
         _save = new Button
         {
@@ -781,6 +816,18 @@ internal sealed class SettingsDialog : Form
     public OutputSettings SelectedOutputs => _outputs.SelectedOutputs;
 
     public WindowTitleSettings SelectedWindowTitle => _windowTitleSettings.SelectedSettings;
+
+    internal static string CurrentVersion
+    {
+        get
+        {
+            var assembly = typeof(SettingsDialog).Assembly;
+            return assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+                    .InformationalVersion
+                ?? assembly.GetName().Version?.ToString(3)
+                ?? "Unknown";
+        }
+    }
 
     protected override void Dispose(bool disposing)
     {

@@ -40,7 +40,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
             CreateOverlayPreviewMenu(),
             CreateMenuItem("Open Logs", OpenLogs),
             _settingsItem,
-            CreateMenuItem("About", ShowAbout),
             new ToolStripSeparator(),
             CreateMenuItem("Exit", RequestExit),
         ]);
@@ -157,15 +156,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
             });
     }
 
-    private void ShowAbout()
-    {
-        using var dialog = new AboutDialog(
-            () => RunUserAction(
-                "open the project page",
-                () => OpenWithShell(AboutDialog.ProjectUrl)));
-        dialog.ShowDialog();
-    }
-
     private async void ConfigureSettings()
     {
         if (_settingsOperationActive)
@@ -204,7 +194,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
                         _controller.RenderOutputPreview,
                         settings.WindowTitle,
                         windowTitleDiscovery,
-                        _controller.RefreshWindowTitlesAsync);
+                        _controller.RefreshWindowTitlesAsync,
+                        () => RunUserAction(
+                            "open the project page",
+                            () => OpenWithShell(SettingsDialog.ProjectUrl)));
                     if (dialog.ShowDialog() != DialogResult.OK)
                     {
                         return;

@@ -29,7 +29,29 @@ public sealed class SettingsDialogTests
             Assert.Equal("Settings", dialog.Text);
 
             var tabs = FindControl<TabControl>(dialog);
+            Assert.Equal(
+                ["General", "Appearance", "Outputs", "About"],
+                tabs.TabPages.Cast<TabPage>().Select(page => page.Text));
             var outputs = tabs.TabPages.Cast<TabPage>().Single(page => page.Text == "Outputs");
+            var about = tabs.TabPages.Cast<TabPage>().Single(page => page.Text == "About");
+            var aboutText = FindControls<Control>(about).Select(control => control.Text).ToArray();
+            Assert.Contains("Now Playing Overlay", aboutText);
+            Assert.Contains($"Version {SettingsDialog.CurrentVersion}", aboutText);
+            Assert.Contains(
+                "Shows the current track and artwork from supported players.",
+                aboutText);
+            Assert.Contains("GNU General Public License v3.0", aboutText);
+            Assert.Contains(
+                FindControls<LinkLabel>(about),
+                link => link.Text == SettingsDialog.ProjectUrl);
+            Assert.DoesNotContain(
+                aboutText,
+                text => text.Contains("Inspired", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(
+                aboutText,
+                text => text.Contains("Snip", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains("Tuna", StringComparison.OrdinalIgnoreCase)
+                    || text.Contains("Zyphen", StringComparison.OrdinalIgnoreCase));
             var groupNames = FindControls<GroupBox>(outputs)
                 .Select(group => group.Text)
                 .ToHashSet(StringComparer.Ordinal);
@@ -73,6 +95,9 @@ public sealed class SettingsDialogTests
 
             dialog.Opacity = 0;
             dialog.Show();
+            tabs.SelectedTab = about;
+            Application.DoEvents();
+            AssertVisibleLeafControlsFit(about);
             tabs.SelectedTab = outputs;
             Application.DoEvents();
             var placeholderLabel = FindControls<Label>(outputs)
@@ -218,7 +243,7 @@ public sealed class SettingsDialogTests
                 control.RectangleToScreen(control.ClientRectangle));
             Assert.True(
                 container.ClientRectangle.Contains(bounds),
-                $"{control.GetType().Name} '{control.Text}' is clipped by the Window Title group.");
+                $"{control.GetType().Name} '{control.Text}' is clipped by its parent container.");
         }
     }
 
