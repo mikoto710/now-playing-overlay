@@ -42,4 +42,9 @@ internal sealed record SourceKey
     {
         return new SourceKey(SourceProvider.ExternalPush, ExternalPushInstanceId);
     }
+
+    public static SourceKey WindowTitle(string targetInstanceId)
+    {
+        return new SourceKey(SourceProvider.WindowTitle, targetInstanceId);
+    }
 }

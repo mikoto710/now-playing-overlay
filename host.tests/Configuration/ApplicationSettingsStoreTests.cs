@@ -306,6 +306,43 @@ public sealed class ApplicationSettingsStoreTests
     }
 
     [Fact]
+    public void SaveAndLoadRoundTripsWindowTitleSelectionAndParser()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var target = new WindowTitleTargetSettings
+        {
+            ProcessName = "Player",
+            ExecutablePath = @"C:\Apps\Player.exe",
+            WindowClass = "PlayerWindow",
+        };
+        var windowTitle = new WindowTitleSettings
+        {
+            Target = target,
+            ParseMode = WindowTitleParseMode.Split,
+            Separator = " | ",
+            SplitOccurrence = WindowTitleSplitOccurrence.Last,
+            LeftField = WindowTitleField.Title,
+        };
+        var store = new ApplicationSettingsStore(path);
+        store.Save(new ApplicationSettings
+        {
+            Source = SourceSelectionSettings.WindowTitle(target.InstanceId),
+            WindowTitle = windowTitle,
+        });
+
+        var saved = store.Load().Settings;
+
+        Assert.Equal(SourceProvider.WindowTitle, saved.Source.Provider);
+        Assert.Equal(target.InstanceId, saved.Source.InstanceId);
+        Assert.Equal(windowTitle, saved.WindowTitle);
+        var json = File.ReadAllText(path);
+        Assert.Contains("\"provider\": \"window-title\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"parseMode\": \"split\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"splitOccurrence\": \"last\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void LegacySpotifySelectionMigratesDormantWindowsSource()
     {
         using var directory = new TemporaryDirectory();

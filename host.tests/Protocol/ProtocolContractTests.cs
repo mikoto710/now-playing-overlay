@@ -149,6 +149,7 @@ public sealed class ProtocolContractTests
     [InlineData((int)SourceProvider.WindowsMedia, "windows-media")]
     [InlineData((int)SourceProvider.SpotifyApi, "spotify-api")]
     [InlineData((int)SourceProvider.ExternalPush, "external-push")]
+    [InlineData((int)SourceProvider.WindowTitle, "window-title")]
     public void EveryCurrentProviderUsesCanonicalProtocolToken(int value, string expected)
     {
         var token = ((SourceProvider)value).ToProtocolValue();

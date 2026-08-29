@@ -35,6 +35,15 @@ internal sealed class ApplicationSettingsStore
             new JsonStringEnumConverter<MissingArtworkBehavior>(
                 JsonNamingPolicy.KebabCaseLower,
                 allowIntegerValues: false),
+            new JsonStringEnumConverter<WindowTitleParseMode>(
+                JsonNamingPolicy.KebabCaseLower,
+                allowIntegerValues: false),
+            new JsonStringEnumConverter<WindowTitleSplitOccurrence>(
+                JsonNamingPolicy.KebabCaseLower,
+                allowIntegerValues: false),
+            new JsonStringEnumConverter<WindowTitleField>(
+                JsonNamingPolicy.KebabCaseLower,
+                allowIntegerValues: false),
         },
     };
     private readonly object _gate = new();
@@ -97,6 +106,7 @@ internal sealed class ApplicationSettingsStore
                 document.WindowsMedia,
                 migratedWindowsMediaInstanceId);
             var appearance = ReadAppearance(document.Appearance, out var appearanceWarning);
+            var windowTitle = ReadWindowTitle(document.WindowTitle, out var windowTitleWarning);
             var outputs = ApplyDefaultOutputPaths(
                 ReadOutputs(document.Outputs, out var outputsWarning));
             var settings = new ApplicationSettings
@@ -106,13 +116,14 @@ internal sealed class ApplicationSettingsStore
                 WindowsMedia = windowsMedia,
                 Spotify = document.Spotify
                     ?? throw new InvalidDataException("The configured Spotify connection must not be null."),
+                WindowTitle = windowTitle,
                 Appearance = appearance,
                 Outputs = outputs,
             };
             settings.Validate();
             return new ApplicationSettingsLoadResult(
                 settings,
-                CombineWarnings(appearanceWarning, outputsWarning));
+                CombineWarnings(appearanceWarning, windowTitleWarning, outputsWarning));
         }
         catch (Exception error) when (error is IOException
             or UnauthorizedAccessException
@@ -236,6 +247,29 @@ internal sealed class ApplicationSettingsStore
         }
     }
 
+    private WindowTitleSettings ReadWindowTitle(JsonElement? element, out string? warning)
+    {
+        warning = null;
+        if (element is null || element.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return new WindowTitleSettings();
+        }
+
+        try
+        {
+            var settings = element.Value.Deserialize<WindowTitleSettings>(JsonOptions)
+                ?? throw new InvalidDataException("The configured Window Title settings are empty.");
+            settings.Validate();
+            return settings;
+        }
+        catch (Exception error) when (error is JsonException or InvalidDataException)
+        {
+            warning =
+                $"Could not read the Window Title settings in '{_filePath}'; Window Title will remain unconfigured. {error.Message}";
+            return new WindowTitleSettings();
+        }
+    }
+
     private OutputSettings ReadOutputs(
         JsonElement? element,
         out string? warning)
@@ -331,6 +365,8 @@ internal sealed class ApplicationSettingsStore
         public JsonElement WindowsMedia { get; init; }
 
         public SpotifyConnectionSettings? Spotify { get; init; } = new();
+
+        public JsonElement? WindowTitle { get; init; }
 
         public JsonElement? Appearance { get; init; }
 

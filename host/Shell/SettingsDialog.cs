@@ -2,6 +2,7 @@ using System.Windows.Forms;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
+using NowPlayingOverlay.Host.Media.WindowTitles;
 using NowPlayingOverlay.Host.Outputs;
 
 namespace NowPlayingOverlay.Host.Shell;
@@ -17,6 +18,7 @@ internal sealed class SettingsDialog : Form
     private readonly Func<string> _rotateBrowserPlayerConnectionCode;
     private readonly Action _openBrowserProducer;
     private readonly Action<string> _setClipboardText;
+    private readonly Func<CancellationToken, Task<WindowTitleDiscoveryResult>> _refreshWindowTitles;
     private readonly int _effectivePort;
     private readonly SourceSelectionSettings _currentSource;
     private readonly NumericUpDown _port;
@@ -27,6 +29,8 @@ internal sealed class SettingsDialog : Form
     private readonly GroupBox _windowsSourceGroup;
     private readonly GroupBox _spotifySourceGroup;
     private readonly GroupBox _externalSourceGroup;
+    private readonly GroupBox _windowTitleSourceGroup;
+    private readonly WindowTitleSettingsControl _windowTitleSettings;
     private readonly Label _spotifyClientId;
     private readonly Label _spotifyStatus;
     private readonly Button _spotifyConnection;
@@ -50,6 +54,7 @@ internal sealed class SettingsDialog : Form
     private readonly ComboBox _artworkFit;
     private readonly NumericUpDown _artworkCornerRadius;
     private readonly CancellationTokenSource _shutdown = new();
+    private bool _disposeStarted;
     private CustomAppearanceSettings _customAppearanceDraft;
     private string? _selectedWindowsMediaInstanceId;
     private bool _hasPendingSourceSelection;
@@ -72,7 +77,10 @@ internal sealed class SettingsDialog : Form
         Action<string>? setClipboardText = null,
         OutputSettings? currentOutputs = null,
         OutputStatusSnapshot? outputStatus = null,
-        Func<string, string>? renderOutputPreview = null)
+        Func<string, string>? renderOutputPreview = null,
+        WindowTitleSettings? currentWindowTitle = null,
+        WindowTitleDiscoveryResult? windowTitleDiscovery = null,
+        Func<CancellationToken, Task<WindowTitleDiscoveryResult>>? refreshWindowTitles = null)
     {
         ArgumentNullException.ThrowIfNull(discovery);
         ArgumentNullException.ThrowIfNull(currentSource);
@@ -102,6 +110,17 @@ internal sealed class SettingsDialog : Form
                 0,
                 "Outputs are ready. No output errors are recorded."),
             renderOutputPreview ?? (_ => string.Empty));
+        currentWindowTitle ??= new WindowTitleSettings();
+        currentWindowTitle.Validate();
+        windowTitleDiscovery ??= new WindowTitleDiscoveryResult(
+            [],
+            SourceManagerState.Unconfigured);
+        _refreshWindowTitles = refreshWindowTitles ?? (_ => Task.FromResult(
+            new WindowTitleDiscoveryResult([], SourceManagerState.Unconfigured)));
+        _windowTitleSettings = new WindowTitleSettingsControl(
+            currentWindowTitle,
+            windowTitleDiscovery);
+        _windowTitleSettings.RefreshRequested += WindowTitleRefreshRequested;
         _effectivePort = currentPort;
         _selectedWindowsMediaInstanceId = windowsMedia.LastInstanceId;
         _hasPendingSourceSelection = true;
@@ -119,7 +138,7 @@ internal sealed class SettingsDialog : Form
             ColumnCount = 3,
             Dock = DockStyle.Fill,
             Padding = new Padding(12),
-            RowCount = 8,
+            RowCount = 9,
         };
         generalLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         generalLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -129,6 +148,7 @@ internal sealed class SettingsDialog : Form
         generalLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 10));
         generalLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         generalLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 10));
+        generalLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         generalLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         generalLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         generalLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -361,6 +381,16 @@ internal sealed class SettingsDialog : Form
         };
         _externalSourceGroup.Controls.Add(externalLayout);
 
+        _windowTitleSourceGroup = new GroupBox
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Top,
+            Margin = Padding.Empty,
+            Text = "Window Title",
+        };
+        _windowTitleSourceGroup.Controls.Add(_windowTitleSettings);
+
         generalLayout.Controls.Add(generalExplanation, 0, 0);
         generalLayout.SetColumnSpan(generalExplanation, 3);
         generalLayout.Controls.Add(portLabel, 0, 1);
@@ -375,6 +405,8 @@ internal sealed class SettingsDialog : Form
         generalLayout.SetColumnSpan(_spotifySourceGroup, 3);
         generalLayout.Controls.Add(_externalSourceGroup, 0, 7);
         generalLayout.SetColumnSpan(_externalSourceGroup, 3);
+        generalLayout.Controls.Add(_windowTitleSourceGroup, 0, 8);
+        generalLayout.SetColumnSpan(_windowTitleSourceGroup, 3);
 
         var appearanceExplanation = new Label
         {
@@ -640,7 +672,10 @@ internal sealed class SettingsDialog : Form
             Dock = DockStyle.Fill,
             Margin = Padding.Empty,
         };
-        var generalTab = new TabPage("General");
+        var generalTab = new TabPage("General")
+        {
+            AutoScroll = true,
+        };
         generalTab.Controls.Add(generalLayout);
         var appearanceTab = new TabPage("Appearance")
         {
@@ -717,6 +752,7 @@ internal sealed class SettingsDialog : Form
         SourceProvider.WindowsMedia => SelectedWindowsMediaInstanceId,
         SourceProvider.SpotifyApi => SourceKey.SpotifyApi().InstanceId,
         SourceProvider.ExternalPush => SourceKey.ExternalPush().InstanceId,
+        SourceProvider.WindowTitle => SelectedWindowTitle.Target?.InstanceId,
         _ => throw new InvalidOperationException("The selected source provider is not supported."),
     };
 
@@ -744,10 +780,13 @@ internal sealed class SettingsDialog : Form
 
     public OutputSettings SelectedOutputs => _outputs.SelectedOutputs;
 
+    public WindowTitleSettings SelectedWindowTitle => _windowTitleSettings.SelectedSettings;
+
     protected override void Dispose(bool disposing)
     {
-        if (disposing)
+        if (disposing && !_disposeStarted)
         {
+            _disposeStarted = true;
             _shutdown.Cancel();
             _shutdown.Dispose();
         }
@@ -812,13 +851,18 @@ internal sealed class SettingsDialog : Form
         try
         {
             _ = SelectedOutputs;
+            var windowTitle = SelectedWindowTitle;
+            if (SelectedProvider == SourceProvider.WindowTitle && windowTitle.Target is null)
+            {
+                throw new InvalidDataException("Choose a window before selecting Window Title.");
+            }
         }
         catch (InvalidDataException error)
         {
             MessageBox.Show(
                 this,
                 error.Message,
-                "Check Output Settings",
+                "Check Settings",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
             return;
@@ -868,11 +912,43 @@ internal sealed class SettingsDialog : Form
         _windowsSourceGroup.Visible = provider == SourceProvider.WindowsMedia;
         _spotifySourceGroup.Visible = provider == SourceProvider.SpotifyApi;
         _externalSourceGroup.Visible = provider == SourceProvider.ExternalPush;
+        _windowTitleSourceGroup.Visible = provider == SourceProvider.WindowTitle;
         _refresh.Enabled = provider == SourceProvider.WindowsMedia;
         _source.Enabled = provider == SourceProvider.WindowsMedia;
         if (provider == SourceProvider.WindowsMedia)
         {
             UpdateWindowsSelectionStatus();
+        }
+    }
+
+    private async void WindowTitleRefreshRequested(object? sender, EventArgs args)
+    {
+        _windowTitleSettings.SetRefreshing(refreshing: true);
+        _save.Enabled = false;
+        try
+        {
+            var discovery = await _refreshWindowTitles(_shutdown.Token);
+            _windowTitleSettings.ApplyDiscovery(discovery);
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+        }
+        catch (Exception error)
+        {
+            MessageBox.Show(
+                this,
+                $"Could not refresh windows. {error.Message}",
+                "Window Title",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+        finally
+        {
+            if (!IsDisposed && !_shutdown.IsCancellationRequested)
+            {
+                _windowTitleSettings.SetRefreshing(refreshing: false);
+                _save.Enabled = true;
+            }
         }
     }
 

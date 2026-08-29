@@ -125,6 +125,103 @@ public sealed class SettingsDialogTests
             status);
     }
 
+    [Fact]
+    public void WindowTitlePanelUsesExplicitSplitMappingAndLivePreview()
+    {
+        RunSta(() =>
+        {
+            var target = new WindowTitleTargetSettings
+            {
+                ProcessName = "Player",
+                ExecutablePath = @"C:\Apps\Player.exe",
+                WindowClass = "PlayerWindow",
+            };
+            var settings = new WindowTitleSettings
+            {
+                Target = target,
+                ParseMode = WindowTitleParseMode.Split,
+                Separator = " - ",
+                LeftField = WindowTitleField.Artist,
+            };
+            using var dialog = new SettingsDialog(
+                HostOptions.DefaultPort,
+                new SourceDiscoveryResult([], SourceManagerState.Unconfigured),
+                SourceSelectionSettings.WindowTitle(target.InstanceId),
+                new WindowsMediaSettings(),
+                SpotifyConnectionSnapshot.Disconnected,
+                new AppearanceSettings(),
+                (_, _) => Task.FromResult(new SourceDiscoveryResult(
+                    [],
+                    SourceManagerState.Unconfigured)),
+                (_, _, _) => Task.FromResult(SpotifyConnectionSnapshot.Disconnected),
+                _ => Task.FromResult(SpotifyConnectionSnapshot.Disconnected),
+                currentWindowTitle: settings,
+                windowTitleDiscovery: new NowPlayingOverlay.Host.Media.WindowTitles.WindowTitleDiscoveryResult(
+                    [new NowPlayingOverlay.Host.Media.WindowTitles.WindowTitleCandidate(
+                        target,
+                        "Artist - Song",
+                        MatchCount: 1)],
+                    SourceManagerState.Unconfigured));
+
+            dialog.Opacity = 0;
+            dialog.Show();
+            Application.DoEvents();
+
+            var group = FindControls<GroupBox>(dialog)
+                .Single(candidate => candidate.Text == "Window Title");
+            Assert.True(group.Visible);
+            Assert.Equal(target.InstanceId, dialog.SelectedInstanceId);
+            Assert.Equal(settings, dialog.SelectedWindowTitle);
+            var text = FindControls<Control>(group).Select(control => control.Text).ToArray();
+            Assert.Contains("Artist - Song", text);
+            Assert.Contains("Song", text);
+            Assert.Contains("Artist", text);
+            Assert.Contains(
+                FindControls<RadioButton>(group),
+                radio => radio.Text == "Use whole title");
+            Assert.Contains(
+                FindControls<RadioButton>(group),
+                radio => radio.Text == "Split title" && radio.Checked);
+            var visibleText = string.Join(' ', text);
+            Assert.DoesNotContain("regex", visibleText, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("PID", visibleText, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("protocol", visibleText, StringComparison.OrdinalIgnoreCase);
+
+            AssertVisibleLeafControlsFit(group);
+            var wholeTitle = FindControls<RadioButton>(group)
+                .Single(radio => radio.Text == "Use whole title");
+            wholeTitle.Checked = true;
+            Application.DoEvents();
+            Assert.Equal(WindowTitleParseMode.WholeTitle, dialog.SelectedWindowTitle.ParseMode);
+            Assert.Contains(
+                FindControls<Label>(group),
+                label => label.Text == "Artist - Song");
+
+            var splitTitle = FindControls<RadioButton>(group)
+                .Single(radio => radio.Text == "Split title");
+            splitTitle.Checked = true;
+            Application.DoEvents();
+            var save = FindControls<Button>(dialog).Single(button => button.Text == "Save");
+            save.PerformClick();
+            Application.DoEvents();
+            Assert.Equal(DialogResult.OK, dialog.DialogResult);
+        });
+    }
+
+    private static void AssertVisibleLeafControlsFit(Control container)
+    {
+        foreach (var control in FindControls<Control>(container).Where(control =>
+            control.Visible
+            && control.Controls.Count == 0))
+        {
+            var bounds = container.RectangleToClient(
+                control.RectangleToScreen(control.ClientRectangle));
+            Assert.True(
+                container.ClientRectangle.Contains(bounds),
+                $"{control.GetType().Name} '{control.Text}' is clipped by the Window Title group.");
+        }
+    }
+
     private static T FindControl<T>(Control root)
         where T : Control
     {

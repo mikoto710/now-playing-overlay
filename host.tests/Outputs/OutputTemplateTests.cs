@@ -46,6 +46,25 @@ public sealed class OutputTemplateTests
     }
 
     [Fact]
+    public void WindowTitleMetadataUsesTheExistingTextOutputTemplate()
+    {
+        var snapshot = NowPlayingSnapshot.Create(
+            Guid.Parse("cc243c65-ab17-4c71-af59-2a3e18aa174a"),
+            1,
+            SourceDescriptor.WindowTitle(new string('a', 64), "Player.exe"),
+            PlaybackState.Playing,
+            TrackMetadata.Create("Song", "Artist", null),
+            artwork: null,
+            new DateTimeOffset(2026, 8, 27, 3, 4, 5, TimeSpan.Zero));
+
+        var rendered = OutputTemplate.Parse(
+            "{title}{newline}{artist}{newline}{source}",
+            allowLineBreaks: true).Render(snapshot);
+
+        Assert.Equal($"Song{Environment.NewLine}Artist{Environment.NewLine}window-title", rendered);
+    }
+
+    [Fact]
     public void TruncateCountsUnicodeScalarsInsteadOfUtf16CodeUnits()
     {
         var rendered = OutputTemplate.Parse("{title|truncate:2}", true).Render(

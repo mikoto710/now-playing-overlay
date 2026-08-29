@@ -3,6 +3,7 @@ using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Media.External;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
+using NowPlayingOverlay.Host.Media.WindowTitles;
 using NowPlayingOverlay.Host.Outputs;
 using OverlayHostOptions = NowPlayingOverlay.Host.Configuration.HostOptions;
 
@@ -39,6 +40,8 @@ internal sealed class TrayMenuController
     private readonly Func<OutputStatusSnapshot> _getOutputStatus;
     private readonly Func<string, string> _renderOutputPreview;
     private readonly Action<OutputSettings> _setOutputs;
+    private readonly Func<CancellationToken, Task<WindowTitleDiscoveryResult>> _refreshWindowTitles;
+    private readonly Action<WindowTitleSettings> _setWindowTitleSettings;
 
     public TrayMenuController(
         Func<int> getEffectivePort,
@@ -57,7 +60,9 @@ internal sealed class TrayMenuController
         Action<AppearanceSettings> setAppearance,
         Func<OutputStatusSnapshot> getOutputStatus,
         Func<string, string> renderOutputPreview,
-        Action<OutputSettings> setOutputs)
+        Action<OutputSettings> setOutputs,
+        Func<CancellationToken, Task<WindowTitleDiscoveryResult>> refreshWindowTitles,
+        Action<WindowTitleSettings> setWindowTitleSettings)
         : this(
             getEffectivePort,
             settingsStore,
@@ -77,7 +82,9 @@ internal sealed class TrayMenuController
             setAppearance,
             getOutputStatus,
             renderOutputPreview,
-            setOutputs)
+            setOutputs,
+            refreshWindowTitles,
+            setWindowTitleSettings)
     {
     }
 
@@ -99,7 +106,9 @@ internal sealed class TrayMenuController
         Action<AppearanceSettings>? setAppearance = null,
         Func<OutputStatusSnapshot>? getOutputStatus = null,
         Func<string, string>? renderOutputPreview = null,
-        Action<OutputSettings>? setOutputs = null)
+        Action<OutputSettings>? setOutputs = null,
+        Func<CancellationToken, Task<WindowTitleDiscoveryResult>>? refreshWindowTitles = null,
+        Action<WindowTitleSettings>? setWindowTitleSettings = null)
     {
         _getEffectivePort = getEffectivePort ?? throw new ArgumentNullException(nameof(getEffectivePort));
         _settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
@@ -122,6 +131,9 @@ internal sealed class TrayMenuController
             ?? (() => new OutputStatusSnapshot(0, "Outputs are ready. No output errors are recorded."));
         _renderOutputPreview = renderOutputPreview ?? (_ => string.Empty);
         _setOutputs = setOutputs ?? (_ => { });
+        _refreshWindowTitles = refreshWindowTitles ?? (_ => Task.FromResult(
+            new WindowTitleDiscoveryResult([], SourceManagerState.Unconfigured)));
+        _setWindowTitleSettings = setWindowTitleSettings ?? (_ => { });
         LogDirectory = Path.GetFullPath(
             logDirectory ?? throw new ArgumentNullException(nameof(logDirectory)));
     }
@@ -165,6 +177,12 @@ internal sealed class TrayMenuController
     public ApplicationSettings GetSettings()
     {
         return _settingsStore.Load().Settings;
+    }
+
+    public Task<WindowTitleDiscoveryResult> RefreshWindowTitlesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return _refreshWindowTitles(cancellationToken);
     }
 
     public OutputStatusSnapshot GetOutputStatus()
@@ -279,6 +297,7 @@ internal sealed class TrayMenuController
         string? instanceId,
         AppearanceSettings appearance,
         OutputSettings? outputs = null,
+        WindowTitleSettings? windowTitle = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(appearance);
@@ -289,6 +308,7 @@ internal sealed class TrayMenuController
         };
         var currentSettings = _settingsStore.Load().Settings;
         outputs ??= currentSettings.Outputs;
+        windowTitle ??= currentSettings.WindowTitle;
         var windowsMedia = provider == SourceProvider.WindowsMedia
             ? currentSettings.WindowsMedia with { LastInstanceId = instanceId }
             : currentSettings.WindowsMedia;
@@ -299,6 +319,7 @@ internal sealed class TrayMenuController
             WindowsMedia = windowsMedia,
             Appearance = appearance,
             Outputs = outputs,
+            WindowTitle = windowTitle,
         };
         settings.Validate();
         if (provider == SourceProvider.SpotifyApi)
@@ -323,6 +344,7 @@ internal sealed class TrayMenuController
                     WindowsMedia = windowsMedia,
                     Appearance = appearance,
                     Outputs = outputs,
+                    WindowTitle = windowTitle,
                 }),
                 cancellationToken);
         }
@@ -335,9 +357,11 @@ internal sealed class TrayMenuController
                 WindowsMedia = windowsMedia,
                 Appearance = appearance,
                 Outputs = outputs,
+                WindowTitle = windowTitle,
             });
         }
 
+        _setWindowTitleSettings(windowTitle);
         var selectedDescriptor = source.ToDescriptor();
         var sourceChanged = !Equals(
             GetSourceState().ActiveSource?.Key,

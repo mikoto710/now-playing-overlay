@@ -40,4 +40,9 @@ internal sealed record SourceDescriptor
             SourceKey.ExternalPush(),
             SourceProvider.ExternalPush.ToDisplayName());
     }
+
+    public static SourceDescriptor WindowTitle(string targetInstanceId, string displayName)
+    {
+        return new SourceDescriptor(SourceKey.WindowTitle(targetInstanceId), displayName);
+    }
 }

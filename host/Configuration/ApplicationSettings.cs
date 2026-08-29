@@ -13,6 +13,8 @@ internal sealed record ApplicationSettings
 
     public SpotifyConnectionSettings Spotify { get; init; } = new();
 
+    public WindowTitleSettings WindowTitle { get; init; } = new();
+
     public AppearanceSettings Appearance { get; init; } = new();
 
     public OutputSettings Outputs { get; init; } = new();
@@ -56,6 +58,23 @@ internal sealed record ApplicationSettings
         if (Source.Provider == SourceProvider.SpotifyApi && Spotify.ClientId is null)
         {
             throw new InvalidDataException("Spotify API cannot be selected without a Client ID.");
+        }
+
+        if (WindowTitle is null)
+        {
+            throw new InvalidDataException("The configured Window Title settings must not be null.");
+        }
+
+        WindowTitle.Validate();
+        if (Source.Provider == SourceProvider.WindowTitle
+            && (WindowTitle.Target is null
+                || !string.Equals(
+                    Source.InstanceId,
+                    WindowTitle.Target.InstanceId,
+                    StringComparison.Ordinal)))
+        {
+            throw new InvalidDataException(
+                "The selected Window Title source must match its configured window.");
         }
 
         if (Appearance is null)
@@ -106,6 +125,11 @@ internal sealed record SourceSelectionSettings
                     StringComparison.Ordinal):
                     throw new InvalidDataException(
                         "The configured Browser Player instance is invalid.");
+                case SourceProvider.WindowTitle:
+                    _ = SourceKey.WindowTitle(
+                        InstanceId ?? throw new InvalidDataException(
+                            "The configured Window Title instance is missing."));
+                    break;
             }
         }
         catch (ArgumentException error)
@@ -124,6 +148,9 @@ internal sealed record SourceSelectionSettings
                 : SourceDescriptor.WindowsMedia(InstanceId),
             SourceProvider.SpotifyApi => SourceDescriptor.SpotifyApi(),
             SourceProvider.ExternalPush => SourceDescriptor.ExternalPush(),
+            SourceProvider.WindowTitle => SourceDescriptor.WindowTitle(
+                InstanceId!,
+                SourceProvider.WindowTitle.ToDisplayName()),
             _ => throw new InvalidDataException("The configured source provider is not supported."),
         };
     }
@@ -152,6 +179,15 @@ internal sealed record SourceSelectionSettings
         {
             Provider = SourceProvider.ExternalPush,
             InstanceId = SourceKey.ExternalPush().InstanceId,
+        };
+    }
+
+    public static SourceSelectionSettings WindowTitle(string instanceId)
+    {
+        return new SourceSelectionSettings
+        {
+            Provider = SourceProvider.WindowTitle,
+            InstanceId = SourceKey.WindowTitle(instanceId).InstanceId,
         };
     }
 }

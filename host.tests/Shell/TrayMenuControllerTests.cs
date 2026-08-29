@@ -154,6 +154,58 @@ public sealed class TrayMenuControllerTests
     }
 
     [Fact]
+    public async Task SavingWindowTitleParserReconfiguresTheActiveSourceWithoutReselectingIt()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings.json");
+        var target = new WindowTitleTargetSettings
+        {
+            ProcessName = "Player",
+            ExecutablePath = @"C:\Apps\Player.exe",
+            WindowClass = "PlayerWindow",
+        };
+        var original = new WindowTitleSettings { Target = target };
+        var store = new ApplicationSettingsStore(path);
+        store.Save(new ApplicationSettings
+        {
+            Port = 13000,
+            Source = SourceSelectionSettings.WindowTitle(target.InstanceId),
+            WindowTitle = original,
+        });
+        WindowTitleSettings? applied = null;
+        SourceSelectionSettings? reselected = null;
+        var controller = new TrayMenuController(
+            () => 13000,
+            store,
+            () => new HostStatus("Window Title: Playing", IsFaulted: false),
+            directory.Path,
+            (_, _, _) => Task.CompletedTask,
+            getSourceState: () => new SourceManagerState(
+                SourceDescriptor.WindowTitle(target.InstanceId, target.DisplayName),
+                SourceStatus.Available,
+                SourceStatusReason.None),
+            selectSource: source => reselected = source,
+            setWindowTitleSettings: settings => applied = settings);
+        var updated = original with
+        {
+            ParseMode = WindowTitleParseMode.Split,
+            Separator = " | ",
+            LeftField = WindowTitleField.Title,
+        };
+
+        await controller.SaveSettingsAsync(
+            13000,
+            SourceProvider.WindowTitle,
+            target.InstanceId,
+            new AppearanceSettings(),
+            windowTitle: updated);
+
+        Assert.Equal(updated, applied);
+        Assert.Equal(updated, store.Load().Settings.WindowTitle);
+        Assert.Null(reselected);
+    }
+
+    [Fact]
     public async Task CombinedSettingsSavePersistsAndActivatesCustomAppearance()
     {
         using var directory = new TemporaryDirectory();

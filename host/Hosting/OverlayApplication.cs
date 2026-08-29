@@ -8,6 +8,7 @@ using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Media.Spotify.Playback;
 using NowPlayingOverlay.Host.Media.Windows;
+using NowPlayingOverlay.Host.Media.WindowTitles;
 using NowPlayingOverlay.Host.Models;
 using NowPlayingOverlay.Host.Outputs;
 using NowPlayingOverlay.Host.State;
@@ -21,6 +22,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
     private readonly WindowsMediaSource? _windowsMediaSource;
     private readonly SpotifyApiSource? _spotifyApiSource;
     private readonly ExternalPushSource? _externalPushSource;
+    private readonly WindowTitleSource? _windowTitleSource;
     private readonly SpotifyAuthorizationService? _spotifyAuthorizationService;
     private readonly IngestKeyStore? _ingestKeyStore;
     private readonly ExternalIngestHttpHandler? _externalIngestHandler;
@@ -39,6 +41,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
         WindowsMediaSource? windowsMediaSource,
         SpotifyApiSource? spotifyApiSource,
         ExternalPushSource? externalPushSource,
+        WindowTitleSource? windowTitleSource,
         SpotifyAuthorizationService? spotifyAuthorizationService,
         IngestKeyStore? ingestKeyStore,
         ExternalIngestHttpHandler? externalIngestHandler,
@@ -54,6 +57,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
         _windowsMediaSource = windowsMediaSource;
         _spotifyApiSource = spotifyApiSource;
         _externalPushSource = externalPushSource;
+        _windowTitleSource = windowTitleSource;
         _spotifyAuthorizationService = spotifyAuthorizationService;
         _ingestKeyStore = ingestKeyStore;
         _externalIngestHandler = externalIngestHandler;
@@ -96,12 +100,15 @@ internal sealed class OverlayApplication : IAsyncDisposable
             logger: CreateLogger<SpotifyApiSource>(loggerProvider));
         var externalLease = new ExternalProducerLease(ExternalPushSource.DefaultLeaseDuration);
         var externalPushSource = new ExternalPushSource(externalLease);
+        var windowTitleSource = new WindowTitleSource(
+            new Win32WindowTitleCatalog(),
+            settings.WindowTitle);
         var ingestKeyStore = new IngestKeyStore(paths.IngestKeyFilePath);
         var externalIngestHandler = new ExternalIngestHttpHandler(
             ingestKeyStore.LoadOrCreate(),
             externalLease);
         var sessionSource = new ActiveSourceManager(
-            [windowsMediaSource, spotifyApiSource, externalPushSource],
+            [windowsMediaSource, spotifyApiSource, externalPushSource, windowTitleSource],
             settings.Source.ToDescriptor());
         return Build(
             options,
@@ -112,6 +119,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
             windowsMediaSource,
             spotifyApiSource,
             externalPushSource,
+            windowTitleSource,
             spotifyAuthorizationService,
             ingestKeyStore,
             spotifyCallbackBroker,
@@ -136,6 +144,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
             windowsMediaSource: null,
             spotifyApiSource: null,
             externalPushSource: null,
+            windowTitleSource: null,
             spotifyAuthorizationService: null,
             ingestKeyStore: null,
             spotifyCallbackBroker: spotifyCallbackBroker
@@ -154,6 +163,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
         WindowsMediaSource? windowsMediaSource,
         SpotifyApiSource? spotifyApiSource,
         ExternalPushSource? externalPushSource,
+        WindowTitleSource? windowTitleSource,
         SpotifyAuthorizationService? spotifyAuthorizationService,
         IngestKeyStore? ingestKeyStore,
         SpotifyAuthorizationCallbackBroker spotifyCallbackBroker,
@@ -222,6 +232,7 @@ internal sealed class OverlayApplication : IAsyncDisposable
             windowsMediaSource,
             spotifyApiSource,
             externalPushSource,
+            windowTitleSource,
             spotifyAuthorizationService,
             ingestKeyStore,
             externalIngestHandler,
@@ -261,9 +272,20 @@ internal sealed class OverlayApplication : IAsyncDisposable
                 Task.FromResult(new SourceDiscoveryResult(
                     [SourceDescriptor.ExternalPush()],
                     GetSourceState())),
+            SourceProvider.WindowTitle when _windowTitleSource is not null =>
+                RefreshWindowTitleDescriptorsAsync(cancellationToken),
             _ => throw new InvalidOperationException(
                 "This host does not have the requested source provider."),
         };
+    }
+
+    public Task<WindowTitleDiscoveryResult> RefreshWindowTitlesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return (_windowTitleSource
+                ?? throw new InvalidOperationException("This host does not have Window Title support."))
+            .RefreshSourcesAsync(cancellationToken);
     }
 
     public void SelectSource(SourceSelectionSettings source)
@@ -309,6 +331,14 @@ internal sealed class OverlayApplication : IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _appearanceState.Set(appearance);
+    }
+
+    public void SetWindowTitleSettings(WindowTitleSettings settings)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        (_windowTitleSource
+                ?? throw new InvalidOperationException("This host does not have Window Title support."))
+            .UpdateSettings(settings);
     }
 
     public void SetOutputs(OutputSettings outputs)
@@ -419,6 +449,15 @@ internal sealed class OverlayApplication : IAsyncDisposable
     private static ILogger<T> CreateLogger<T>(BoundedFileLoggerProvider? provider)
     {
         return provider?.CreateLogger<T>() ?? NullLogger<T>.Instance;
+    }
+
+    private async Task<SourceDiscoveryResult> RefreshWindowTitleDescriptorsAsync(
+        CancellationToken cancellationToken)
+    {
+        var discovery = await RefreshWindowTitlesAsync(cancellationToken);
+        return new SourceDiscoveryResult(
+            discovery.Candidates.Select(candidate => candidate.ToDescriptor()).ToArray(),
+            discovery.State);
     }
 
     private async Task<SpotifyConnectionState> AuthorizeSpotifyAsync(

@@ -183,6 +183,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 {
                     var discovery = await _controller.RefreshSourcesAsync(
                         SourceProvider.WindowsMedia);
+                    var windowTitleDiscovery = await _controller.RefreshWindowTitlesAsync();
                     var settings = _controller.GetSettings();
                     using var dialog = new SettingsDialog(
                         _controller.EffectivePort,
@@ -200,7 +201,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
                         _clipboard.SetText,
                         settings.Outputs,
                         _controller.GetOutputStatus(),
-                        _controller.RenderOutputPreview);
+                        _controller.RenderOutputPreview,
+                        settings.WindowTitle,
+                        windowTitleDiscovery,
+                        _controller.RefreshWindowTitlesAsync);
                     if (dialog.ShowDialog() != DialogResult.OK)
                     {
                         return;
@@ -211,7 +215,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
                         dialog.SelectedProvider,
                         dialog.SelectedInstanceId,
                         dialog.SelectedAppearance,
-                        dialog.SelectedOutputs);
+                        dialog.SelectedOutputs,
+                        dialog.SelectedWindowTitle);
                     if (result.PortChanged)
                     {
                         MessageBox.Show(

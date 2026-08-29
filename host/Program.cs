@@ -102,7 +102,9 @@ internal static class Program
                 app.SetAppearance,
                 app.GetOutputStatus,
                 app.RenderOutputPreview,
-                app.SetOutputs);
+                app.SetOutputs,
+                app.RefreshWindowTitlesAsync,
+                app.SetWindowTitleSettings);
             var logger = new BoundedFileLoggerProvider(logFile).CreateLogger<TrayApplicationContext>();
             using var tray = new TrayApplicationContext(controller, logger);
             Application.Run(tray);
