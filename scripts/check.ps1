@@ -52,6 +52,10 @@ try {
 
     Invoke-CheckedCommand node --test "integrations\tests\browser-producer.test.js"
 
+    if ($Release) {
+        & (Join-Path $PSScriptRoot "check-overlay-layout.ps1")
+    }
+
     $testArguments = @(
         "test"
         "host.tests\NowPlayingOverlay.Host.Tests.csproj"

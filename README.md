@@ -116,7 +116,7 @@ Requires the .NET 10 SDK, Node.js 22, and npm.
 
 - `check.ps1` runs the normal validation chain.
 - `publish-fast.ps1` creates a quick Debug executable without tests.
-- `publish.ps1` runs release validation and creates the release package.
+- `publish.ps1` runs release validation, including the real-browser layout check, and creates the release package.
 
 The release ZIP contains `NowPlayingOverlay.exe`, the README, and the license. The userscript remains embedded in the executable and is installed through **Install Browser Producer...** while the Host is running.
 

@@ -1,6 +1,6 @@
 # Local protocol version 2
 
-> Status: historical version 2 contract. `dev@730d5da` remains the last committed v2 baseline, while the accepted but uncommitted Phase A working tree implements [`local-protocol-v3.md`](./local-protocol-v3.md). This document is retained for history only and does not describe a compatibility runtime.
+> Status: historical version 2 contract. `dev@730d5da` remains the last v2 baseline. Version 3 is the current runtime contract documented in [`local-protocol-v3.md`](./local-protocol-v3.md); this file is retained for history only and does not describe a compatibility runtime.
 
 This document freezes the local contract shared by the host and browser client. The service listens only on `127.0.0.1`; the default port is `13130`.
 

@@ -25,7 +25,7 @@ public sealed class TrayMenuControllerTests
 
         Assert.Equal(
             "http://127.0.0.1:13000/NowPlaying.html?previewScale=3",
-            TrayMenuController.BuildOverlayPreviewUrl(13000, previewScale: 3));
+            OverlayEndpoint.BuildPreviewUrl(13000, previewScale: 3));
     }
 
     [Fact]

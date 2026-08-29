@@ -268,7 +268,7 @@ internal static class Program
             try
             {
                 settingsStore.Update(current => current with { Port = selectedPort });
-                var overlayUrl = TrayMenuController.BuildOverlayUrl(selectedPort);
+                var overlayUrl = OverlayEndpoint.BuildUrl(selectedPort);
                 ShowMessage(
                     $"Port {selectedPort} was saved. Restart Now Playing Overlay, then update the OBS Browser Source URL to:\n\n{overlayUrl}",
                     MessageBoxIcon.Information);

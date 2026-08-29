@@ -142,27 +142,12 @@ internal sealed record NowPlayingSnapshot
             throw new ArgumentException("Artwork requires track metadata.", nameof(artwork));
         }
 
-        switch (playback)
-        {
-            case PlaybackState.Playing when source is null || track is null:
-                throw new ArgumentException("Playing requires a source and track metadata.");
-            case PlaybackState.Paused or PlaybackState.Stopped when source is null:
-                throw new ArgumentException($"{playback} requires a source.");
-            case PlaybackState.Idle when source is null || track is not null || artwork is not null:
-                throw new ArgumentException("Idle requires a source without track metadata or artwork.");
-            case PlaybackState.Unavailable when track is not null || artwork is not null:
-                throw new ArgumentException("Unavailable must not contain track metadata or artwork.");
-            case < PlaybackState.Playing or > PlaybackState.Unavailable:
-                throw new ArgumentOutOfRangeException(nameof(playback), playback, "Playback state is invalid.");
-        }
-
-        if (timeline is not null
-            && playback is not (PlaybackState.Playing or PlaybackState.Paused))
-        {
-            throw new ArgumentException(
-                $"{playback} must not contain a playback timeline.",
-                nameof(timeline));
-        }
+        PlaybackStateInvariant.Validate(
+            playback,
+            source,
+            track,
+            timeline,
+            artwork is not null);
     }
 
     private bool HasSameTimelineAs(NowPlayingSnapshot other)
