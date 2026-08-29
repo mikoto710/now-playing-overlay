@@ -11,6 +11,7 @@ namespace NowPlayingOverlay.Host;
 internal static class Program
 {
     private const string ApplicationTitle = "Now Playing Overlay";
+    private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(10);
 
     [STAThread]
     public static int Main(string[] args)
@@ -143,8 +144,11 @@ internal static class Program
 
         try
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            app.StopAsync(timeout.Token).GetAwaiter().GetResult();
+            using var timeout = new CancellationTokenSource(ShutdownTimeout);
+            app.StopAsync(timeout.Token)
+                .WaitAsync(timeout.Token)
+                .GetAwaiter()
+                .GetResult();
         }
         catch (Exception error)
         {
@@ -158,7 +162,12 @@ internal static class Program
 
         try
         {
-            app.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            using var timeout = new CancellationTokenSource(ShutdownTimeout);
+            app.DisposeAsync()
+                .AsTask()
+                .WaitAsync(timeout.Token)
+                .GetAwaiter()
+                .GetResult();
         }
         catch (Exception error)
         {
