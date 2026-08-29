@@ -28,7 +28,7 @@ async (page) => {
     title,
     artworkId = artworkIds.initial,
   }) => ({
-    protocolVersion: 2,
+    protocolVersion: 3,
     serverInstanceId: instanceId,
     snapshotRevision: revision,
     source: { provider: "windows-media" },
@@ -36,7 +36,7 @@ async (page) => {
     track: {
       title,
       artist,
-      albumTitle: "OV2-03 Layout Fixture",
+      albumTitle: "Layout Fixture",
       albumArtist: null,
       subtitle: null,
       trackNumber: 1,
@@ -44,10 +44,11 @@ async (page) => {
       playbackType: "music",
       genres: [],
     },
+    timeline: null,
     artwork: {
       artworkRevision: revision,
       artworkId,
-      url: `/api/v2/artwork/${artworkId}`,
+      url: `/api/v3/artwork/${artworkId}`,
     },
     observedAt: "2026-08-12T00:00:00Z",
   });
@@ -95,14 +96,14 @@ async (page) => {
     };
   });
 
-  await page.route("**/api/v2/state", (route) =>
+  await page.route("**/api/v3/state", (route) =>
     route.fulfill({
       body: JSON.stringify(initialState),
       contentType: "application/json",
       status: 200,
     }),
   );
-  await page.route("**/api/v2/appearance", (route) =>
+  await page.route("**/api/v3/appearance", (route) =>
     route.fulfill({
       body: JSON.stringify({
         appearanceVersion: 3,
@@ -127,7 +128,7 @@ async (page) => {
       status: 200,
     }),
   );
-  await page.route("**/api/v2/artwork/**", async (route) => {
+  await page.route("**/api/v3/artwork/**", async (route) => {
     const artworkId = route.request().url().split("/").at(-1);
     if (artworkId === artworkIds.delayed) {
       await page.waitForTimeout(delayedArtworkMs);
@@ -776,6 +777,6 @@ async (page) => {
       beforeCurrentTime: marqueeBeforeResize.currentTime,
       startTime: marqueeAfterResize.animationStart,
     },
-    result: "OV2-03 browser layout regression passed",
+    result: "Protocol v3 browser layout regression passed",
   };
 }
