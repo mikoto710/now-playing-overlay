@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Now Playing Overlay Browser Producer
 // @namespace    https://github.com/mikoto710/now-playing-overlay
-// @version      0.2.0
+// @version      0.3.0
 // @description  Send browser playback metadata to the local Now Playing Overlay host.
 // @author       Now Playing Overlay contributors
 // @license      GPL-3.0-or-later

@@ -5,10 +5,10 @@
     <AssemblyTitle>Now Playing Overlay</AssemblyTitle>
     <Product>Now Playing Overlay</Product>
     <Description>Windows Media, Spotify, Browser Player, and Window Title now-playing overlay host for OBS.</Description>
-    <Version>0.2.0</Version>
-    <AssemblyVersion>0.2.0.0</AssemblyVersion>
-    <FileVersion>0.2.0.0</FileVersion>
-    <InformationalVersion>0.2.0</InformationalVersion>
+    <Version>0.3.0</Version>
+    <AssemblyVersion>0.3.0.0</AssemblyVersion>
+    <FileVersion>0.3.0.0</FileVersion>
+    <InformationalVersion>0.3.0</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <RootNamespace>NowPlayingOverlay.Host</RootNamespace>
     <OutputType>WinExe</OutputType>
