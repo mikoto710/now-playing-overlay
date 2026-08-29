@@ -40,6 +40,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             CreateOverlayPreviewMenu(),
             CreateMenuItem("Open Logs", OpenLogs),
             _settingsItem,
+            CreateMenuItem("About", ShowAbout),
             new ToolStripSeparator(),
             CreateMenuItem("Exit", RequestExit),
         ]);
@@ -154,6 +155,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 Directory.CreateDirectory(_controller.LogDirectory);
                 OpenWithShell(_controller.LogDirectory);
             });
+    }
+
+    private void ShowAbout()
+    {
+        using var dialog = new AboutDialog(
+            () => RunUserAction(
+                "open the project page",
+                () => OpenWithShell(AboutDialog.ProjectUrl)));
+        dialog.ShowDialog();
     }
 
     private async void ConfigureSettings()

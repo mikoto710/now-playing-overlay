@@ -105,7 +105,7 @@ internal sealed class SettingsDialog : Form
         _effectivePort = currentPort;
         _selectedWindowsMediaInstanceId = windowsMedia.LastInstanceId;
         _hasPendingSourceSelection = true;
-        Text = "Now Playing Overlay Settings";
+        Text = "Settings";
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(800, 760);
         FormBorderStyle = FormBorderStyle.FixedDialog;

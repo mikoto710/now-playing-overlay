@@ -26,6 +26,8 @@ public sealed class SettingsDialogTests
                 (_, _, _) => Task.FromResult(SpotifyConnectionSnapshot.Disconnected),
                 _ => Task.FromResult(SpotifyConnectionSnapshot.Disconnected));
 
+            Assert.Equal("Settings", dialog.Text);
+
             var tabs = FindControl<TabControl>(dialog);
             var outputs = tabs.TabPages.Cast<TabPage>().Single(page => page.Text == "Outputs");
             var groupNames = FindControls<GroupBox>(outputs)
