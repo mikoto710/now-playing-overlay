@@ -1,6 +1,6 @@
 # Local outputs
 
-> Status: implemented on the local `protocol-v3` branch; automated verification is complete and manual OBS acceptance is pending.
+> Status: implemented and accepted on the local `protocol-v3` branch; automated verification and manual OBS Text/Image acceptance are complete.
 
 The Host can write the committed now-playing state to local files without requiring the overlay page. Open **Settings... > Outputs** to configure each output. Outputs are disabled by default and require absolute file paths.
 
@@ -57,9 +57,9 @@ History uses a bounded ordered commit channel rather than the latest-state subsc
 - The Settings page shows a fault summary; detailed diagnostics are written without track text, rendered templates, or target paths.
 - Settings changes rebuild enabled current-state outputs immediately. They do not backfill History.
 
-## Manual OBS acceptance
+## Manual OBS acceptance record
 
-Before accepting the feature for release, verify both OBS consumers against a normal release build:
+The accepted manual check covers both OBS consumers against a normal release build:
 
 1. Enable a text output and add an OBS **Text (GDI+)** source with **Read from file** pointing to the `.txt` target.
 2. Enable artwork and add an OBS **Image** source pointing to the stable `.png` target.
@@ -68,4 +68,4 @@ Before accepting the feature for release, verify both OBS consumers against a no
 5. Lock or make one target read-only; confirm its error is isolated and other targets keep updating.
 6. Restart the Host and OBS; confirm current outputs rebuild and History begins a new observation session without rewriting old lines.
 
-The automated suite covers the corresponding template, UTF-8, atomic replacement, lock isolation, protocol JSON, PNG conversion, ordered history, settings migration, and lifecycle contracts. The OBS rendering check remains a manual release gate.
+The automated suite covers the corresponding template, UTF-8, atomic replacement, lock isolation, protocol JSON, PNG conversion, ordered history, settings migration, and lifecycle contracts. Real OBS Text and Image sources were verified separately because rendering cannot be proven by the Host test suite.
