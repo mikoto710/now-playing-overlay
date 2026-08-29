@@ -9,7 +9,6 @@ using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Models;
 using NowPlayingOverlay.Host.Protocol;
-using NowPlayingOverlay.Host.Shell;
 using NowPlayingOverlay.Host.State;
 
 namespace NowPlayingOverlay.Host.Hosting;
@@ -172,7 +171,7 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
                 _currentEndpoint = candidate;
             }
 
-            var overlayUrl = TrayMenuController.BuildOverlayUrl(newPort);
+            var overlayUrl = OverlayEndpoint.BuildUrl(newPort);
             _endpointChanges.Publish(overlayUrl);
             _logger.LogInformation(
                 "Moved the loopback endpoint from port {OldPort} to {NewPort}; the old endpoint remains during the migration grace period.",
@@ -314,7 +313,7 @@ internal sealed class OverlayHttpServer : IAsyncDisposable
             return;
         }
 
-        if (string.Equals(path, "/NowPlaying.html", StringComparison.Ordinal))
+        if (string.Equals(path, OverlayEndpoint.PagePath, StringComparison.Ordinal))
         {
             await HandleGetAndHeadAsync(
                 context,

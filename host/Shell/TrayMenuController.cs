@@ -5,7 +5,6 @@ using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Media.WindowTitles;
 using NowPlayingOverlay.Host.Outputs;
-using OverlayHostOptions = NowPlayingOverlay.Host.Configuration.HostOptions;
 
 namespace NowPlayingOverlay.Host.Shell;
 
@@ -140,14 +139,14 @@ internal sealed class TrayMenuController
 
     public int EffectivePort => _getEffectivePort();
 
-    public string OverlayUrl => BuildOverlayUrl(EffectivePort);
+    public string OverlayUrl => OverlayEndpoint.BuildUrl(EffectivePort);
 
     public string BrowserProducerUrl =>
-        $"http://{OverlayHostOptions.AllowedHost}:{EffectivePort}{BrowserProducerAsset.Path}";
+        $"http://{HostOptions.AllowedHost}:{EffectivePort}{BrowserProducerAsset.Path}";
 
     public string BuildOverlayPreviewUrl(int previewScale)
     {
-        return BuildOverlayPreviewUrl(EffectivePort, previewScale);
+        return OverlayEndpoint.BuildPreviewUrl(EffectivePort, previewScale);
     }
 
     public string LogDirectory { get; }
@@ -377,25 +376,6 @@ internal sealed class TrayMenuController
         return new SettingsChangeResult(portChanged, OverlayUrl);
     }
 
-    internal static string BuildOverlayUrl(int port)
-    {
-        if (port is < 1 or > 65535)
-        {
-            throw new ArgumentOutOfRangeException(nameof(port));
-        }
-
-        return $"http://{OverlayHostOptions.AllowedHost}:{port}/NowPlaying.html";
-    }
-
-    internal static string BuildOverlayPreviewUrl(int port, int previewScale)
-    {
-        if (previewScale is < 1 or > 5)
-        {
-            throw new ArgumentOutOfRangeException(nameof(previewScale));
-        }
-
-        return $"{BuildOverlayUrl(port)}?previewScale={previewScale}";
-    }
 }
 
 internal sealed record OverlayPreviewOption(int Scale, int Width, int Height)
