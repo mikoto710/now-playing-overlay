@@ -3,6 +3,9 @@ using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.State;
 
+/// <summary>
+/// Owns one capacity-one, latest-wins Store subscription.
+/// </summary>
 internal sealed class NowPlayingSubscription : IDisposable
 {
     private Action? _dispose;

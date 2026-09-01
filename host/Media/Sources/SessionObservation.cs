@@ -3,9 +3,11 @@ using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Media.Sources;
 
+/// <summary>
+/// Immutable, validated boundary between provider objects and the state core.
+/// </summary>
 internal sealed class SessionObservation
 {
-    // This value-only boundary keeps platform objects out of the state core.
     private SessionObservation(
         SourceDescriptor? source,
         PlaybackState playback,

@@ -4,6 +4,9 @@ using System.Text.Json.Serialization;
 
 namespace NowPlayingOverlay.Host.Media.Spotify.Authorization;
 
+/// <summary>
+/// Persists the Spotify refresh credential with DPAPI CurrentUser; access tokens stay in memory.
+/// </summary>
 internal sealed class SpotifyCredentialStore
 {
     private const int CurrentFormatVersion = 1;

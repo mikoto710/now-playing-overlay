@@ -1,5 +1,8 @@
 namespace NowPlayingOverlay.Host.Models;
 
+/// <summary>
+/// Immutable normalized track value shared by all providers.
+/// </summary>
 internal sealed class TrackMetadata : IEquatable<TrackMetadata>
 {
     private readonly IReadOnlyList<string> _genres;

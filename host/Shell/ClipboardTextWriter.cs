@@ -4,6 +4,9 @@ using System.Text;
 
 namespace NowPlayingOverlay.Host.Shell;
 
+/// <summary>
+/// Writes Unicode text using the Win32 clipboard ownership protocol.
+/// </summary>
 internal sealed class ClipboardTextWriter
 {
     internal const int OpenAttemptCount = 10;

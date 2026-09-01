@@ -5,6 +5,9 @@ using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.State;
 
+/// <summary>
+/// Thread-safe authority for the current complete snapshot and its subscriptions.
+/// </summary>
 internal sealed class NowPlayingStore
 {
     private readonly object _gate = new();

@@ -5,6 +5,9 @@ using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 
 namespace NowPlayingOverlay.Host.Media.Spotify.Playback;
 
+/// <summary>
+/// Bounded currently-playing client with one forced-refresh retry after HTTP 401.
+/// </summary>
 internal sealed class SpotifyCurrentlyPlayingClient : IAsyncDisposable
 {
     private const int MaximumResponseBytes = 1024 * 1024;

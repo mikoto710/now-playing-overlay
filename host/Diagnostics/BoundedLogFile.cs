@@ -2,6 +2,9 @@ using System.Text;
 
 namespace NowPlayingOverlay.Host.Diagnostics;
 
+/// <summary>
+/// Thread-safe bounded log; disk failure disables logging without affecting the media pipeline.
+/// </summary>
 internal sealed class BoundedLogFile : IDisposable
 {
     public const long DefaultMaximumFileBytes = 1024 * 1024;

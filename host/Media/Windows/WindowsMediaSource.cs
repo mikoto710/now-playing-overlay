@@ -4,9 +4,14 @@ using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Media.Windows;
 
+/// <summary>
+/// Owns the GSMTC catalog and binding to one selected media session.
+/// </summary>
 internal sealed class WindowsMediaSource : IMediaSourceProvider
 {
+    // Protects selection, bindings, status, generations, and read cancellation.
     private readonly object _gate = new();
+    // Serializes manager creation and disposal.
     private readonly SemaphoreSlim _initialization = new(1, 1);
     private readonly IMediaSessionManagerFactory _managerFactory;
     private readonly WindowsMediaSessionMatcher _matcher;
@@ -18,8 +23,8 @@ internal sealed class WindowsMediaSource : IMediaSourceProvider
     private SourceManagerState _state = SourceManagerState.Unconfigured;
     private Exception? _backgroundError;
     private CancellationTokenSource? _activeReadCancellation;
-    private long _configurationGeneration;
-    private long _bindingGeneration;
+    private long _configurationGeneration; // Rejects reads for an old selection.
+    private long _bindingGeneration; // Retries reads when the binding changes.
     private bool _disposeStarted;
     private bool _disposed;
 
@@ -543,7 +548,10 @@ internal sealed class WindowsMediaSource : IMediaSourceProvider
                     SourceStatusReason.Faulted);
             }
 
-            _logger.LogError(error, "Failed to refresh Windows media sessions.");
+            _logger.LogError(
+                "Failed to refresh Windows media sessions. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                error.GetType().Name,
+                error.HResult);
         }
 
         if (notify)
@@ -568,9 +576,10 @@ internal sealed class WindowsMediaSource : IMediaSourceProvider
             {
                 playbackStatus = null;
                 _logger.LogWarning(
-                    error,
-                    "Could not read playback status for media source {SourceAppUserModelId}.",
-                    session.SourceAppUserModelId);
+                    "Could not read playback status for media source {SourceAppUserModelId}. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                    session.SourceAppUserModelId,
+                    error.GetType().Name,
+                    error.HResult);
             }
 
             candidates.Add(new WindowsMediaSessionCandidate(
@@ -668,7 +677,10 @@ internal sealed class WindowsMediaSource : IMediaSourceProvider
             session.Dispose();
         }
 
-        _logger.LogWarning(error, "The selected Windows media session became unavailable.");
+        _logger.LogWarning(
+            "The selected Windows media session became unavailable. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+            error.GetType().Name,
+            error.HResult);
     }
 
     private void SetAvailable(SourceDescriptor selected)
@@ -709,7 +721,10 @@ internal sealed class WindowsMediaSource : IMediaSourceProvider
         }
 
         boundSession?.Dispose();
-        _logger.LogWarning(error, "Windows media sessions are temporarily unavailable.");
+        _logger.LogWarning(
+            "Windows media sessions are temporarily unavailable. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+            error.GetType().Name,
+            error.HResult);
     }
 
     private void SetFaulted(Exception error)
@@ -723,7 +738,10 @@ internal sealed class WindowsMediaSource : IMediaSourceProvider
                 SourceStatusReason.Faulted);
         }
 
-        _logger.LogError(error, "Windows media source faulted.");
+        _logger.LogError(
+            "Windows media source faulted. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+            error.GetType().Name,
+            error.HResult);
     }
 
     private bool HasBindingChanged(

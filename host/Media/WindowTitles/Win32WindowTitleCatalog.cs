@@ -6,6 +6,9 @@ using NowPlayingOverlay.Host.Configuration;
 
 namespace NowPlayingOverlay.Host.Media.WindowTitles;
 
+/// <summary>
+/// Enumerates visible windows into stable targets without retaining window handles.
+/// </summary>
 internal sealed class Win32WindowTitleCatalog : IWindowTitleCatalog
 {
     private const int MaximumCaptionLength = 32767;

@@ -25,8 +25,12 @@ internal enum ExternalLeaseArtworkResult
     MissingTrack,
 }
 
+/// <summary>
+/// Owns the single-producer Browser Player lease and its authoritative revisioned state.
+/// </summary>
 internal sealed class ExternalProducerLease
 {
+    // Protects producer identity, revision, artwork binding, and renewal time.
     private readonly object _gate = new();
     private readonly TimeSpan _leaseDuration;
     private readonly TimeProvider _timeProvider;

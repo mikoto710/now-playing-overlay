@@ -5,6 +5,9 @@ using Windows.Storage.Streams;
 
 namespace NowPlayingOverlay.SessionProbe;
 
+/// <summary>
+/// Performs bounded, read-only thumbnail diagnostics.
+/// </summary>
 internal sealed class ThumbnailInspector
 {
     private const ulong MaximumDiagnosticThumbnailBytes = 32 * 1024 * 1024;

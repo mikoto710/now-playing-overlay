@@ -5,6 +5,9 @@ using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Outputs;
 
+/// <summary>
+/// Parses and renders the bounded handwritten output-template grammar.
+/// </summary>
 internal sealed class OutputTemplate
 {
     public const int MaximumLength = 4096;

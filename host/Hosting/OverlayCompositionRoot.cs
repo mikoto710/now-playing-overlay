@@ -69,7 +69,8 @@ internal static class OverlayCompositionRoot
         var externalPushSource = new ExternalPushSource(externalLease);
         var windowTitleSource = new WindowTitleSource(
             new Win32WindowTitleCatalog(),
-            settings.WindowTitle);
+            settings.WindowTitle,
+            logger: CreateLogger<WindowTitleSource>(loggerProvider));
         var ingestKeyStore = new IngestKeyStore(paths.IngestKeyFilePath);
         var externalIngestHandler = new ExternalIngestHttpHandler(
             ingestKeyStore.LoadOrCreate(),

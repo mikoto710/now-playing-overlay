@@ -11,6 +11,9 @@ using NowPlayingOverlay.Host.State;
 
 namespace NowPlayingOverlay.Host.Outputs;
 
+/// <summary>
+/// Runs latest-wins current outputs and an ordered, overflow-faulting History worker.
+/// </summary>
 internal sealed class OutputManager : IOutputRuntime
 {
     internal const int HistoryQueueCapacity = 256;
@@ -19,8 +22,8 @@ internal sealed class OutputManager : IOutputRuntime
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
 
-    private readonly object _settingsGate = new();
-    private readonly object _statusGate = new();
+    private readonly object _settingsGate = new(); // Protects settings and their generation.
+    private readonly object _statusGate = new(); // Protects user-visible target status.
     private readonly NowPlayingStore _store;
     private readonly ArtworkCache _artworkCache;
     private readonly AtomicOutputFile _atomicFile;
@@ -41,7 +44,7 @@ internal sealed class OutputManager : IOutputRuntime
         new(StringComparer.Ordinal);
     private OutputSettings _settings;
     private long _historyWriteAfterRevision;
-    private long _settingsGeneration;
+    private long _settingsGeneration; // Rejects status updates from old settings.
     private CancellationTokenSource? _shutdown;
     private NowPlayingSubscription? _latestSubscription;
     private OrderedNowPlayingSubscription? _historySubscription;
@@ -83,6 +86,18 @@ internal sealed class OutputManager : IOutputRuntime
         _latestPump = PumpLatestAsync(_shutdown.Token);
         _latestWorker = ProcessLatestAsync(_shutdown.Token);
         _historyWorker = ProcessHistoryAsync(_shutdown.Token);
+        ObserveWorkerFault(
+            _latestPump,
+            "current-subscription",
+            "Current outputs stopped because their snapshot subscription failed.");
+        ObserveWorkerFault(
+            _latestWorker,
+            "current-worker",
+            "Current outputs stopped because their worker failed unexpectedly.");
+        ObserveWorkerFault(
+            _historyWorker,
+            "history-worker",
+            "History stopped because its worker failed unexpectedly.");
         _started = true;
     }
 
@@ -136,9 +151,10 @@ internal sealed class OutputManager : IOutputRuntime
         _latestSubscription!.Dispose();
         _historySubscription!.Dispose();
         _latestSignals.Writer.TryComplete();
-        await AwaitWorkerAsync(_latestPump!);
-        await AwaitWorkerAsync(_latestWorker!);
-        await AwaitWorkerAsync(_historyWorker!);
+        await Task.WhenAll(
+            AwaitWorkerAsync(_latestPump!),
+            AwaitWorkerAsync(_latestWorker!),
+            AwaitWorkerAsync(_historyWorker!));
         _shutdown.Dispose();
         _shutdown = null;
         _latestSubscription = null;
@@ -256,7 +272,7 @@ internal sealed class OutputManager : IOutputRuntime
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
-        catch (Exception error)
+        catch (ChannelClosedException error)
         {
             _ = GetSettings(out var settingsGeneration);
             SetFault(
@@ -509,6 +525,7 @@ internal sealed class OutputManager : IOutputRuntime
         Exception error,
         long settingsGeneration)
     {
+        bool shouldLog;
         lock (_settingsGate)
         {
             if (settingsGeneration != _settingsGeneration)
@@ -518,11 +535,19 @@ internal sealed class OutputManager : IOutputRuntime
 
             lock (_statusGate)
             {
+                shouldLog = !_statuses.TryGetValue(key, out var previous)
+                    || !previous.IsFaulted
+                    || !string.Equals(previous.Message, message, StringComparison.Ordinal);
                 _statuses[key] = new OutputTargetStatus(
                     IsFaulted: true,
                     message,
                     DateTimeOffset.UtcNow);
             }
+        }
+
+        if (!shouldLog)
+        {
+            return;
         }
 
         // Target paths and rendered media text are intentionally omitted, including exception text.
@@ -554,5 +579,22 @@ internal sealed class OutputManager : IOutputRuntime
         catch (OperationCanceledException)
         {
         }
+    }
+
+    private void ObserveWorkerFault(Task task, string key, string message)
+    {
+        _ = task.ContinueWith(
+            completed =>
+            {
+                _ = GetSettings(out var settingsGeneration);
+                SetFault(
+                    key,
+                    message,
+                    completed.Exception!.GetBaseException(),
+                    settingsGeneration);
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 }

@@ -492,6 +492,23 @@ public sealed class ApplicationSettingsStoreTests
     }
 
     [Fact]
+    public void InvalidSettingsWarningDoesNotExposeTheSettingsPathOrDocumentContents()
+    {
+        using var directory = new TemporaryDirectory();
+        var path = Path.Combine(directory.Path, "settings-with-private-path.json");
+        const string privateValue = "private-window-title-or-token";
+        File.WriteAllText(path, $"{{\"unexpected\":\"{privateValue}\"}}");
+        var store = new ApplicationSettingsStore(path);
+
+        var result = store.Load();
+
+        Assert.NotNull(result.Warning);
+        Assert.DoesNotContain(path, result.Warning, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(privateValue, result.Warning, StringComparison.Ordinal);
+        Assert.Contains("Error type", result.Warning, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SaveRejectsInvalidPortWithoutWritingFile()
     {
         using var directory = new TemporaryDirectory();

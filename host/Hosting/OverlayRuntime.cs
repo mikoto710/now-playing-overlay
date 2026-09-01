@@ -13,11 +13,11 @@ internal enum OverlayRuntimeState
 }
 
 /// <summary>
-/// Owns the one-shot runtime lifecycle. The composition root supplies a complete object graph;
-/// this type only starts, stops, and disposes it in dependency-safe order.
+/// Owns the one-shot Created -> Running -> Stopped -> Disposed lifecycle.
 /// </summary>
 internal sealed class OverlayRuntime : IAsyncDisposable
 {
+    // Serializes transitions; Stopped instances cannot start again.
     private readonly SemaphoreSlim _transitionGate = new(1, 1);
     private readonly IOverlayHttpRuntime _httpServer;
     private readonly IOutputRuntime _outputs;
@@ -173,6 +173,7 @@ internal sealed class OverlayRuntime : IAsyncDisposable
         bool outputsStarted,
         bool coordinatorStartAttempted)
     {
+        // Unwind only attempted components, in reverse dependency order.
         if (coordinatorStartAttempted)
         {
             await DisposeComponentAsync(_coordinator, "partially started coordinator");
@@ -224,7 +225,11 @@ internal sealed class OverlayRuntime : IAsyncDisposable
         }
         catch (Exception error)
         {
-            _logger.LogError(error, "Could not stop the {RuntimeComponent}.", component);
+            _logger.LogError(
+                "Could not stop the {RuntimeComponent}. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                component,
+                error.GetType().Name,
+                error.HResult);
             firstError ??= error;
         }
 
@@ -242,7 +247,11 @@ internal sealed class OverlayRuntime : IAsyncDisposable
         }
         catch (Exception error)
         {
-            _logger.LogError(error, "Could not dispose the {RuntimeComponent}.", componentName);
+            _logger.LogError(
+                "Could not dispose the {RuntimeComponent}. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                componentName,
+                error.GetType().Name,
+                error.HResult);
             firstError ??= error;
         }
 

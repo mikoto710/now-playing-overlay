@@ -1,5 +1,8 @@
 namespace NowPlayingOverlay.SessionProbe;
 
+/// <summary>
+/// Composes and shuts down the opt-in local diagnostic probe.
+/// </summary>
 internal static class ProbeApplication
 {
     public static async Task<int> RunAsync(string[] args)

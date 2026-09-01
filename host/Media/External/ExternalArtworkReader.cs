@@ -2,6 +2,9 @@ using NowPlayingOverlay.Host.Artwork;
 
 namespace NowPlayingOverlay.Host.Media.External;
 
+/// <summary>
+/// Replays validated Producer uploads; it never fetches remote artwork URLs.
+/// </summary>
 internal sealed class ExternalArtworkReader(ArtworkPayload payload) : IArtworkReader
 {
     private readonly ArtworkPayload _payload = payload ?? throw new ArgumentNullException(nameof(payload));

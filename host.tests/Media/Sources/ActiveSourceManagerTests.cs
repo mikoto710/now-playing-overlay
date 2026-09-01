@@ -25,6 +25,43 @@ public sealed class ActiveSourceManagerTests
     }
 
     [Fact]
+    public async Task ClearingReadSchedulesAFollowUpSignalForTheSameGeneration()
+    {
+        var provider = new StubProvider();
+        await using var manager = new ActiveSourceManager(
+            [provider],
+            SourceDescriptor.WindowsMedia("Player.App"));
+        provider.SetObservation(Playing("Player.App", "Track"));
+        var signaled = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        manager.Changed += (_, _) => signaled.TrySetResult();
+
+        var clearing = await manager.ReadAsync(CancellationToken.None);
+        await signaled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var current = await manager.ReadAsync(CancellationToken.None);
+
+        Assert.Equal(PlaybackState.Unavailable, clearing.Playback);
+        Assert.Equal("Track", current.Track!.Title);
+    }
+
+    [Fact]
+    public async Task FollowUpSignalStopsWhenItsSelectionGenerationIsSuperseded()
+    {
+        var provider = new StubProvider();
+        await using var manager = new ActiveSourceManager(
+            [provider],
+            SourceDescriptor.WindowsMedia("First.Player"));
+        var changes = 0;
+        manager.Changed += (_, _) => Interlocked.Increment(ref changes);
+
+        _ = await manager.ReadAsync(CancellationToken.None);
+        manager.Select(SourceDescriptor.WindowsMedia("Second.Player"));
+        await Task.Delay(100);
+
+        Assert.Equal(1, Volatile.Read(ref changes));
+    }
+
+    [Fact]
     public async Task SelectionGenerationRejectsALateResultFromThePreviousSelection()
     {
         var pending = new TaskCompletionSource<SessionObservation>(

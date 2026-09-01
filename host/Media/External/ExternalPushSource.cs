@@ -3,11 +3,14 @@ using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Media.External;
 
+/// <summary>
+/// Adapts the Browser Producer lease to the common source contract.
+/// </summary>
 internal sealed class ExternalPushSource : IMediaSourceProvider
 {
     public static readonly TimeSpan DefaultLeaseDuration = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan DefaultExpiryCheckInterval = TimeSpan.FromMilliseconds(250);
-    private readonly object _gate = new();
+    private readonly object _gate = new(); // Protects selection; the lease owns media state.
     private readonly ExternalProducerLease _lease;
     private readonly Func<TimeSpan, CancellationToken, ValueTask> _delay;
     private readonly CancellationTokenSource _shutdown = new();

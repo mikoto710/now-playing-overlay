@@ -3,6 +3,9 @@ using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.State;
 
+/// <summary>
+/// Owns a bounded ordered subscription that faults instead of dropping on overflow.
+/// </summary>
 internal sealed class OrderedNowPlayingSubscription : IDisposable
 {
     private readonly Action _dispose;

@@ -2,6 +2,9 @@ using System.Buffers.Binary;
 
 namespace NowPlayingOverlay.Host.Artwork;
 
+/// <summary>
+/// Reads supported image headers for MIME type and dimensions; it is not a full decoder.
+/// </summary>
 internal static class ArtworkImageInspector
 {
     public static bool TryInspect(

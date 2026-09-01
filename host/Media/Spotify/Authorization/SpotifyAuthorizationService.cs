@@ -2,12 +2,15 @@ using System.Diagnostics;
 
 namespace NowPlayingOverlay.Host.Media.Spotify.Authorization;
 
+/// <summary>
+/// Serializes Spotify authorization, refresh, disconnect, and access-token caching.
+/// </summary>
 internal sealed class SpotifyAuthorizationService : IAsyncDisposable
 {
     private static readonly TimeSpan AuthorizationTimeout = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan AccessTokenRefreshSkew = TimeSpan.FromMinutes(1);
 
-    private readonly SemaphoreSlim _operation = new(1, 1);
+    private readonly SemaphoreSlim _operation = new(1, 1); // Serializes credential transitions.
     private readonly CancellationTokenSource _shutdown = new();
     private readonly SpotifyCredentialStore _credentialStore;
     private readonly SpotifyTokenClient _tokenClient;

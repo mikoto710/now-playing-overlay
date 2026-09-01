@@ -2,6 +2,9 @@ using NowPlayingOverlay.Host.Media.Sources;
 
 namespace NowPlayingOverlay.Host.Models;
 
+/// <summary>
+/// Immutable complete state published by the Store.
+/// </summary>
 internal sealed record NowPlayingSnapshot
 {
     private const double PlayingTimelineToleranceMilliseconds = 500d;

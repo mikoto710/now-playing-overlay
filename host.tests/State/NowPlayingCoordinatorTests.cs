@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
 using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
@@ -255,6 +256,32 @@ public sealed class NowPlayingCoordinatorTests
         Assert.Equal(0, store.Current.SnapshotRevision);
     }
 
+    [Fact]
+    public async Task SourceFaultLogDoesNotIncludeProviderExceptionText()
+    {
+        const string sensitiveText = @"Secret Song C:\Private\Player.exe";
+        var source = new ControlledSessionSource();
+        source.EnqueueException(new InvalidOperationException(sensitiveText));
+        var store = CreateStore();
+        var logger = new CapturingLogger<NowPlayingCoordinator>();
+        await using var coordinator = new NowPlayingCoordinator(
+            source,
+            store,
+            new ArtworkCache(),
+            new NowPlayingCoordinatorOptions { DebounceDelay = TimeSpan.Zero },
+            new FixedTimeProvider(),
+            delay: NoDelayAsync,
+            logger: logger);
+
+        coordinator.Start();
+        await source.WaitForCompletionAsync(1);
+        await logger.EntryWritten.Task.WaitAsync(TestTimeout);
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Contains("InvalidOperationException", entry, StringComparison.Ordinal);
+        Assert.DoesNotContain(sensitiveText, entry, StringComparison.Ordinal);
+    }
+
     private static TimeSpan TestTimeout => TimeSpan.FromSeconds(5);
 
     private static NowPlayingCoordinator CreateCoordinator(
@@ -480,6 +507,32 @@ public sealed class NowPlayingCoordinatorTests
         public override DateTimeOffset GetUtcNow()
         {
             return ObservedAt;
+        }
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<string> Entries { get; } = [];
+
+        public TaskCompletionSource EntryWritten { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel >= LogLevel.Error)
+            {
+                Entries.Add(formatter(state, exception));
+                EntryWritten.TrySetResult();
+            }
         }
     }
 }

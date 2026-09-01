@@ -6,6 +6,9 @@ using NowPlayingOverlay.Host.Media.WindowTitles;
 
 namespace NowPlayingOverlay.Host.Shell;
 
+/// <summary>
+/// Local callbacks for individual source-settings UI gestures.
+/// </summary>
 internal sealed record SourceSettingsActions(
     Func<SourceProvider, CancellationToken, Task<SourceDiscoveryResult>> RefreshSources,
     Func<string, bool, CancellationToken, Task<SpotifyConnectionSnapshot>> AuthorizeSpotify,
@@ -16,6 +19,9 @@ internal sealed record SourceSettingsActions(
     Action<string> SetClipboardText,
     Func<CancellationToken, Task<WindowTitleDiscoveryResult>> RefreshWindowTitles);
 
+/// <summary>
+/// Maintains the source-selection draft and transient discovery display state.
+/// </summary>
 internal sealed class SourceSettingsControl : UserControl
 {
     private readonly SourceSettingsActions _actions;

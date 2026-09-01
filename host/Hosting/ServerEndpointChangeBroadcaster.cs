@@ -2,6 +2,9 @@ using System.Threading.Channels;
 
 namespace NowPlayingOverlay.Host.Hosting;
 
+/// <summary>
+/// Fans out the latest endpoint replacement to SSE subscribers.
+/// </summary>
 internal sealed class ServerEndpointChangeBroadcaster
 {
     private readonly object _gate = new();
@@ -52,6 +55,7 @@ internal sealed class ServerEndpointChangeBroadcaster
     }
 }
 
+/// <summary>Owns one endpoint-change channel registration.</summary>
 internal sealed class ServerEndpointChangeSubscription(
     ChannelReader<string> reader,
     Action dispose) : IDisposable

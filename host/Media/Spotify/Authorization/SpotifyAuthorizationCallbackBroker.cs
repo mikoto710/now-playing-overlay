@@ -4,6 +4,9 @@ using System.Text;
 
 namespace NowPlayingOverlay.Host.Media.Spotify.Authorization;
 
+/// <summary>
+/// Matches one pending PKCE attempt to the exact loopback callback.
+/// </summary>
 internal sealed class SpotifyAuthorizationCallbackBroker
 {
     private readonly object _gate = new();

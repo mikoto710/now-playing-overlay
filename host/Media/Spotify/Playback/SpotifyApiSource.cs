@@ -6,6 +6,9 @@ using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Media.Spotify.Playback;
 
+/// <summary>
+/// Polls one authorized Spotify account and publishes complete cached observations.
+/// </summary>
 internal sealed class SpotifyApiSource : IMediaSourceProvider
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2.5);
@@ -37,6 +40,7 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
     private PublishedValue _published = PublishedValue.Unavailable;
     private DateTimeOffset? _lastSuccessAt;
     private CancellationTokenSource? _pollCancellation;
+    // Invalidates results from a previous selection or client ID.
     private long _configurationGeneration;
     private bool _disposeStarted;
     private bool _disposed;
@@ -247,6 +251,8 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
         SpotifyClientId clientId,
         CancellationToken cancellationToken)
     {
+        // 429 uses Retry-After; transient faults back off with a 10-second stale grace.
+        // Authorization faults stop this generation; unexpected faults terminate it.
         await Task.Yield();
         var transientFailures = 0;
         while (!cancellationToken.IsCancellationRequested)
@@ -266,7 +272,10 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
             catch (SpotifyReauthorizationRequiredException error)
             {
                 PublishUnavailable(generation, SourceStatusReason.AuthorizationRequired);
-                _logger.LogWarning(error, "Spotify authorization must be renewed.");
+                _logger.LogWarning(
+                    "Spotify authorization must be renewed. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                    error.GetType().Name,
+                    error.HResult);
                 return;
             }
             catch (SpotifyTokenRequestException error)
@@ -285,7 +294,9 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
                 else
                 {
                     PublishUnavailable(generation, SourceStatusReason.AuthorizationRequired);
-                    _logger.LogWarning(error, "Spotify token refresh failed and requires user action.");
+                    _logger.LogWarning(
+                        "Spotify token refresh failed and requires user action. HTTP status {StatusCode}.",
+                        (int)error.StatusCode);
                     return;
                 }
             }
@@ -293,14 +304,14 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
                 error.FailureKind == SpotifyApiFailureKind.Unauthorized)
             {
                 PublishUnavailable(generation, SourceStatusReason.AuthorizationRequired);
-                _logger.LogWarning(error, "Spotify rejected the refreshed access token.");
+                _logger.LogWarning("Spotify rejected the refreshed access token.");
                 return;
             }
             catch (SpotifyApiRequestException error) when (
                 error.FailureKind == SpotifyApiFailureKind.Forbidden)
             {
                 PublishUnavailable(generation, SourceStatusReason.Forbidden);
-                _logger.LogWarning(error, "Spotify denied currently-playing access.");
+                _logger.LogWarning("Spotify denied currently-playing access.");
                 return;
             }
             catch (SpotifyApiRequestException error) when (
@@ -322,14 +333,20 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
                 transientFailures++;
                 PublishTransientFailure(generation, SourceStatusReason.NetworkUnavailable);
                 nextDelay = GetTransientBackoff(transientFailures);
-                _logger.LogDebug(error, "Spotify currently-playing request timed out.");
+                _logger.LogDebug(
+                    "Spotify currently-playing request timed out. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                    error.GetType().Name,
+                    error.HResult);
             }
             catch (HttpRequestException error)
             {
                 transientFailures++;
                 PublishTransientFailure(generation, SourceStatusReason.NetworkUnavailable);
                 nextDelay = GetTransientBackoff(transientFailures);
-                _logger.LogDebug(error, "Spotify currently-playing request failed over the network.");
+                _logger.LogDebug(
+                    "Spotify currently-playing request failed over the network. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                    error.GetType().Name,
+                    error.HResult);
             }
             catch (Exception error)
             {
@@ -503,7 +520,10 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
                 SourceStatusReason.Faulted);
         }
 
-        _logger.LogError(error, "Spotify media source faulted.");
+        _logger.LogError(
+            "Spotify media source faulted. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+            error.GetType().Name,
+            error.HResult);
         if (notify)
         {
             Changed?.Invoke(this, EventArgs.Empty);

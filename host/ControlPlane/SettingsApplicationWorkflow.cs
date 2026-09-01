@@ -20,9 +20,7 @@ internal sealed record SettingsApplyResult(
     string OverlayUrl);
 
 /// <summary>
-/// Builds and validates one complete settings candidate, prepares the fallible port change,
-/// persists once, then applies deterministic in-memory updates. Once persistence succeeds the
-/// candidate is authoritative; an unexpected runtime apply fault requires a restart to converge.
+/// Validates and persists one complete settings candidate, then applies it to the runtime.
 /// </summary>
 internal sealed class SettingsApplicationWorkflow
 {
@@ -67,6 +65,7 @@ internal sealed class SettingsApplicationWorkflow
         ArgumentNullException.ThrowIfNull(draft.Outputs);
         ArgumentNullException.ThrowIfNull(draft.WindowTitle);
 
+        // Prepare fallible work before persistence. After Save succeeds, the candidate is authoritative.
         var current = GetCurrent();
         var candidate = BuildCandidate(current, draft);
         candidate.Validate();

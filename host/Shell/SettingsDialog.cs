@@ -8,6 +8,9 @@ using NowPlayingOverlay.Host.Outputs;
 
 namespace NowPlayingOverlay.Host.Shell;
 
+/// <summary>
+/// Edits a settings draft; Spotify and Browser Player connection actions remain immediate.
+/// </summary>
 internal sealed class SettingsDialog : Form
 {
     internal const string ProjectUrl = "https://github.com/mikoto710/now-playing-overlay";

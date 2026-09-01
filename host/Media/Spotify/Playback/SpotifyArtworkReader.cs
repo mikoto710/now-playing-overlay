@@ -2,6 +2,9 @@ using NowPlayingOverlay.Host.Artwork;
 
 namespace NowPlayingOverlay.Host.Media.Spotify.Playback;
 
+/// <summary>
+/// Fetches Spotify HTTPS artwork under declared and streamed size limits.
+/// </summary>
 internal sealed class SpotifyArtworkReader : IArtworkReader
 {
     private readonly Uri _artworkUri;

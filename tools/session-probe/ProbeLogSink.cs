@@ -3,6 +3,9 @@ using System.Text.Json.Serialization;
 
 namespace NowPlayingOverlay.SessionProbe;
 
+/// <summary>
+/// Serializes the probe's intentionally privacy-sensitive JSONL records.
+/// </summary>
 internal sealed class ProbeLogSink : IAsyncDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new()

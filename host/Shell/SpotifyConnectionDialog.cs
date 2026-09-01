@@ -3,6 +3,9 @@ using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 
 namespace NowPlayingOverlay.Host.Shell;
 
+/// <summary>
+/// Runs immediate Spotify authorization and credential removal from the Settings UI.
+/// </summary>
 internal sealed class SpotifyConnectionDialog : Form
 {
     private readonly Func<string, bool, CancellationToken, Task<SpotifyConnectionSnapshot>> _authorize;

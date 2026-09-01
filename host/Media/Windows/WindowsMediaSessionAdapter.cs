@@ -5,6 +5,9 @@ using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Media.Windows;
 
+/// <summary>
+/// Maps one owned CsWinRT session binding into complete observations.
+/// </summary>
 internal sealed class WindowsMediaSessionAdapter : IMediaSessionAdapter
 {
     private readonly GlobalSystemMediaTransportControlsSession _session;

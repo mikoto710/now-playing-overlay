@@ -1,35 +1,43 @@
 using System.ComponentModel;
+using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Media.WindowTitles;
 
+/// <summary>
+/// Polls one stable Win32 target and exposes its parsed title as a complete observation.
+/// </summary>
 internal sealed class WindowTitleSource : IMediaSourceProvider
 {
     internal static readonly TimeSpan DefaultPollInterval = TimeSpan.FromSeconds(1);
 
-    private readonly object _gate = new();
+    private readonly object _gate = new(); // Protects settings, selection, status, and fingerprints.
     private readonly IWindowTitleCatalog _catalog;
     private readonly TimeSpan _pollInterval;
+    private readonly ILogger<WindowTitleSource> _logger;
     private readonly CancellationTokenSource _shutdown = new();
     private WindowTitleSettings _settings;
     private SourceDescriptor? _selection;
     private SourceManagerState _state = SourceManagerState.Unconfigured;
     private ObservationFingerprint? _lastFingerprint;
     private Task? _monitor;
+    private bool _faultLogged;
     private bool _disposed;
 
     public WindowTitleSource(
         IWindowTitleCatalog catalog,
         WindowTitleSettings settings,
-        TimeSpan? pollInterval = null)
+        TimeSpan? pollInterval = null,
+        ILogger<WindowTitleSource>? logger = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         settings = settings ?? throw new ArgumentNullException(nameof(settings));
         settings.Validate();
         _settings = settings;
         _pollInterval = pollInterval ?? DefaultPollInterval;
+        _logger = logger ?? NullLogger<WindowTitleSource>.Instance;
         if (_pollInterval <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(pollInterval));
@@ -108,6 +116,7 @@ internal sealed class WindowTitleSource : IMediaSourceProvider
         }
         catch (Exception error) when (error is InvalidOperationException or Win32Exception)
         {
+            RecordFault(error, "discovery");
             SourceManagerState state;
             lock (_gate)
             {
@@ -282,6 +291,7 @@ internal sealed class WindowTitleSource : IMediaSourceProvider
         }
         catch (Exception error) when (error is InvalidOperationException or Win32Exception)
         {
+            RecordFault(error, "polling");
             return Apply(new ProbeResult(
                 SessionObservation.Create(selection, PlaybackState.Unavailable),
                 new SourceManagerState(selection, SourceStatus.Faulted, SourceStatusReason.Faulted),
@@ -295,15 +305,50 @@ internal sealed class WindowTitleSource : IMediaSourceProvider
 
     private ProbeResult Apply(ProbeResult result)
     {
+        var recovered = false;
         lock (_gate)
         {
             if (!_disposed)
             {
+                recovered = _faultLogged && result.State.Status != SourceStatus.Faulted;
+                if (recovered)
+                {
+                    _faultLogged = false;
+                }
+
                 _state = result.State;
             }
         }
 
+        if (recovered)
+        {
+            _logger.LogInformation("Window Title source recovered after a catalog failure.");
+        }
+
         return result;
+    }
+
+    private void RecordFault(Exception error, string operation)
+    {
+        var log = false;
+        lock (_gate)
+        {
+            if (!_faultLogged)
+            {
+                _faultLogged = true;
+                log = true;
+            }
+        }
+
+        if (log)
+        {
+            // Exception messages may contain a full title or executable path; keep only fault shape.
+            _logger.LogError(
+                "Window Title {Operation} failed. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                operation,
+                error.GetType().Name,
+                error.HResult);
+        }
     }
 
     private static bool Matches(

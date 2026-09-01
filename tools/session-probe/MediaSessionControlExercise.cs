@@ -3,6 +3,9 @@ using Windows.Media.Control;
 
 namespace NowPlayingOverlay.SessionProbe;
 
+/// <summary>
+/// Runs the opt-in playback-control exercise against one exact source ID.
+/// </summary>
 internal sealed class MediaSessionControlExercise
 {
     private readonly ProbeLogSink _sink;

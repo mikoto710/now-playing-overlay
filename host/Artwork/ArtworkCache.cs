@@ -2,6 +2,9 @@ using System.Security.Cryptography;
 
 namespace NowPlayingOverlay.Host.Artwork;
 
+/// <summary>
+/// Thread-safe, content-addressed artwork cache with bounded LRU eviction.
+/// </summary>
 internal sealed class ArtworkCache
 {
     private readonly object _gate = new();

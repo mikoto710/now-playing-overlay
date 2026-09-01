@@ -3,6 +3,9 @@ using System.Text;
 
 namespace NowPlayingOverlay.Host.Media.Spotify.Authorization;
 
+/// <summary>
+/// Immutable PKCE material bound to the exact IPv4 loopback callback.
+/// </summary>
 internal sealed record SpotifyAuthorizationRequest
 {
     public const string RequiredScope = "user-read-currently-playing";

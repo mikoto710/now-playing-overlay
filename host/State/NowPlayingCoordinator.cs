@@ -7,8 +7,12 @@ using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.State;
 
+/// <summary>
+/// Serializes source reads, Store commits, and asynchronous artwork completion.
+/// </summary>
 internal sealed class NowPlayingCoordinator : INowPlayingRuntime
 {
+    // Protects lifecycle, generation, cancellation, and tracked artwork tasks.
     private readonly object _lifecycleGate = new();
     private readonly ISessionSource _source;
     private readonly NowPlayingStore _store;
@@ -36,7 +40,7 @@ internal sealed class NowPlayingCoordinator : INowPlayingRuntime
     private Task? _signalPump;
     private Task? _worker;
     private Exception? _lastError;
-    private long _generation;
+    private long _generation; // Rejects late reads and artwork completions.
     private long _pendingReadGeneration;
     private long _artworkRevision;
     private string? _previousArtworkId;
@@ -460,7 +464,11 @@ internal sealed class NowPlayingCoordinator : INowPlayingRuntime
                 || previous.GetType() != error.GetType()
                 || !string.Equals(previous.Message, error.Message, StringComparison.Ordinal)))
         {
-            _logger.LogError(error, "The now-playing coordinator could not read the media session.");
+            // Provider exception messages may contain media text, paths, or remote request details.
+            _logger.LogError(
+                "The now-playing coordinator could not read the media session. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                error.GetType().Name,
+                error.HResult);
         }
         else if (error is null && previous is not null)
         {

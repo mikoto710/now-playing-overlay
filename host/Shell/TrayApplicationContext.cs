@@ -8,6 +8,9 @@ using NowPlayingOverlay.Host.Media.Sources;
 
 namespace NowPlayingOverlay.Host.Shell;
 
+/// <summary>
+/// WinForms tray adapter that forwards user actions to typed control-plane services.
+/// </summary>
 internal sealed class TrayApplicationContext : ApplicationContext
 {
     private readonly TrayMenuController _controller;
@@ -271,7 +274,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
             or ExternalException
             or InvalidOperationException)
         {
-            _logger.LogError(error, "Could not {ActionDescription}.", description);
+            _logger.LogError(
+                "Could not {ActionDescription}. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                description,
+                error.GetType().Name,
+                error.HResult);
             MessageBox.Show(
                 $"Could not {description}. Open the log directory for details.",
                 "Now Playing Overlay",
@@ -293,7 +300,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
             or InvalidOperationException
             or HttpListenerException)
         {
-            _logger.LogError(error, "Could not {ActionDescription}.", description);
+            _logger.LogError(
+                "Could not {ActionDescription}. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                description,
+                error.GetType().Name,
+                error.HResult);
             MessageBox.Show(
                 $"Could not {description}. The current port remains active. Open the log directory for details.",
                 "Now Playing Overlay",

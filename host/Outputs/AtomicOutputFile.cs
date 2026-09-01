@@ -2,6 +2,9 @@ using System.Text;
 
 namespace NowPlayingOverlay.Host.Outputs;
 
+/// <summary>
+/// Flushes a sibling temporary file before atomically replacing the target.
+/// </summary>
 internal sealed class AtomicOutputFile
 {
     private static readonly UTF8Encoding Utf8WithoutBom = new(

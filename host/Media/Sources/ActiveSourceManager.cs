@@ -2,6 +2,9 @@ using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Media.Sources;
 
+/// <summary>
+/// Owns all providers and exposes exactly one selected provider as an <see cref="ISessionSource"/>.
+/// </summary>
 internal sealed class ActiveSourceManager : ISessionSource, ISessionSourceStatus
 {
     private readonly object _gate = new();
@@ -11,6 +14,7 @@ internal sealed class ActiveSourceManager : ISessionSource, ISessionSourceStatus
     private IMediaSourceProvider? _activeProvider;
     private SourceDescriptor? _selection;
     private CancellationTokenSource? _activeReadCancellation;
+    // Rejects reads and follow-ups created for an earlier selection.
     private long _selectionGeneration;
     private bool _transitionPending;
     private bool _disposeStarted;
@@ -283,7 +287,8 @@ internal sealed class ActiveSourceManager : ISessionSource, ISessionSourceStatus
 
     private async Task FollowUpRefreshAsync(long generation, CancellationToken cancellationToken)
     {
-        // Let the coordinator commit the clearing transition before requesting the selected source.
+        // There is no clear-commit acknowledgement yet. This delay is generation/shutdown bounded;
+        // remove it only when the coordinator exposes such an acknowledgement.
         await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken);
         lock (_gate)
         {

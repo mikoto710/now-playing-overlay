@@ -68,11 +68,17 @@ internal sealed class OverlayHttpRequestDispatcher
         }
         catch (Exception error) when (error is IOException or HttpListenerException)
         {
-            _logger.LogDebug(error, "The loopback client disconnected while a response was in progress.");
+            _logger.LogDebug(
+                "The loopback client disconnected while a response was in progress. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                error.GetType().Name,
+                error.HResult);
         }
         catch (Exception error)
         {
-            _logger.LogError(error, "The loopback HTTP request failed.");
+            _logger.LogError(
+                "The loopback HTTP request failed. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                error.GetType().Name,
+                error.HResult);
             TrySetInternalServerError(response);
         }
         finally

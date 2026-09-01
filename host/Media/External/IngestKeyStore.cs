@@ -2,6 +2,9 @@ using System.Security.Cryptography;
 
 namespace NowPlayingOverlay.Host.Media.External;
 
+/// <summary>
+/// Owns one Browser Producer key and compares candidates in fixed time.
+/// </summary>
 internal sealed class IngestKey : IDisposable
 {
     public const int ByteLength = 32;
@@ -101,6 +104,9 @@ internal sealed class IngestKey : IDisposable
     }
 }
 
+/// <summary>
+/// Persists the Browser Producer key with DPAPI CurrentUser and atomic replacement.
+/// </summary>
 internal sealed class IngestKeyStore
 {
     private const byte CurrentFormatVersion = 1;

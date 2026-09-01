@@ -1,5 +1,8 @@
 namespace NowPlayingOverlay.Host.Models;
 
+/// <summary>
+/// Validated playback position, duration, and sampling timestamp.
+/// </summary>
 internal sealed record PlaybackTimeline
 {
     private PlaybackTimeline(

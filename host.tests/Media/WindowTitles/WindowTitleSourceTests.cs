@@ -6,6 +6,7 @@ using NowPlayingOverlay.Host.Models;
 using NowPlayingOverlay.Host.Outputs;
 using NowPlayingOverlay.Host.State;
 using NowPlayingOverlay.Host.Tests.TestInfrastructure;
+using Microsoft.Extensions.Logging;
 
 namespace NowPlayingOverlay.Host.Tests.Media.WindowTitles;
 
@@ -226,6 +227,31 @@ public sealed class WindowTitleSourceTests
         Assert.Equal(SourceStatus.Faulted, source.GetState().Status);
     }
 
+    [Fact]
+    public async Task CatalogFaultWritesOneSanitizedLogWithoutTitleOrExecutablePath()
+    {
+        var target = Target();
+        const string sensitiveText = @"Secret Song C:\Private\Player.exe";
+        var catalog = new FakeCatalog
+        {
+            Error = new System.ComponentModel.Win32Exception(5, sensitiveText),
+        };
+        var logger = new CapturingLogger<WindowTitleSource>();
+        await using var source = new WindowTitleSource(
+            catalog,
+            new WindowTitleSettings { Target = target },
+            logger: logger);
+        source.SetSelection(Descriptor(target));
+
+        _ = await source.RefreshSourcesAsync();
+        _ = await source.ReadAsync(CancellationToken.None);
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Contains("Win32Exception", entry, StringComparison.Ordinal);
+        Assert.DoesNotContain(sensitiveText, entry, StringComparison.Ordinal);
+        Assert.DoesNotContain(target.ExecutablePath!, entry, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static WindowTitleSource CreateSource(
         FakeCatalog catalog,
         WindowTitleTargetSettings target,
@@ -309,6 +335,28 @@ public sealed class WindowTitleSourceTests
         {
             Interlocked.Increment(ref _postCount);
             ThreadPool.QueueUserWorkItem(_ => callback(state));
+        }
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<string> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel >= LogLevel.Error)
+            {
+                Entries.Add(formatter(state, exception));
+            }
         }
     }
 }

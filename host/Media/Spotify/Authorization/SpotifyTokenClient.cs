@@ -4,6 +4,9 @@ using System.Text.Json.Serialization;
 
 namespace NowPlayingOverlay.Host.Media.Spotify.Authorization;
 
+/// <summary>
+/// Bounded OAuth client for PKCE exchange and token refresh.
+/// </summary>
 internal sealed class SpotifyTokenClient
 {
     private const int MaximumResponseBytes = 64 * 1024;

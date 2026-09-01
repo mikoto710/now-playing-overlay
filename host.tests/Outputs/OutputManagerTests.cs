@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Media.Sources;
@@ -232,6 +233,7 @@ public sealed class OutputManagerTests
             FileAccess.Read,
             FileShare.Read);
         var store = CreateStore();
+        var logger = new RecordingLogger<OutputManager>();
         await using var manager = new OutputManager(
             store,
             new ArtworkCache(),
@@ -247,7 +249,8 @@ public sealed class OutputManagerTests
                     Enabled = true,
                     FilePath = jsonPath,
                 },
-            });
+            },
+            logger: logger);
         manager.Start();
         store.TryCommit(
             SourceDescriptor.WindowsMedia("Player.App"),
@@ -258,12 +261,18 @@ public sealed class OutputManagerTests
             out _);
 
         await WaitForAsync(() => File.Exists(jsonPath)
-            && manager.GetStatus().FaultedCount == 1);
+            && manager.GetStatus().FaultedCount == 1
+            && logger.Entries.Count == 1);
 
         Assert.Equal("old", await File.ReadAllTextAsync(lockedPath));
         Assert.Equal(3, JsonDocument.Parse(
             await File.ReadAllTextAsync(jsonPath)).RootElement
             .GetProperty("protocolVersion").GetInt32());
+        var entry = Assert.Single(logger.Entries);
+        Assert.Contains("Error type", entry, StringComparison.Ordinal);
+        Assert.Contains("HRESULT", entry, StringComparison.Ordinal);
+        Assert.DoesNotContain(lockedPath, entry, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("being used by another process", entry, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -353,6 +362,34 @@ public sealed class OutputManagerTests
         catch (IOException)
         {
             return 0;
+        }
+    }
+
+    private sealed class RecordingLogger<T> : ILogger<T>
+    {
+        public List<string> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+        {
+            return null;
+        }
+
+        public bool IsEnabled(LogLevel logLevel)
+        {
+            return true;
+        }
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel >= LogLevel.Error)
+            {
+                Entries.Add(formatter(state, exception));
+            }
         }
     }
 }

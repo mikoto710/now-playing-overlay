@@ -4,6 +4,9 @@ using Windows.Media.Control;
 
 namespace NowPlayingOverlay.SessionProbe;
 
+/// <summary>
+/// Owns diagnostic GSMTC subscriptions and serializes catalog and per-source reads.
+/// </summary>
 internal sealed class MediaSessionProbe : IAsyncDisposable
 {
     private readonly ProbeLogSink _sink;

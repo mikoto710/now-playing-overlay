@@ -8,6 +8,9 @@ using NowPlayingOverlay.Host.Shell;
 
 namespace NowPlayingOverlay.Host;
 
+/// <summary>
+/// Process bootstrap, WinForms message loop, and final runtime cleanup.
+/// </summary>
 internal static class Program
 {
     private const string ApplicationTitle = "Now Playing Overlay";
@@ -95,10 +98,10 @@ internal static class Program
         }
         catch (Exception error)
         {
-            logFile.Write(
+            WriteSanitizedFailure(
+                logFile,
                 LogLevel.Critical,
                 "Bootstrap",
-                default,
                 "The application could not start or continue running.",
                 error);
             StopAndDispose(runtime, logFile);
@@ -137,10 +140,10 @@ internal static class Program
         }
         catch (Exception error)
         {
-            logFile.Write(
+            WriteSanitizedFailure(
+                logFile,
                 LogLevel.Error,
                 "Bootstrap",
-                default,
                 "The application did not stop cleanly.",
                 error);
         }
@@ -156,10 +159,10 @@ internal static class Program
         }
         catch (Exception error)
         {
-            logFile.Write(
+            WriteSanitizedFailure(
+                logFile,
                 LogLevel.Error,
                 "Bootstrap",
-                default,
                 "The application host could not be disposed cleanly.",
                 error);
         }
@@ -171,10 +174,10 @@ internal static class Program
     {
         Application.ThreadException += (_, eventArgs) =>
         {
-            logFile.Write(
+            WriteSanitizedFailure(
+                logFile,
                 LogLevel.Critical,
                 "Unhandled",
-                default,
                 "An unhandled tray thread exception occurred.",
                 eventArgs.Exception);
             ShowMessage("An unexpected error occurred. See the logs for details.", MessageBoxIcon.Error);
@@ -182,19 +185,20 @@ internal static class Program
         };
         AppDomain.CurrentDomain.UnhandledException += (_, eventArgs) =>
         {
-            logFile.Write(
+            WriteSanitizedFailure(
+                logFile,
                 LogLevel.Critical,
                 "Unhandled",
-                default,
                 "An unhandled application exception occurred.",
-                eventArgs.ExceptionObject as Exception);
+                eventArgs.ExceptionObject as Exception
+                    ?? new InvalidOperationException("A non-exception object was thrown."));
         };
         TaskScheduler.UnobservedTaskException += (_, eventArgs) =>
         {
-            logFile.Write(
+            WriteSanitizedFailure(
+                logFile,
                 LogLevel.Error,
                 "Unhandled",
-                default,
                 "An unobserved background task exception occurred.",
                 eventArgs.Exception);
             eventArgs.SetObserved();
@@ -259,10 +263,10 @@ internal static class Program
             }
             catch (Exception saveError) when (saveError is IOException or UnauthorizedAccessException)
             {
-                logFile.Write(
+                WriteSanitizedFailure(
+                    logFile,
                     LogLevel.Error,
                     "Bootstrap",
-                    default,
                     "The replacement port could not be saved.",
                     saveError);
                 ShowMessage("The port could not be saved. See the logs for details.", MessageBoxIcon.Error);
@@ -283,6 +287,21 @@ internal static class Program
         }
 
         return false;
+    }
+
+    private static void WriteSanitizedFailure(
+        BoundedLogFile logFile,
+        LogLevel level,
+        string category,
+        string message,
+        Exception error)
+    {
+        var root = error.GetBaseException();
+        logFile.Write(
+            level,
+            category,
+            default,
+            $"{message} Error type {root.GetType().Name}, HRESULT {root.HResult}.");
     }
 
     private static void ShowMessage(string message, MessageBoxIcon icon)

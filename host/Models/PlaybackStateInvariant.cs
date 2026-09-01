@@ -2,6 +2,9 @@ using NowPlayingOverlay.Host.Media.Sources;
 
 namespace NowPlayingOverlay.Host.Models;
 
+/// <summary>
+/// Shared legality checks for provider observations and committed snapshots.
+/// </summary>
 internal static class PlaybackStateInvariant
 {
     public static void Validate(

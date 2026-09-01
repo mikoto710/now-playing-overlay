@@ -100,7 +100,11 @@ internal sealed class LoopbackListenerEndpoint
             }
             catch (Exception error)
             {
-                _logger.LogError(error, "The loopback HTTP accept loop failed on port {Port}.", Port);
+                _logger.LogError(
+                    "The loopback HTTP accept loop failed on port {Port}. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                    Port,
+                    error.GetType().Name,
+                    error.HResult);
                 break;
             }
 

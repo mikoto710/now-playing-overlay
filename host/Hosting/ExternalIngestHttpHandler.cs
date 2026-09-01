@@ -72,6 +72,9 @@ internal enum ExternalIngestRequestKind
     Artwork,
 }
 
+/// <summary>
+/// Enforces Browser Producer authentication, request limits, and lease/revision commits.
+/// </summary>
 internal sealed class ExternalIngestHttpHandler : IDisposable
 {
     public const string StatePath = "/ingest/v1/state";
@@ -80,6 +83,7 @@ internal sealed class ExternalIngestHttpHandler : IDisposable
     public const string ProducerIdHeader = "X-NPO-Producer-Id";
     public const string ProducerRevisionHeader = "X-NPO-Producer-Revision";
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
+    // Protects the key and generation used to reject slow requests after rotation.
     private readonly object _keyGate = new();
     private IngestKey? _key;
     private long _keyGeneration;

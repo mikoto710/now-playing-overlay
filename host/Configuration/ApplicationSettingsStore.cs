@@ -5,6 +5,9 @@ using NowPlayingOverlay.Host.Outputs;
 
 namespace NowPlayingOverlay.Host.Configuration;
 
+/// <summary>
+/// Serializes compatible Settings JSON loads and atomic saves.
+/// </summary>
 internal sealed class ApplicationSettingsStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -132,7 +135,7 @@ internal sealed class ApplicationSettingsStore
         {
             return new ApplicationSettingsLoadResult(
                 CreateDefaultSettings(),
-                $"Could not read '{_filePath}'; the default settings will be used. {error.Message}");
+                BuildReadWarning("Could not read settings; the defaults will be used.", error));
         }
     }
 
@@ -241,8 +244,9 @@ internal sealed class ApplicationSettingsStore
         }
         catch (Exception error) when (error is JsonException or InvalidDataException)
         {
-            warning =
-                $"Could not read the appearance in '{_filePath}'; the default appearance will be used. {error.Message}";
+            warning = BuildReadWarning(
+                "Could not read the appearance; the default appearance will be used.",
+                error);
             return new AppearanceSettings();
         }
     }
@@ -264,8 +268,9 @@ internal sealed class ApplicationSettingsStore
         }
         catch (Exception error) when (error is JsonException or InvalidDataException)
         {
-            warning =
-                $"Could not read the Window Title settings in '{_filePath}'; Window Title will remain unconfigured. {error.Message}";
+            warning = BuildReadWarning(
+                "Could not read the Window Title settings; Window Title will remain unconfigured.",
+                error);
             return new WindowTitleSettings();
         }
     }
@@ -295,8 +300,9 @@ internal sealed class ApplicationSettingsStore
         }
         catch (Exception error) when (error is JsonException or InvalidDataException)
         {
-            warning =
-                $"Could not read the outputs in '{_filePath}'; outputs will remain disabled. {error.Message}";
+            warning = BuildReadWarning(
+                "Could not read the outputs; outputs will remain disabled.",
+                error);
             return new OutputSettings();
         }
     }
@@ -330,6 +336,11 @@ internal sealed class ApplicationSettingsStore
     {
         var present = warnings.Where(warning => !string.IsNullOrEmpty(warning)).ToArray();
         return present.Length == 0 ? null : string.Join(" ", present);
+    }
+
+    private static string BuildReadWarning(string message, Exception error)
+    {
+        return $"{message} Error type {error.GetType().Name}, HRESULT {error.HResult}.";
     }
 
     private void SaveCore(ApplicationSettings settings)

@@ -2,6 +2,9 @@ using NowPlayingOverlay.Host.Configuration;
 
 namespace NowPlayingOverlay.Host.Hosting;
 
+/// <summary>
+/// Thread-safe authority for the effective appearance served by HTTP.
+/// </summary>
 internal sealed class AppearanceState
 {
     private readonly object _gate = new();

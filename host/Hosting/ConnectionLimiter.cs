@@ -1,5 +1,8 @@
 namespace NowPlayingOverlay.Host.Hosting;
 
+/// <summary>
+/// Lock-free connection limit with idempotent leases.
+/// </summary>
 internal sealed class ConnectionLimiter(int maximumConnections)
 {
     private int _activeConnections;
