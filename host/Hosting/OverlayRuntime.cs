@@ -1,6 +1,7 @@
 using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Configuration;
+using NowPlayingOverlay.Host.Diagnostics;
 
 namespace NowPlayingOverlay.Host.Hosting;
 
@@ -227,10 +228,9 @@ internal sealed class OverlayRuntime : IAsyncDisposable
         catch (Exception error)
         {
             _logger.LogError(
-                "Could not stop the {RuntimeComponent}. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                "Could not stop the {RuntimeComponent}. {Diagnostic}",
                 component,
-                error.GetType().Name,
-                error.HResult);
+                SanitizedExceptionDiagnostics.Create(error));
             firstError ??= error;
         }
 
@@ -249,10 +249,9 @@ internal sealed class OverlayRuntime : IAsyncDisposable
         catch (Exception error)
         {
             _logger.LogError(
-                "Could not dispose the {RuntimeComponent}. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                "Could not dispose the {RuntimeComponent}. {Diagnostic}",
                 componentName,
-                error.GetType().Name,
-                error.HResult);
+                SanitizedExceptionDiagnostics.Create(error));
             firstError ??= error;
         }
 

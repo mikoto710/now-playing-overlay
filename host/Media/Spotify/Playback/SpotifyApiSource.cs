@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
+using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Models;
@@ -521,9 +522,8 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
         }
 
         _logger.LogError(
-            "Spotify media source faulted. Error type {ErrorType}, HRESULT {ErrorHResult}.",
-            error.GetType().Name,
-            error.HResult);
+            "Spotify media source faulted. {Diagnostic}",
+            SanitizedExceptionDiagnostics.Create(error));
         if (notify)
         {
             Changed?.Invoke(this, EventArgs.Empty);

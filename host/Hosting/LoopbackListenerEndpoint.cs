@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using Microsoft.Extensions.Logging;
 using NowPlayingOverlay.Host.Configuration;
+using NowPlayingOverlay.Host.Diagnostics;
 
 namespace NowPlayingOverlay.Host.Hosting;
 
@@ -101,10 +102,9 @@ internal sealed class LoopbackListenerEndpoint
             catch (Exception error)
             {
                 _logger.LogError(
-                    "The loopback HTTP accept loop failed on port {Port}. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                    "The loopback HTTP accept loop failed on port {Port}. {Diagnostic}",
                     Port,
-                    error.GetType().Name,
-                    error.HResult);
+                    SanitizedExceptionDiagnostics.Create(error));
                 break;
             }
 

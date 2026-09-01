@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Configuration;
+using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Models;
 using NowPlayingOverlay.Host.Protocol;
@@ -588,10 +589,9 @@ internal sealed class OutputManager : IOutputRuntime
 
         // Target paths and rendered media text are intentionally omitted, including exception text.
         _logger.LogError(
-            "{OutputMessage} Error type {ErrorType}, HRESULT {ErrorHResult}.",
+            "{OutputMessage} {Diagnostic}",
             message,
-            error.GetType().Name,
-            error.HResult);
+            SanitizedExceptionDiagnostics.Create(error));
     }
 
     private static bool IsOutputFailure(Exception error, CancellationToken cancellationToken)
@@ -649,10 +649,9 @@ internal sealed class OutputManager : IOutputRuntime
         if (shouldLog)
         {
             _logger.LogError(
-                "{OutputMessage} Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                "{OutputMessage} {Diagnostic}",
                 message,
-                error.GetType().Name,
-                error.HResult);
+                SanitizedExceptionDiagnostics.Create(error));
         }
     }
 }

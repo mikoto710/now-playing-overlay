@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Outputs;
 
@@ -340,7 +341,7 @@ internal sealed class ApplicationSettingsStore
 
     private static string BuildReadWarning(string message, Exception error)
     {
-        return $"{message} Error type {error.GetType().Name}, HRESULT {error.HResult}.";
+        return $"{message} {SanitizedExceptionDiagnostics.Create(error)}";
     }
 
     private void SaveCore(ApplicationSettings settings)

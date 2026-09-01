@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
 
@@ -549,9 +550,8 @@ internal sealed class WindowsMediaSource : IMediaSourceProvider
             }
 
             _logger.LogError(
-                "Failed to refresh Windows media sessions. Error type {ErrorType}, HRESULT {ErrorHResult}.",
-                error.GetType().Name,
-                error.HResult);
+                "Failed to refresh Windows media sessions. {Diagnostic}",
+                SanitizedExceptionDiagnostics.Create(error));
         }
 
         if (notify)
@@ -739,9 +739,8 @@ internal sealed class WindowsMediaSource : IMediaSourceProvider
         }
 
         _logger.LogError(
-            "Windows media source faulted. Error type {ErrorType}, HRESULT {ErrorHResult}.",
-            error.GetType().Name,
-            error.HResult);
+            "Windows media source faulted. {Diagnostic}",
+            SanitizedExceptionDiagnostics.Create(error));
     }
 
     private bool HasBindingChanged(

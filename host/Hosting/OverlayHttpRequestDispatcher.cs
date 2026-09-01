@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using NowPlayingOverlay.Host.Configuration;
+using NowPlayingOverlay.Host.Diagnostics;
 
 namespace NowPlayingOverlay.Host.Hosting;
 
@@ -76,9 +77,8 @@ internal sealed class OverlayHttpRequestDispatcher
         catch (Exception error)
         {
             _logger.LogError(
-                "The loopback HTTP request failed. Error type {ErrorType}, HRESULT {ErrorHResult}.",
-                error.GetType().Name,
-                error.HResult);
+                "The loopback HTTP request failed. {Diagnostic}",
+                SanitizedExceptionDiagnostics.Create(error));
             TrySetInternalServerError(response);
         }
         finally

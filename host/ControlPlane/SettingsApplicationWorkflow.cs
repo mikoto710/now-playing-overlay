@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Configuration;
+using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
@@ -93,11 +94,11 @@ internal sealed class SettingsApplicationWorkflow
         {
             // Settings may contain media text, templates, and paths; log only sanitized fault data.
             _logger.LogError(
-                "Persisted settings could not be fully applied at runtime. Error type {ErrorType}, HRESULT {ErrorHResult}.",
-                error.GetType().Name,
-                error.HResult);
+                "Persisted settings could not be fully applied at runtime. {Diagnostic}",
+                SanitizedExceptionDiagnostics.Create(error));
             throw new InvalidOperationException(
-                "Settings were saved, but the running application could not apply them completely. Restart Now Playing Overlay to load the persisted settings.");
+                "Settings were saved, but the running application could not apply them completely. Restart Now Playing Overlay to load the persisted settings.",
+                error);
         }
 
         return new SettingsApplyResult(

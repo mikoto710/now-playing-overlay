@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Artwork;
+using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
@@ -466,9 +467,8 @@ internal sealed class NowPlayingCoordinator : INowPlayingRuntime
         {
             // Provider exception messages may contain media text, paths, or remote request details.
             _logger.LogError(
-                "The now-playing coordinator could not read the media session. Error type {ErrorType}, HRESULT {ErrorHResult}.",
-                error.GetType().Name,
-                error.HResult);
+                "The now-playing coordinator could not read the media session. {Diagnostic}",
+                SanitizedExceptionDiagnostics.Create(error));
         }
         else if (error is null && previous is not null)
         {

@@ -4,8 +4,8 @@ using NowPlayingOverlay.Host.Media.External;
 namespace NowPlayingOverlay.Host.ControlPlane;
 
 /// <summary>
-/// Owns Browser Player connection-code export and atomic key rotation. Rotation persists the new
-/// key before transferring it to the HTTP handler, which revokes the current lease under its gate.
+/// Exports Browser Player connection codes and persists replacement keys before runtime transfer.
+/// A failed transfer converges to the persisted key on restart.
 /// </summary>
 internal sealed class BrowserPlayerConnectionService
 {

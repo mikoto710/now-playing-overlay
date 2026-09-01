@@ -296,12 +296,11 @@ internal static class Program
         string message,
         Exception error)
     {
-        var root = error.GetBaseException();
         logFile.Write(
             level,
             category,
             default,
-            $"{message} Error type {root.GetType().Name}, HRESULT {root.HResult}.");
+            $"{message} {SanitizedExceptionDiagnostics.Create(error)}");
     }
 
     private static void ShowMessage(string message, MessageBoxIcon icon)

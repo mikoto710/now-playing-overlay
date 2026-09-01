@@ -252,6 +252,30 @@ public sealed class WindowTitleSourceTests
         Assert.DoesNotContain(target.ExecutablePath!, entry, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task SuccessfulDiscoveryResetsFaultLogDeduplication()
+    {
+        var target = Target();
+        var catalog = new FakeCatalog
+        {
+            Error = new System.ComponentModel.Win32Exception(5, "first failure"),
+        };
+        var logger = new CapturingLogger<WindowTitleSource>();
+        await using var source = new WindowTitleSource(
+            catalog,
+            new WindowTitleSettings { Target = target },
+            logger: logger);
+
+        _ = await source.RefreshSourcesAsync();
+        catalog.Error = null;
+        catalog.SetWindows(new WindowTitleWindow(target, "Recovered"));
+        _ = await source.RefreshSourcesAsync();
+        catalog.Error = new System.ComponentModel.Win32Exception(5, "second failure");
+        _ = await source.RefreshSourcesAsync();
+
+        Assert.Equal(2, logger.Entries.Count);
+    }
+
     private static WindowTitleSource CreateSource(
         FakeCatalog catalog,
         WindowTitleTargetSettings target,
@@ -301,7 +325,7 @@ public sealed class WindowTitleSourceTests
         private readonly object _gate = new();
         private IReadOnlyList<WindowTitleWindow> _windows = windows;
 
-        public Exception? Error { get; init; }
+        public Exception? Error { get; set; }
 
         public IReadOnlyList<WindowTitleWindow> GetWindows()
         {

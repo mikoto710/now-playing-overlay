@@ -269,8 +269,8 @@ public sealed class OutputManagerTests
             await File.ReadAllTextAsync(jsonPath)).RootElement
             .GetProperty("protocolVersion").GetInt32());
         var entry = Assert.Single(logger.Entries);
-        Assert.Contains("Error type", entry, StringComparison.Ordinal);
-        Assert.Contains("HRESULT", entry, StringComparison.Ordinal);
+        Assert.Contains("Diagnostic ", entry, StringComparison.Ordinal);
+        Assert.Contains("HRESULT=", entry, StringComparison.Ordinal);
         Assert.DoesNotContain(lockedPath, entry, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("being used by another process", entry, StringComparison.OrdinalIgnoreCase);
     }

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Configuration;
+using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
 
@@ -133,6 +134,21 @@ internal sealed class WindowTitleSource : IMediaSourceProvider
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+        var recovered = false;
+        lock (_gate)
+        {
+            if (_faultLogged)
+            {
+                _faultLogged = false;
+                recovered = true;
+            }
+        }
+
+        if (recovered)
+        {
+            _logger.LogInformation("Window Title discovery recovered after a catalog failure.");
+        }
+
         var candidates = windows
             .GroupBy(window => window.Target.InstanceId, StringComparer.Ordinal)
             .Select(group =>
@@ -342,12 +358,11 @@ internal sealed class WindowTitleSource : IMediaSourceProvider
 
         if (log)
         {
-            // Exception messages may contain a full title or executable path; keep only fault shape.
+            // Exception messages may contain a full title or executable path.
             _logger.LogError(
-                "Window Title {Operation} failed. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                "Window Title {Operation} failed. {Diagnostic}",
                 operation,
-                error.GetType().Name,
-                error.HResult);
+                SanitizedExceptionDiagnostics.Create(error));
         }
     }
 

@@ -505,7 +505,8 @@ public sealed class ApplicationSettingsStoreTests
         Assert.NotNull(result.Warning);
         Assert.DoesNotContain(path, result.Warning, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(privateValue, result.Warning, StringComparison.Ordinal);
-        Assert.Contains("Error type", result.Warning, StringComparison.Ordinal);
+        Assert.Contains("Diagnostic ", result.Warning, StringComparison.Ordinal);
+        Assert.Contains("JsonException", result.Warning, StringComparison.Ordinal);
     }
 
     [Fact]
