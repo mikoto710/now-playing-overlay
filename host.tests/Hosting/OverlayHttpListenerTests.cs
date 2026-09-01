@@ -192,4 +192,43 @@ public sealed partial class OverlayHttpTests
         Assert.Equal(HttpStatusCode.OK, oldHealth.StatusCode);
         await Assert.ThrowsAsync<HttpRequestException>(() => candidateClient.GetAsync("/health"));
     }
+
+    [Fact]
+    public async Task RebindAndDisposeCloseEveryTrackedEndpoint()
+    {
+        var host = await TestOverlayHost.StartAsync();
+        var candidatePort = ReservePort();
+        var persistedPort = 0;
+        using var releasePersistence = new ManualResetEventSlim();
+        var persistenceEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            var rebind = Task.Run(() => host.HttpServer.RebindAsync(
+                candidatePort,
+                () =>
+                {
+                    persistedPort = candidatePort;
+                    persistenceEntered.TrySetResult();
+                    releasePersistence.Wait();
+                }));
+            await persistenceEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            var dispose = host.HttpServer.DisposeAsync().AsTask();
+            Assert.False(dispose.IsCompleted);
+            releasePersistence.Set();
+            await Task.WhenAll(rebind, dispose);
+
+            Assert.Equal(candidatePort, persistedPort);
+            using var oldClient = CreateClient(host.Port);
+            using var candidateClient = CreateClient(candidatePort);
+            await Assert.ThrowsAsync<HttpRequestException>(() => oldClient.GetAsync("/health"));
+            await Assert.ThrowsAsync<HttpRequestException>(() => candidateClient.GetAsync("/health"));
+        }
+        finally
+        {
+            releasePersistence.Set();
+            await host.DisposeAsync();
+        }
+    }
 }

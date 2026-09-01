@@ -143,40 +143,47 @@ internal sealed class OverlayHttpServer : IOverlayHttpRuntime
             }
 
             var candidate = CreateEndpoint(newPort);
+            var candidateStarted = false;
+            var candidateCommitted = false;
             try
             {
                 candidate.Start();
+                candidateStarted = true;
             }
             catch
             {
                 candidate.CloseAfterFailedStart();
                 throw;
             }
+
             try
             {
                 // Persist only after the new prefix is live; a save failure must leave the old endpoint authoritative.
                 persistPort();
-            }
-            catch
-            {
-                await candidate.StopAsync();
-                throw;
-            }
 
-            lock (_gate)
-            {
-                ObjectDisposedException.ThrowIf(_disposed, this);
-                _endpoints.Add(candidate);
-                _currentEndpoint = candidate;
-            }
+                lock (_gate)
+                {
+                    ObjectDisposedException.ThrowIf(_disposed, this);
+                    _endpoints.Add(candidate);
+                    _currentEndpoint = candidate;
+                    candidateCommitted = true;
+                }
 
-            var overlayUrl = OverlayEndpoint.BuildUrl(newPort);
-            _endpointChanges.Publish(overlayUrl);
-            _logger.LogInformation(
-                "Moved the loopback endpoint from port {OldPort} to {NewPort}; the old endpoint remains during the migration grace period.",
-                previous.Port,
-                newPort);
-            TrackRetirement(RetireEndpointAsync(previous, _options.PortRebindGracePeriod));
+                var overlayUrl = OverlayEndpoint.BuildUrl(newPort);
+                _endpointChanges.Publish(overlayUrl);
+                _logger.LogInformation(
+                    "Moved the loopback endpoint from port {OldPort} to {NewPort}; the old endpoint remains during the migration grace period.",
+                    previous.Port,
+                    newPort);
+                TrackRetirement(RetireEndpointAsync(previous, _options.PortRebindGracePeriod));
+            }
+            finally
+            {
+                if (candidateStarted && !candidateCommitted)
+                {
+                    await candidate.StopAsync();
+                }
+            }
         }
         finally
         {
@@ -189,29 +196,15 @@ internal sealed class OverlayHttpServer : IOverlayHttpRuntime
         await _rebindGate.WaitAsync(cancellationToken);
         try
         {
-            LoopbackListenerEndpoint[] endpoints;
-            Task[] retirements;
             lock (_gate)
             {
-                if (!_started)
+                if (_disposed)
                 {
                     return;
                 }
-
-                _started = false;
-                _shutdown.Cancel();
-                endpoints = _endpoints.ToArray();
-                retirements = _retirements.ToArray();
             }
 
-            await Task.WhenAll(endpoints.Select(endpoint => endpoint.StopAsync()));
-            try
-            {
-                await Task.WhenAll(retirements).WaitAsync(cancellationToken);
-            }
-            catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
-            {
-            }
+            await StopCoreAsync(cancellationToken);
         }
         finally
         {
@@ -221,20 +214,54 @@ internal sealed class OverlayHttpServer : IOverlayHttpRuntime
 
     public async ValueTask DisposeAsync()
     {
+        await _rebindGate.WaitAsync();
+        try
+        {
+            lock (_gate)
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+            }
+
+            await StopCoreAsync(CancellationToken.None);
+            _externalIngestHandler?.Dispose();
+            _shutdown.Dispose();
+        }
+        finally
+        {
+            _rebindGate.Release();
+        }
+    }
+
+    private async Task StopCoreAsync(CancellationToken cancellationToken)
+    {
+        LoopbackListenerEndpoint[] endpoints;
+        Task[] retirements;
         lock (_gate)
         {
-            if (_disposed)
+            if (!_started)
             {
                 return;
             }
 
-            _disposed = true;
+            _started = false;
+            _shutdown.Cancel();
+            endpoints = _endpoints.ToArray();
+            retirements = _retirements.ToArray();
         }
 
-        await StopAsync();
-        _externalIngestHandler?.Dispose();
-        _shutdown.Dispose();
-        _rebindGate.Dispose();
+        await Task.WhenAll(endpoints.Select(endpoint => endpoint.StopAsync()));
+        try
+        {
+            await Task.WhenAll(retirements).WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+        }
     }
 
     private LoopbackListenerEndpoint CreateEndpoint(int port)

@@ -78,6 +78,98 @@ public sealed class OverlayRuntimeTests
         await runtime.DisposeAsync();
     }
 
+    [Fact]
+    public async Task StopFailureKeepsRuntimeRetryableUntilCleanupSucceeds()
+    {
+        await using var status = new StatusFixture();
+        var events = new List<string>();
+        var stopAttempts = 0;
+        var server = new FakeHttpRuntime(events)
+        {
+            OnStop = () => ++stopAttempts == 1
+                ? Task.FromException(new IOException("first stop failed"))
+                : Task.CompletedTask,
+        };
+        var runtime = CreateRuntime(
+            status,
+            server,
+            new FakeOutputRuntime(events),
+            new FakeCoordinatorRuntime(events));
+        await runtime.StartAsync();
+
+        await Assert.ThrowsAsync<IOException>(() => runtime.StopAsync());
+        Assert.Equal(OverlayRuntimeState.Running, runtime.State);
+
+        await runtime.StopAsync();
+
+        Assert.Equal(OverlayRuntimeState.Stopped, runtime.State);
+        Assert.Equal(2, stopAttempts);
+        await runtime.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task DisposeAfterFailedStopRetriesCleanupBeforeDisposingComponents()
+    {
+        await using var status = new StatusFixture();
+        var events = new List<string>();
+        var stopAttempts = 0;
+        var server = new FakeHttpRuntime(events)
+        {
+            OnStop = () => ++stopAttempts == 1
+                ? Task.FromException(new IOException("first stop failed"))
+                : Task.CompletedTask,
+        };
+        var runtime = CreateRuntime(
+            status,
+            server,
+            new FakeOutputRuntime(events),
+            new FakeCoordinatorRuntime(events));
+        await runtime.StartAsync();
+        await Assert.ThrowsAsync<IOException>(() => runtime.StopAsync());
+
+        await runtime.DisposeAsync();
+
+        Assert.Equal(OverlayRuntimeState.Disposed, runtime.State);
+        Assert.Equal(2, stopAttempts);
+        Assert.Contains("server:dispose", events);
+    }
+
+    [Fact]
+    public async Task ConcurrentStopAndDisposeUseOneSerializedTransition()
+    {
+        await using var status = new StatusFixture();
+        var events = new List<string>();
+        var stopEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStop = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = new FakeHttpRuntime(events)
+        {
+            OnStop = async () =>
+            {
+                stopEntered.TrySetResult();
+                await releaseStop.Task;
+            },
+        };
+        var runtime = CreateRuntime(
+            status,
+            server,
+            new FakeOutputRuntime(events),
+            new FakeCoordinatorRuntime(events));
+        await runtime.StartAsync();
+
+        var stop = runtime.StopAsync();
+        await stopEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var dispose = runtime.DisposeAsync().AsTask();
+        Assert.False(dispose.IsCompleted);
+
+        releaseStop.TrySetResult();
+        await Task.WhenAll(stop, dispose);
+
+        Assert.Equal(OverlayRuntimeState.Disposed, runtime.State);
+        Assert.Equal(1, events.Count(entry => entry == "server:stop"));
+    }
+
     private static OverlayRuntime CreateRuntime(
         StatusFixture status,
         IOverlayHttpRuntime server,
@@ -95,6 +187,8 @@ public sealed class OverlayRuntimeTests
 
     private sealed class FakeHttpRuntime(List<string> events) : IOverlayHttpRuntime
     {
+        public Func<Task>? OnStop { get; init; }
+
         public int CurrentPort => HostOptions.DefaultPort;
 
         public Task StartAsync(CancellationToken cancellationToken = default)
@@ -111,10 +205,13 @@ public sealed class OverlayRuntimeTests
             throw new NotSupportedException();
         }
 
-        public Task StopAsync(CancellationToken cancellationToken = default)
+        public async Task StopAsync(CancellationToken cancellationToken = default)
         {
             events.Add("server:stop");
-            return Task.CompletedTask;
+            if (OnStop is not null)
+            {
+                await OnStop();
+            }
         }
 
         public ValueTask DisposeAsync()

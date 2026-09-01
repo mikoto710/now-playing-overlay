@@ -111,8 +111,9 @@ internal sealed class OverlayRuntime : IAsyncDisposable
                 return;
             }
 
+            // Once shutdown starts, finish best-effort cleanup even if the caller stops waiting.
+            await StopRunningComponentsAsync();
             _state = OverlayRuntimeState.Stopped;
-            await StopRunningComponentsAsync(cancellationToken);
         }
         finally
         {
@@ -133,10 +134,10 @@ internal sealed class OverlayRuntime : IAsyncDisposable
             Exception? firstError = null;
             if (_state == OverlayRuntimeState.Running)
             {
-                _state = OverlayRuntimeState.Stopped;
                 try
                 {
-                    await StopRunningComponentsAsync(CancellationToken.None);
+                    await StopRunningComponentsAsync();
+                    _state = OverlayRuntimeState.Stopped;
                 }
                 catch (Exception error)
                 {
@@ -192,11 +193,11 @@ internal sealed class OverlayRuntime : IAsyncDisposable
         }
     }
 
-    private async Task StopRunningComponentsAsync(CancellationToken cancellationToken)
+    private async Task StopRunningComponentsAsync()
     {
         Exception? firstError = null;
         firstError = await StopComponentAsync(
-            () => _httpServer.StopAsync(cancellationToken),
+            () => _httpServer.StopAsync(CancellationToken.None),
             "loopback HTTP server",
             firstError);
         firstError = await DisposeComponentAsync(
