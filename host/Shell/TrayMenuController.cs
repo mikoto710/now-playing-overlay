@@ -174,25 +174,11 @@ internal sealed class TrayMenuController
         return new PortChangeResult(result.PortChanged, result.OverlayUrl);
     }
 
-    public async Task<SettingsChangeResult> SaveSettingsAsync(
-        int port,
-        SourceProvider provider,
-        string? instanceId,
-        AppearanceSettings appearance,
-        OutputSettings? outputs = null,
-        WindowTitleSettings? windowTitle = null,
+    public async Task<SettingsChangeResult> ApplySettingsAsync(
+        SettingsDraft draft,
         CancellationToken cancellationToken = default)
     {
-        var current = _settings.GetCurrent();
-        var result = await _settings.ApplyAsync(
-            new SettingsDraft(
-                port,
-                provider,
-                instanceId,
-                appearance,
-                outputs ?? current.Outputs,
-                windowTitle ?? current.WindowTitle),
-            cancellationToken);
+        var result = await _settings.ApplyAsync(draft, cancellationToken);
         return new SettingsChangeResult(result.PortChanged, result.OverlayUrl);
     }
 }

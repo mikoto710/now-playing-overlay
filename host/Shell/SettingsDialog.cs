@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Windows.Forms;
 using NowPlayingOverlay.Host.Configuration;
+using NowPlayingOverlay.Host.ControlPlane;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Media.WindowTitles;
@@ -165,6 +166,14 @@ internal sealed class SettingsDialog : Form
     public OutputSettings SelectedOutputs => _outputs.SelectedOutputs;
 
     public WindowTitleSettings SelectedWindowTitle => _sources.SelectedWindowTitle;
+
+    public SettingsDraft SelectedDraft => new(
+        SelectedPort,
+        SelectedProvider,
+        SelectedInstanceId,
+        SelectedAppearance,
+        SelectedOutputs,
+        SelectedWindowTitle);
 
     internal static string CurrentVersion
     {

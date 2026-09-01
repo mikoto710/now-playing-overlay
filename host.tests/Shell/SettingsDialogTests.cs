@@ -63,6 +63,9 @@ public sealed class SettingsDialogTests
             Assert.False(dialog.SelectedOutputs.Text.Enabled);
             Assert.Equal("{nowPlaying}", dialog.SelectedOutputs.Text.Template);
             Assert.Null(dialog.SelectedOutputs.Text.FilePath);
+            Assert.Equal(HostOptions.DefaultPort, dialog.SelectedDraft.Port);
+            Assert.Equal(SourceProvider.WindowsMedia, dialog.SelectedDraft.Provider);
+            Assert.Equal(dialog.SelectedOutputs, dialog.SelectedDraft.Outputs);
             Assert.Empty(FindControls<DataGridView>(outputs));
             Assert.Empty(FindControls<ListBox>(outputs));
             Assert.Contains(

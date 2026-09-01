@@ -134,7 +134,6 @@ internal static class OverlayCompositionRoot
             activeSources,
             windowsMediaSource,
             spotifyApiSource,
-            externalPushSource,
             windowTitleSource);
         var spotify = new SpotifyConnectionWorkflow(
             spotifyAuthorizationService,

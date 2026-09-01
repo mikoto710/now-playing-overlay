@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using NowPlayingOverlay.Host.Configuration;
+using NowPlayingOverlay.Host.ControlPlane;
 using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Media.Sources;
@@ -136,12 +137,13 @@ public sealed class TrayMenuControllerTests
             LeftField = WindowTitleField.Title,
         };
 
-        await host.Controller.SaveSettingsAsync(
+        await host.Controller.ApplySettingsAsync(new SettingsDraft(
             settings.Port,
             SourceProvider.WindowTitle,
             target.InstanceId,
             settings.Appearance,
-            windowTitle: updated);
+            settings.Outputs,
+            updated));
 
         Assert.Equal(updated, host.SettingsStore.Load().Settings.WindowTitle);
         Assert.Equal(sourceKey, host.Composition.Sources.GetState().ActiveSource!.Key);
@@ -177,12 +179,13 @@ public sealed class TrayMenuControllerTests
             Json = outputs.Json,
         };
 
-        var result = await host.Controller.SaveSettingsAsync(
+        var result = await host.Controller.ApplySettingsAsync(new SettingsDraft(
             settings.Port,
             SourceProvider.WindowsMedia,
             "Player.App!Exact",
             appearance,
-            expectedOutputs);
+            expectedOutputs,
+            settings.WindowTitle));
 
         var saved = host.SettingsStore.Load().Settings;
         Assert.False(result.PortChanged);
@@ -208,21 +211,25 @@ public sealed class TrayMenuControllerTests
         await using (var disconnectedHost = await ControllerTestHost.StartAsync(initial))
         {
             await Assert.ThrowsAsync<InvalidDataException>(() =>
-                disconnectedHost.Controller.SaveSettingsAsync(
+                disconnectedHost.Controller.ApplySettingsAsync(new SettingsDraft(
                     initial.Port,
                     SourceProvider.SpotifyApi,
                     SourceKey.SpotifyApi().InstanceId,
-                    initial.Appearance));
+                    initial.Appearance,
+                    initial.Outputs,
+                    initial.WindowTitle)));
         }
 
         await using var connectedHost = await ControllerTestHost.StartAsync(
             initial,
             seedSpotifyCredential: true);
-        await connectedHost.Controller.SaveSettingsAsync(
+        await connectedHost.Controller.ApplySettingsAsync(new SettingsDraft(
             initial.Port,
             SourceProvider.SpotifyApi,
             SourceKey.SpotifyApi().InstanceId,
-            initial.Appearance);
+            initial.Appearance,
+            initial.Outputs,
+            initial.WindowTitle));
         Assert.Equal(
             SourceProvider.SpotifyApi,
             connectedHost.SettingsStore.Load().Settings.Source.Provider);
@@ -241,11 +248,13 @@ public sealed class TrayMenuControllerTests
         var settings = new ApplicationSettings { Port = ReservePort() };
         await using var host = await ControllerTestHost.StartAsync(settings);
 
-        await host.Controller.SaveSettingsAsync(
+        await host.Controller.ApplySettingsAsync(new SettingsDraft(
             settings.Port,
             SourceProvider.ExternalPush,
             SourceKey.ExternalPush().InstanceId,
-            settings.Appearance);
+            settings.Appearance,
+            settings.Outputs,
+            settings.WindowTitle));
         var first = host.Controller.GetBrowserPlayerConnectionCode();
         var rotated = host.Controller.RotateBrowserPlayerConnectionCode();
 

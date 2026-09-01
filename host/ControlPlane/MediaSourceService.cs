@@ -1,5 +1,4 @@
 using NowPlayingOverlay.Host.Configuration;
-using NowPlayingOverlay.Host.Media.External;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Media.Spotify.Playback;
@@ -17,20 +16,17 @@ internal sealed class MediaSourceService
     private readonly ActiveSourceManager _activeSources;
     private readonly WindowsMediaSource _windowsMedia;
     private readonly SpotifyApiSource _spotify;
-    private readonly ExternalPushSource _browserPlayer;
     private readonly WindowTitleSource _windowTitle;
 
     public MediaSourceService(
         ActiveSourceManager activeSources,
         WindowsMediaSource windowsMedia,
         SpotifyApiSource spotify,
-        ExternalPushSource browserPlayer,
         WindowTitleSource windowTitle)
     {
         _activeSources = activeSources ?? throw new ArgumentNullException(nameof(activeSources));
         _windowsMedia = windowsMedia ?? throw new ArgumentNullException(nameof(windowsMedia));
         _spotify = spotify ?? throw new ArgumentNullException(nameof(spotify));
-        _browserPlayer = browserPlayer ?? throw new ArgumentNullException(nameof(browserPlayer));
         _windowTitle = windowTitle ?? throw new ArgumentNullException(nameof(windowTitle));
     }
 

@@ -4,6 +4,7 @@ using System.Net;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Win32;
+using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Media.Sources;
 
 namespace NowPlayingOverlay.Host.Shell;
@@ -206,17 +207,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
                         return;
                     }
 
-                    var result = await _controller.SaveSettingsAsync(
-                        dialog.SelectedPort,
-                        dialog.SelectedProvider,
-                        dialog.SelectedInstanceId,
-                        dialog.SelectedAppearance,
-                        dialog.SelectedOutputs,
-                        dialog.SelectedWindowTitle);
+                    var draft = dialog.SelectedDraft;
+                    var result = await _controller.ApplySettingsAsync(draft);
                     if (result.PortChanged)
                     {
                         MessageBox.Show(
-                            $"Settings were saved and the server moved to port {dialog.SelectedPort} without restarting. Loaded overlay pages were asked to follow the new URL:\n\n{result.OverlayUrl}\n\nUpdate the saved OBS Browser Source URL so future reloads and OBS restarts use the new port. If Browser Player is configured, copy its connection code again from its settings.",
+                            $"Settings were saved and the server moved to port {draft.Port} without restarting. Loaded overlay pages were asked to follow the new URL:\n\n{result.OverlayUrl}\n\nUpdate the saved OBS Browser Source URL so future reloads and OBS restarts use the new port. If Browser Player is configured, copy its connection code again from its settings.",
                             "Settings Saved",
                             MessageBoxButtons.OK,
                             MessageBoxIcon.Information);
@@ -275,10 +271,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
             or InvalidOperationException)
         {
             _logger.LogError(
-                "Could not {ActionDescription}. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                "Could not {ActionDescription}. {Diagnostic}",
                 description,
-                error.GetType().Name,
-                error.HResult);
+                SanitizedExceptionDiagnostics.Create(error));
             MessageBox.Show(
                 $"Could not {description}. Open the log directory for details.",
                 "Now Playing Overlay",
@@ -301,10 +296,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
             or HttpListenerException)
         {
             _logger.LogError(
-                "Could not {ActionDescription}. Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                "Could not {ActionDescription}. {Diagnostic}",
                 description,
-                error.GetType().Name,
-                error.HResult);
+                SanitizedExceptionDiagnostics.Create(error));
             MessageBox.Show(
                 $"Could not {description}. The current port remains active. Open the log directory for details.",
                 "Now Playing Overlay",
