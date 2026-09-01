@@ -324,10 +324,88 @@ public sealed class OutputManagerTests
         Assert.Equal(["Artist - B"], await File.ReadAllLinesAsync(historyPath));
     }
 
+    [Fact]
+    public async Task WorkerFaultSurvivesSettingsUpdate()
+    {
+        using var directory = new TemporaryDirectory();
+        var store = CreateStore();
+        var manager = new OutputManager(
+            store,
+            new ArtworkCache(),
+            CreateEnabledTextSettings(Path.Combine(directory.Path, "state.txt")),
+            atomicFile: new FaultingAtomicOutputFile());
+        try
+        {
+            manager.Start();
+            await WaitForAsync(() => manager.GetStatus().FaultedCount == 1);
+
+            manager.UpdateSettings(new OutputSettings());
+
+            Assert.Equal(1, manager.GetStatus().FaultedCount);
+            await Assert.ThrowsAsync<ArithmeticException>(() => manager.StopAsync());
+        }
+        finally
+        {
+            await manager.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task FaultedWorkerStopReleasesSubscriptionsAndPreventsRestart()
+    {
+        using var directory = new TemporaryDirectory();
+        var storeLogger = new RecordingLogger<NowPlayingStore>();
+        var store = new NowPlayingStore(
+            NowPlayingSnapshot.CreateInitial(Guid.NewGuid(), DateTimeOffset.UtcNow),
+            storeLogger);
+        var manager = new OutputManager(
+            store,
+            new ArtworkCache(),
+            CreateEnabledTextSettings(Path.Combine(directory.Path, "state.txt")),
+            atomicFile: new FaultingAtomicOutputFile());
+        try
+        {
+            manager.Start();
+            await WaitForAsync(() => manager.GetStatus().FaultedCount == 1);
+
+            await Assert.ThrowsAsync<ArithmeticException>(() => manager.StopAsync());
+
+            Assert.Throws<InvalidOperationException>(manager.Start);
+            for (var index = 0; index < OutputManager.HistoryQueueCapacity + 10; index++)
+            {
+                store.TryCommit(
+                    SourceDescriptor.WindowsMedia("Player.App"),
+                    PlaybackState.Playing,
+                    TrackMetadata.Create($"Title {index}", "Artist", null),
+                    artwork: null,
+                    DateTimeOffset.UtcNow,
+                    out _);
+            }
+
+            Assert.Empty(storeLogger.Entries);
+        }
+        finally
+        {
+            await manager.DisposeAsync();
+        }
+    }
+
     private static NowPlayingStore CreateStore()
     {
         return new NowPlayingStore(
             NowPlayingSnapshot.CreateInitial(Guid.NewGuid(), DateTimeOffset.UtcNow));
+    }
+
+    private static OutputSettings CreateEnabledTextSettings(string path)
+    {
+        return new OutputSettings
+        {
+            Text = new TextOutputSettings
+            {
+                Enabled = true,
+                FilePath = path,
+            },
+        };
     }
 
     private static TextOutputSettings CreateTextOutput(
@@ -390,6 +468,17 @@ public sealed class OutputManagerTests
             {
                 Entries.Add(formatter(state, exception));
             }
+        }
+    }
+
+    private sealed class FaultingAtomicOutputFile : AtomicOutputFile
+    {
+        public override Task WriteBytesAsync(
+            string filePath,
+            ReadOnlyMemory<byte> content,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromException(new ArithmeticException("unexpected worker failure"));
         }
     }
 }

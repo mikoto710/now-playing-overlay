@@ -5,7 +5,7 @@ namespace NowPlayingOverlay.Host.Outputs;
 /// <summary>
 /// Flushes a sibling temporary file before atomically replacing the target.
 /// </summary>
-internal sealed class AtomicOutputFile
+internal class AtomicOutputFile
 {
     private static readonly UTF8Encoding Utf8WithoutBom = new(
         encoderShouldEmitUTF8Identifier: false,
@@ -20,7 +20,7 @@ internal sealed class AtomicOutputFile
         return WriteBytesAsync(filePath, Utf8WithoutBom.GetBytes(content), cancellationToken);
     }
 
-    public async Task WriteBytesAsync(
+    public virtual async Task WriteBytesAsync(
         string filePath,
         ReadOnlyMemory<byte> content,
         CancellationToken cancellationToken)

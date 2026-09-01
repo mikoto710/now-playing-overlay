@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Channels;
@@ -40,7 +41,9 @@ internal sealed class OutputManager : IOutputRuntime
         new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _writtenArtworkIds =
         new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, OutputTargetStatus> _statuses =
+    private readonly Dictionary<string, OutputTargetStatus> _targetStatuses =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, OutputTargetStatus> _workerStatuses =
         new(StringComparer.Ordinal);
     private OutputSettings _settings;
     private long _historyWriteAfterRevision;
@@ -52,6 +55,7 @@ internal sealed class OutputManager : IOutputRuntime
     private Task? _latestWorker;
     private Task? _historyWorker;
     private bool _started;
+    private bool _stopped;
     private bool _disposed;
 
     public OutputManager(
@@ -78,6 +82,11 @@ internal sealed class OutputManager : IOutputRuntime
         if (_started)
         {
             throw new InvalidOperationException("Outputs have already started.");
+        }
+
+        if (_stopped)
+        {
+            throw new InvalidOperationException("Stopped output workers cannot be restarted.");
         }
 
         _shutdown = new CancellationTokenSource();
@@ -113,7 +122,7 @@ internal sealed class OutputManager : IOutputRuntime
             _settingsGeneration = checked(_settingsGeneration + 1);
             lock (_statusGate)
             {
-                _statuses.Clear();
+                _targetStatuses.Clear();
             }
         }
 
@@ -125,7 +134,8 @@ internal sealed class OutputManager : IOutputRuntime
     {
         lock (_statusGate)
         {
-            var faulted = _statuses.Values.Count(status => status.IsFaulted);
+            var faulted = _targetStatuses.Values.Count(status => status.IsFaulted)
+                + _workerStatuses.Values.Count(status => status.IsFaulted);
             return faulted == 0
                 ? new OutputStatusSnapshot(0, "Outputs are ready. No output errors are recorded.")
                 : new OutputStatusSnapshot(
@@ -141,6 +151,12 @@ internal sealed class OutputManager : IOutputRuntime
 
     public async Task StopAsync()
     {
+        if (_stopped)
+        {
+            return;
+        }
+
+        _stopped = true;
         if (!_started)
         {
             return;
@@ -151,17 +167,33 @@ internal sealed class OutputManager : IOutputRuntime
         _latestSubscription!.Dispose();
         _historySubscription!.Dispose();
         _latestSignals.Writer.TryComplete();
-        await Task.WhenAll(
-            AwaitWorkerAsync(_latestPump!),
-            AwaitWorkerAsync(_latestWorker!),
-            AwaitWorkerAsync(_historyWorker!));
-        _shutdown.Dispose();
-        _shutdown = null;
-        _latestSubscription = null;
-        _historySubscription = null;
-        _latestPump = null;
-        _latestWorker = null;
-        _historyWorker = null;
+        Exception? workerError = null;
+        try
+        {
+            await Task.WhenAll(
+                AwaitWorkerAsync(_latestPump!),
+                AwaitWorkerAsync(_latestWorker!),
+                AwaitWorkerAsync(_historyWorker!));
+        }
+        catch (Exception error)
+        {
+            workerError = error;
+        }
+        finally
+        {
+            _shutdown.Dispose();
+            _shutdown = null;
+            _latestSubscription = null;
+            _historySubscription = null;
+            _latestPump = null;
+            _latestWorker = null;
+            _historyWorker = null;
+        }
+
+        if (workerError is not null)
+        {
+            ExceptionDispatchInfo.Capture(workerError).Throw();
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -171,8 +203,14 @@ internal sealed class OutputManager : IOutputRuntime
             return;
         }
 
-        await StopAsync();
-        _disposed = true;
+        try
+        {
+            await StopAsync();
+        }
+        finally
+        {
+            _disposed = true;
+        }
     }
 
     private async Task PumpLatestAsync(CancellationToken cancellationToken)
@@ -274,12 +312,10 @@ internal sealed class OutputManager : IOutputRuntime
         }
         catch (ChannelClosedException error)
         {
-            _ = GetSettings(out var settingsGeneration);
-            SetFault(
-                "history",
+            SetWorkerFault(
+                "history-worker",
                 "History stopped because its ordered commit queue faulted.",
-                error,
-                settingsGeneration);
+                error);
         }
     }
 
@@ -511,7 +547,7 @@ internal sealed class OutputManager : IOutputRuntime
 
             lock (_statusGate)
             {
-                _statuses[key] = new OutputTargetStatus(
+                _targetStatuses[key] = new OutputTargetStatus(
                     IsFaulted: false,
                     message,
                     DateTimeOffset.UtcNow);
@@ -535,10 +571,10 @@ internal sealed class OutputManager : IOutputRuntime
 
             lock (_statusGate)
             {
-                shouldLog = !_statuses.TryGetValue(key, out var previous)
+                shouldLog = !_targetStatuses.TryGetValue(key, out var previous)
                     || !previous.IsFaulted
                     || !string.Equals(previous.Message, message, StringComparison.Ordinal);
-                _statuses[key] = new OutputTargetStatus(
+                _targetStatuses[key] = new OutputTargetStatus(
                     IsFaulted: true,
                     message,
                     DateTimeOffset.UtcNow);
@@ -586,15 +622,37 @@ internal sealed class OutputManager : IOutputRuntime
         _ = task.ContinueWith(
             completed =>
             {
-                _ = GetSettings(out var settingsGeneration);
-                SetFault(
+                SetWorkerFault(
                     key,
                     message,
-                    completed.Exception!.GetBaseException(),
-                    settingsGeneration);
+                    completed.Exception!.GetBaseException());
             },
             CancellationToken.None,
             TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
+    }
+
+    private void SetWorkerFault(string key, string message, Exception error)
+    {
+        bool shouldLog;
+        lock (_statusGate)
+        {
+            shouldLog = !_workerStatuses.TryGetValue(key, out var previous)
+                || !previous.IsFaulted
+                || !string.Equals(previous.Message, message, StringComparison.Ordinal);
+            _workerStatuses[key] = new OutputTargetStatus(
+                IsFaulted: true,
+                message,
+                DateTimeOffset.UtcNow);
+        }
+
+        if (shouldLog)
+        {
+            _logger.LogError(
+                "{OutputMessage} Error type {ErrorType}, HRESULT {ErrorHResult}.",
+                message,
+                error.GetType().Name,
+                error.HResult);
+        }
     }
 }
