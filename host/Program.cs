@@ -74,39 +74,22 @@ internal static class Program
             logFile.Write(LogLevel.Warning, "Bootstrap", default, loadedSettings.Warning);
         }
 
-        OverlayApplication? app = null;
+        OverlayRuntime? runtime = null;
         HostOptions? options = null;
         try
         {
-            app = OverlayApplication.Build(args, loadedSettings.Settings, paths, logFile);
-            options = app.Options;
-            app.StartAsync().GetAwaiter().GetResult();
-
-            var controller = new TrayMenuController(
-                () => app.CurrentPort,
+            var composition = OverlayCompositionRoot.Compose(
+                args,
+                loadedSettings.Settings,
                 settingsStore,
-                app.StatusService,
-                paths.LogDirectory,
-                (port, persistPort, cancellationToken) =>
-                    app.RebindPortAsync(port, persistPort, cancellationToken),
-                app.GetSourceState,
-                app.RefreshSourcesAsync,
-                app.SelectSource,
-                app.GetSpotifyConnectionState,
-                (clientId, reauthorize, cancellationToken) => reauthorize
-                    ? app.ReauthorizeSpotifyAsync(clientId, cancellationToken)
-                    : app.ConnectSpotifyAsync(clientId, cancellationToken),
-                app.DisconnectSpotifyAsync,
-                app.ExportIngestKey,
-                app.RotateIngestKey,
-                app.SetAppearance,
-                app.GetOutputStatus,
-                app.RenderOutputPreview,
-                app.SetOutputs,
-                app.RefreshWindowTitlesAsync,
-                app.SetWindowTitleSettings);
+                paths,
+                logFile);
+            runtime = composition.Runtime;
+            options = runtime.Options;
+            runtime.StartAsync().GetAwaiter().GetResult();
+
             var logger = new BoundedFileLoggerProvider(logFile).CreateLogger<TrayApplicationContext>();
-            using var tray = new TrayApplicationContext(controller, logger);
+            using var tray = new TrayApplicationContext(composition.TrayController, logger);
             Application.Run(tray);
             return 0;
         }
@@ -118,8 +101,8 @@ internal static class Program
                 default,
                 "The application could not start or continue running.",
                 error);
-            StopAndDispose(app, logFile);
-            app = null;
+            StopAndDispose(runtime, logFile);
+            runtime = null;
             ShowStartupFailure(
                 error,
                 options?.Port ?? loadedSettings.Settings.Port,
@@ -130,13 +113,13 @@ internal static class Program
         }
         finally
         {
-            StopAndDispose(app, logFile);
+            StopAndDispose(runtime, logFile);
         }
     }
 
-    private static void StopAndDispose(OverlayApplication? app, BoundedLogFile logFile)
+    private static void StopAndDispose(OverlayRuntime? runtime, BoundedLogFile logFile)
     {
-        if (app is null)
+        if (runtime is null)
         {
             return;
         }
@@ -147,7 +130,7 @@ internal static class Program
         try
         {
             using var timeout = new CancellationTokenSource(ShutdownTimeout);
-            app.StopAsync(timeout.Token)
+            runtime.StopAsync(timeout.Token)
                 .WaitAsync(timeout.Token)
                 .GetAwaiter()
                 .GetResult();
@@ -165,7 +148,7 @@ internal static class Program
         try
         {
             using var timeout = new CancellationTokenSource(ShutdownTimeout);
-            app.DisposeAsync()
+            runtime.DisposeAsync()
                 .AsTask()
                 .WaitAsync(timeout.Token)
                 .GetAwaiter()

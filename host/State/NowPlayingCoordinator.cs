@@ -1,12 +1,13 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Artwork;
+using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.State;
 
-internal sealed class NowPlayingCoordinator : IAsyncDisposable
+internal sealed class NowPlayingCoordinator : INowPlayingRuntime
 {
     private readonly object _lifecycleGate = new();
     private readonly ISessionSource _source;

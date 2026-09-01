@@ -32,7 +32,7 @@ public sealed class OverlayHttpTests
         await Assert.ThrowsAnyAsync<SocketException>(
             () => ipv6.ConnectAsync(IPAddress.IPv6Loopback, host.Port));
 
-        Assert.Equal(host.Port, host.App.CurrentPort);
+        Assert.Equal(host.Port, host.Runtime.CurrentPort);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -42,11 +42,12 @@ public sealed class OverlayHttpTests
         var port = ReservePort();
         var source = new FakeSessionSource();
         var callbackBroker = new SpotifyAuthorizationCallbackBroker();
-        await using var app = OverlayApplication.Build(
+        var graph = OverlayCompositionRoot.BuildRuntime(
             new HostOptions { Port = port },
             source,
             OverlayPageAsset.LoadEmbedded(typeof(OverlayPageAsset).Assembly),
             callbackBroker);
+        await using var app = graph.Runtime;
         await app.StartAsync();
         using var client = CreateClient(port);
 
@@ -113,7 +114,7 @@ public sealed class OverlayHttpTests
         Assert.Equal("contain", appearanceJson.RootElement.GetProperty("artworkFit").GetString());
         Assert.Equal(0, appearanceJson.RootElement.GetProperty("artworkCornerRadius").GetInt32());
 
-        host.App.SetAppearance(new AppearanceSettings
+        host.Appearance.Set(new AppearanceSettings
         {
             Preset = AppearancePreset.Custom,
             Custom = new CustomAppearanceSettings
@@ -190,13 +191,23 @@ public sealed class OverlayHttpTests
         };
         string rotatedToken;
 
-        await using (var app = OverlayApplication.Build([], settings, paths))
+        var settingsStore = new ApplicationSettingsStore(
+            paths.SettingsFilePath,
+            paths.RootDirectory);
+        var composition = OverlayCompositionRoot.Compose(
+            [],
+            settings,
+            settingsStore,
+            paths);
+        await using (var app = composition.Runtime)
         {
-            Assert.Equal(SourceProvider.ExternalPush, app.GetSourceState().ActiveSource!.Key.Provider);
-            Assert.Equal(SourceStatus.Unavailable, app.GetSourceState().Status);
+            Assert.Equal(
+                SourceProvider.ExternalPush,
+                composition.Sources.GetState().ActiveSource!.Key.Provider);
+            Assert.Equal(SourceStatus.Unavailable, composition.Sources.GetState().Status);
             await app.StartAsync();
             using var client = CreateClient(firstPort);
-            var initialToken = app.ExportIngestKey();
+            var initialToken = composition.BrowserPlayer.ExportKey();
             using var stateRequest = CreateIngestRequest(
                 ExternalIngestHttpHandler.StatePath,
                 initialToken,
@@ -241,9 +252,9 @@ public sealed class OverlayHttpTests
                 healthJson.RootElement.GetProperty("activeSourceProvider").GetString());
             Assert.Equal("available", healthJson.RootElement.GetProperty("sourceStatus").GetString());
 
-            rotatedToken = app.RotateIngestKey();
+            rotatedToken = composition.BrowserPlayer.RotateConnectionCode().Split(':')[2];
             Assert.NotEqual(initialToken, rotatedToken);
-            Assert.Equal(SourceStatus.Unavailable, app.GetSourceState().Status);
+            Assert.Equal(SourceStatus.Unavailable, composition.Sources.GetState().Status);
             using var rejectedRequest = CreateIngestRequest(
                 ExternalIngestHttpHandler.StatePath,
                 initialToken,
@@ -278,11 +289,13 @@ public sealed class OverlayHttpTests
         }
 
         var secondPort = ReservePort();
-        await using var restarted = OverlayApplication.Build(
+        var restartedComposition = OverlayCompositionRoot.Compose(
             [],
             settings with { Port = secondPort },
+            settingsStore,
             paths);
-        Assert.Equal(rotatedToken, restarted.ExportIngestKey());
+        await using var restarted = restartedComposition.Runtime;
+        Assert.Equal(rotatedToken, restartedComposition.BrowserPlayer.ExportKey());
         await restarted.StartAsync();
         using var restartedClient = CreateClient(secondPort);
         using var resumedRequest = CreateIngestRequest(
@@ -947,10 +960,11 @@ public sealed class OverlayHttpTests
     {
         var port = ReservePort();
         var source = new FakeSessionSource();
-        var app = OverlayApplication.Build(
+        var graph = OverlayCompositionRoot.BuildRuntime(
             new HostOptions { Port = port },
             source,
             OverlayPageAsset.LoadEmbedded(typeof(OverlayPageAsset).Assembly));
+        var app = graph.Runtime;
         await app.StartAsync();
 
         await app.StopAsync();
@@ -966,10 +980,11 @@ public sealed class OverlayHttpTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        var app = OverlayApplication.Build(
+        var graph = OverlayCompositionRoot.BuildRuntime(
             new HostOptions { Port = port },
             new FakeSessionSource(),
             OverlayPageAsset.LoadEmbedded(typeof(OverlayPageAsset).Assembly));
+        var app = graph.Runtime;
 
         await Assert.ThrowsAnyAsync<Exception>(async () => await app.StartAsync());
 
@@ -989,7 +1004,7 @@ public sealed class OverlayHttpTests
         var newPort = ReservePort();
         var persistedPort = 0;
 
-        await host.App.RebindPortAsync(newPort, () => persistedPort = newPort);
+        await host.HttpServer.RebindAsync(newPort, () => persistedPort = newPort);
         var endpointEvent = await ReadSseEventAsync(reader);
         using var endpointJson = JsonDocument.Parse(endpointEvent.Data);
         using var newClient = CreateClient(newPort);
@@ -1002,7 +1017,7 @@ public sealed class OverlayHttpTests
             $"http://127.0.0.1:{newPort}/NowPlaying.html",
             endpointJson.RootElement.GetProperty("overlayUrl").GetString());
         Assert.Equal(newPort, persistedPort);
-        Assert.Equal(newPort, host.App.CurrentPort);
+        Assert.Equal(newPort, host.Runtime.CurrentPort);
         Assert.Equal(HttpStatusCode.OK, newHealth.StatusCode);
         Assert.Equal(HttpStatusCode.OK, oldDuringGrace.StatusCode);
 
@@ -1020,13 +1035,13 @@ public sealed class OverlayHttpTests
         var occupiedPort = ((IPEndPoint)occupied.LocalEndpoint).Port;
         var persistCalled = false;
 
-        await Assert.ThrowsAnyAsync<Exception>(() => host.App.RebindPortAsync(
+        await Assert.ThrowsAnyAsync<Exception>(() => host.HttpServer.RebindAsync(
             occupiedPort,
             () => persistCalled = true));
         using var oldHealth = await host.Client.GetAsync("/health");
 
         Assert.False(persistCalled);
-        Assert.Equal(host.Port, host.App.CurrentPort);
+        Assert.Equal(host.Port, host.Runtime.CurrentPort);
         Assert.Equal(HttpStatusCode.OK, oldHealth.StatusCode);
     }
 
@@ -1036,13 +1051,13 @@ public sealed class OverlayHttpTests
         await using var host = await TestOverlayHost.StartAsync();
         var candidatePort = ReservePort();
 
-        await Assert.ThrowsAsync<IOException>(() => host.App.RebindPortAsync(
+        await Assert.ThrowsAsync<IOException>(() => host.HttpServer.RebindAsync(
             candidatePort,
             () => throw new IOException("settings unavailable")));
         using var oldHealth = await host.Client.GetAsync("/health");
         using var candidateClient = CreateClient(candidatePort);
 
-        Assert.Equal(host.Port, host.App.CurrentPort);
+        Assert.Equal(host.Port, host.Runtime.CurrentPort);
         Assert.Equal(HttpStatusCode.OK, oldHealth.StatusCode);
         await Assert.ThrowsAsync<HttpRequestException>(() => candidateClient.GetAsync("/health"));
     }
@@ -1133,18 +1148,24 @@ public sealed class OverlayHttpTests
     private sealed class TestOverlayHost : IAsyncDisposable
     {
         private TestOverlayHost(
-            OverlayApplication app,
+            OverlayRuntimeGraph graph,
             FakeSessionSource source,
             HttpClient client,
             int port)
         {
-            App = app;
+            Runtime = graph.Runtime;
+            HttpServer = graph.HttpServer;
+            Appearance = graph.Appearance;
             Source = source;
             Client = client;
             Port = port;
         }
 
-        public OverlayApplication App { get; }
+        public AppearanceState Appearance { get; }
+
+        public OverlayHttpServer HttpServer { get; }
+
+        public OverlayRuntime Runtime { get; }
 
         public HttpClient Client { get; }
 
@@ -1169,14 +1190,14 @@ public sealed class OverlayHttpTests
                 MaximumConcurrentConnections = maximumConcurrentConnections,
                 PortRebindGracePeriod = TimeSpan.FromMilliseconds(rebindGraceMilliseconds),
             };
-            var app = OverlayApplication.Build(
+            var graph = OverlayCompositionRoot.BuildRuntime(
                 options,
                 source,
                 OverlayPageAsset.LoadEmbedded(typeof(OverlayPageAsset).Assembly),
                 externalIngestHandler: externalIngestHandler);
-            await app.StartAsync();
+            await graph.Runtime.StartAsync();
             var client = CreateClient(port);
-            return new TestOverlayHost(app, source, client, port);
+            return new TestOverlayHost(graph, source, client, port);
         }
 
         public async Task WaitForRevisionAsync(long revision)
@@ -1211,8 +1232,8 @@ public sealed class OverlayHttpTests
         public async ValueTask DisposeAsync()
         {
             Client.Dispose();
-            await App.StopAsync();
-            await App.DisposeAsync();
+            await Runtime.StopAsync();
+            await Runtime.DisposeAsync();
         }
 
         private async Task<JsonDocument> WaitForStateAsync(Func<JsonElement, bool> predicate)

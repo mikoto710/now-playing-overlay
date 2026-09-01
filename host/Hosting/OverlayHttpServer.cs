@@ -13,7 +13,7 @@ using NowPlayingOverlay.Host.State;
 
 namespace NowPlayingOverlay.Host.Hosting;
 
-internal sealed class OverlayHttpServer : IAsyncDisposable
+internal sealed class OverlayHttpServer : IOverlayHttpRuntime
 {
     private const string ContentSecurityPolicy =
         "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";

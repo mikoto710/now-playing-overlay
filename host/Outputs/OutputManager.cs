@@ -4,13 +4,14 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Configuration;
+using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Models;
 using NowPlayingOverlay.Host.Protocol;
 using NowPlayingOverlay.Host.State;
 
 namespace NowPlayingOverlay.Host.Outputs;
 
-internal sealed class OutputManager : IAsyncDisposable
+internal sealed class OutputManager : IOutputRuntime
 {
     internal const int HistoryQueueCapacity = 256;
 
