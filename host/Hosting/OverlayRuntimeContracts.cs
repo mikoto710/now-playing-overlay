@@ -9,6 +9,9 @@ internal interface IOverlayHttpRuntime : IAsyncDisposable
 
     Task StartAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Starts the candidate port before persistence; a failure keeps the old endpoint authoritative.
+    /// </summary>
     Task RebindAsync(
         int newPort,
         Action persistPort,

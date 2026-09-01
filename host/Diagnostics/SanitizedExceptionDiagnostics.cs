@@ -6,6 +6,9 @@ using System.Text.Json;
 
 namespace NowPlayingOverlay.Host.Diagnostics;
 
+/// <summary>
+/// Produces correlation, exception types, error codes, and method names without messages or paths.
+/// </summary>
 internal static class SanitizedExceptionDiagnostics
 {
     private const int MaximumExceptionDepth = 8;

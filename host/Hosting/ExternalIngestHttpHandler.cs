@@ -75,6 +75,13 @@ internal enum ExternalIngestRequestKind
 /// <summary>
 /// Enforces Browser Producer authentication, request limits, and lease/revision commits.
 /// </summary>
+/// <remarks>
+/// Requests pass method, rate, bearer-key, content, size, and body-timeout checks before mutation.
+/// State revisions claim or advance the single-producer lease; heartbeat only renews its owner.
+/// Artwork is checked before and after body read against producer and revision. Key generation is
+/// also rechecked at commit, so rotation rejects slow old-key requests and revokes their lease.
+/// The handler owns the active key; it never fetches producer-supplied artwork URLs.
+/// </remarks>
 internal sealed class ExternalIngestHttpHandler : IDisposable
 {
     public const string StatePath = "/ingest/v1/state";

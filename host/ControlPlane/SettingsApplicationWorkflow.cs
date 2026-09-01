@@ -8,6 +8,7 @@ using NowPlayingOverlay.Host.Outputs;
 
 namespace NowPlayingOverlay.Host.ControlPlane;
 
+/// <summary>Complete Shell-to-application settings candidate; no runtime defaults are inferred later.</summary>
 internal sealed record SettingsDraft(
     int Port,
     SourceProvider Provider,

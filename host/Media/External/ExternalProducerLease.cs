@@ -28,6 +28,13 @@ internal enum ExternalLeaseArtworkResult
 /// <summary>
 /// Owns the single-producer Browser Player lease and its authoritative revisioned state.
 /// </summary>
+/// <remarks>
+/// With no active lease, the first valid state claims it. The same producer must increase revision;
+/// another producer conflicts until expiry or revocation. Heartbeats renew only the owner. Artwork
+/// commits require the current producer, exact revision, and a track, so slow uploads are rejected
+/// after state advances. Expiry and key-rotation revocation clear the full state. The gate protects
+/// lease state; StateChanged is a reread signal and is raised outside it.
+/// </remarks>
 internal sealed class ExternalProducerLease
 {
     // Protects producer identity, revision, artwork binding, and renewal time.
