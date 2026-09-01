@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using NowPlayingOverlay.Host.Models;
 
 namespace NowPlayingOverlay.Host.Media.Sources;
@@ -5,6 +6,13 @@ namespace NowPlayingOverlay.Host.Media.Sources;
 /// <summary>
 /// Owns all providers and exposes exactly one selected provider as an <see cref="ISessionSource"/>.
 /// </summary>
+/// <remarks>
+/// No selection -> Unconfigured. A new selection first returns Unavailable to clear old media,
+/// then schedules a follow-up read from that provider. Selection generation rejects reads and
+/// follow-ups from older selections; cancellation only shortens their work. Provider Changed
+/// events are invalidation signals, not data, and are forwarded outside the gate. Disposal owns
+/// every registered provider and is terminal.
+/// </remarks>
 internal sealed class ActiveSourceManager : ISessionSource, ISessionSourceStatus
 {
     private readonly object _gate = new();
@@ -158,6 +166,7 @@ internal sealed class ActiveSourceManager : ISessionSource, ISessionSourceStatus
     {
         IMediaSourceProvider[] providers;
         Task[] followUps;
+        CancellationTokenSource? activeReadCancellation;
         lock (_gate)
         {
             if (_disposeStarted)
@@ -167,8 +176,7 @@ internal sealed class ActiveSourceManager : ISessionSource, ISessionSourceStatus
 
             _disposeStarted = true;
             _disposed = true;
-            _shutdown.Cancel();
-            _activeReadCancellation?.Cancel();
+            activeReadCancellation = _activeReadCancellation;
             _selectionGeneration++;
             if (_activeProvider is not null)
             {
@@ -181,10 +189,43 @@ internal sealed class ActiveSourceManager : ISessionSource, ISessionSourceStatus
             followUps = _followUpRefreshes.ToArray();
         }
 
-        await Task.WhenAll(
-            providers.Select(provider => provider.DisposeAsync().AsTask())
-                .Concat(followUps.Select(IgnoreCancellationAsync)));
-        _shutdown.Dispose();
+        Exception? firstError = null;
+        firstError = Cancel(_shutdown, firstError);
+        firstError = Cancel(activeReadCancellation, firstError);
+        foreach (var provider in providers)
+        {
+            try
+            {
+                await provider.DisposeAsync();
+            }
+            catch (Exception error)
+            {
+                firstError ??= error;
+            }
+        }
+
+        try
+        {
+            await Task.WhenAll(followUps.Select(IgnoreCancellationAsync));
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        try
+        {
+            _shutdown.Dispose();
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        if (firstError is not null)
+        {
+            ExceptionDispatchInfo.Capture(firstError).Throw();
+        }
     }
 
     private void Select(SourceDescriptor? selection, bool notify)
@@ -310,5 +351,24 @@ internal sealed class ActiveSourceManager : ISessionSource, ISessionSourceStatus
         catch (OperationCanceledException)
         {
         }
+    }
+
+    private static Exception? Cancel(
+        CancellationTokenSource? cancellation,
+        Exception? firstError)
+    {
+        try
+        {
+            cancellation?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        return firstError;
     }
 }

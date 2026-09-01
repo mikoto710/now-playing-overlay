@@ -282,6 +282,33 @@ public sealed class NowPlayingCoordinatorTests
         Assert.DoesNotContain(sensitiveText, entry, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task CoordinatorSignalPumpFailureStillDisposesSource()
+    {
+        var source = new TrackingSessionSource();
+        var delayEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var coordinator = new NowPlayingCoordinator(
+            source,
+            CreateStore(),
+            new ArtworkCache(),
+            new NowPlayingCoordinatorOptions { DebounceDelay = TimeSpan.FromMilliseconds(1) },
+            delay: (_, _) =>
+            {
+                delayEntered.TrySetResult();
+                return ValueTask.FromException(new InvalidOperationException("pump failed"));
+            });
+        coordinator.Start();
+        await delayEntered.Task.WaitAsync(TestTimeout);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => coordinator.DisposeAsync().AsTask());
+
+        Assert.Equal(1, source.DisposeCount);
+        Assert.Throws<ObjectDisposedException>(() => coordinator.RequestRefresh());
+        await coordinator.DisposeAsync();
+    }
+
     private static TimeSpan TestTimeout => TimeSpan.FromSeconds(5);
 
     private static NowPlayingCoordinator CreateCoordinator(
@@ -452,6 +479,29 @@ public sealed class NowPlayingCoordinatorTests
 
         public ValueTask DisposeAsync()
         {
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class TrackingSessionSource : ISessionSource
+    {
+        public event EventHandler? Changed
+        {
+            add { }
+            remove { }
+        }
+
+        public int DisposeCount { get; private set; }
+
+        public ValueTask<SessionObservation> ReadAsync(CancellationToken cancellationToken)
+        {
+            return ValueTask.FromResult(
+                SessionObservation.Create(null, PlaybackState.Unavailable));
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            DisposeCount++;
             return ValueTask.CompletedTask;
         }
     }

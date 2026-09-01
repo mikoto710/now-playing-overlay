@@ -79,16 +79,13 @@ public sealed class OverlayRuntimeTests
     }
 
     [Fact]
-    public async Task StopFailureKeepsRuntimeRetryableUntilCleanupSucceeds()
+    public async Task RuntimeDoesNotTurnTerminalChildFailureIntoSuccessfulRetry()
     {
         await using var status = new StatusFixture();
         var events = new List<string>();
-        var stopAttempts = 0;
         var server = new FakeHttpRuntime(events)
         {
-            OnStop = () => ++stopAttempts == 1
-                ? Task.FromException(new IOException("first stop failed"))
-                : Task.CompletedTask,
+            OnStop = () => Task.FromException(new IOException("stop failed")),
         };
         var runtime = CreateRuntime(
             status,
@@ -98,26 +95,25 @@ public sealed class OverlayRuntimeTests
         await runtime.StartAsync();
 
         await Assert.ThrowsAsync<IOException>(() => runtime.StopAsync());
-        Assert.Equal(OverlayRuntimeState.Running, runtime.State);
+        Assert.Equal(OverlayRuntimeState.Stopped, runtime.State);
 
         await runtime.StopAsync();
 
         Assert.Equal(OverlayRuntimeState.Stopped, runtime.State);
-        Assert.Equal(2, stopAttempts);
+        Assert.Equal(1, events.Count(entry => entry == "server:stop"));
+        Assert.Equal(1, events.Count(entry => entry == "coordinator:dispose"));
+        Assert.Equal(1, events.Count(entry => entry == "outputs:stop"));
         await runtime.DisposeAsync();
     }
 
     [Fact]
-    public async Task DisposeAfterFailedStopRetriesCleanupBeforeDisposingComponents()
+    public async Task DisposeAfterFailedStopDisposesComponentsWithoutRepeatingStop()
     {
         await using var status = new StatusFixture();
         var events = new List<string>();
-        var stopAttempts = 0;
         var server = new FakeHttpRuntime(events)
         {
-            OnStop = () => ++stopAttempts == 1
-                ? Task.FromException(new IOException("first stop failed"))
-                : Task.CompletedTask,
+            OnStop = () => Task.FromException(new IOException("stop failed")),
         };
         var runtime = CreateRuntime(
             status,
@@ -130,7 +126,7 @@ public sealed class OverlayRuntimeTests
         await runtime.DisposeAsync();
 
         Assert.Equal(OverlayRuntimeState.Disposed, runtime.State);
-        Assert.Equal(2, stopAttempts);
+        Assert.Equal(1, events.Count(entry => entry == "server:stop"));
         Assert.Contains("server:dispose", events);
     }
 
@@ -160,6 +156,7 @@ public sealed class OverlayRuntimeTests
 
         var stop = runtime.StopAsync();
         await stopEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(OverlayRuntimeState.Stopping, runtime.State);
         var dispose = runtime.DisposeAsync().AsTask();
         Assert.False(dispose.IsCompleted);
 

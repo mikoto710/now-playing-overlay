@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging;
 using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Configuration;
@@ -11,7 +12,7 @@ namespace NowPlayingOverlay.Host.Hosting;
 /// candidate listener before invoking persistence; only a successful save makes it authoritative.
 /// The previous endpoint remains tracked until its grace-period retirement completes.
 /// </summary>
-internal sealed class OverlayHttpServer : IOverlayHttpRuntime
+internal class OverlayHttpServer : IOverlayHttpRuntime
 {
     private readonly object _gate = new();
     private readonly HostOptions _options;
@@ -21,9 +22,9 @@ internal sealed class OverlayHttpServer : IOverlayHttpRuntime
     private readonly ILogger<OverlayHttpServer> _logger;
     private readonly SemaphoreSlim _rebindGate = new(1, 1);
     private readonly CancellationTokenSource _shutdown = new();
-    private readonly HashSet<LoopbackListenerEndpoint> _endpoints = [];
+    private readonly HashSet<ILoopbackListenerEndpoint> _endpoints = [];
     private readonly HashSet<Task> _retirements = [];
-    private LoopbackListenerEndpoint? _currentEndpoint;
+    private ILoopbackListenerEndpoint? _currentEndpoint;
     private bool _started;
     private bool _disposed;
 
@@ -125,7 +126,7 @@ internal sealed class OverlayHttpServer : IOverlayHttpRuntime
         await _rebindGate.WaitAsync(cancellationToken);
         try
         {
-            LoopbackListenerEndpoint previous;
+            ILoopbackListenerEndpoint previous;
             lock (_gate)
             {
                 ObjectDisposedException.ThrowIf(_disposed, this);
@@ -204,7 +205,8 @@ internal sealed class OverlayHttpServer : IOverlayHttpRuntime
                 }
             }
 
-            await StopCoreAsync(cancellationToken);
+            // Cancellation controls entry only; terminal cleanup must finish once it starts.
+            await StopCoreAsync(CancellationToken.None);
         }
         finally
         {
@@ -227,9 +229,32 @@ internal sealed class OverlayHttpServer : IOverlayHttpRuntime
                 _disposed = true;
             }
 
-            await StopCoreAsync(CancellationToken.None);
-            _externalIngestHandler?.Dispose();
-            _shutdown.Dispose();
+            Exception? firstError = null;
+            firstError = await CaptureFailureAsync(
+                () => StopCoreAsync(CancellationToken.None),
+                firstError);
+            try
+            {
+                _externalIngestHandler?.Dispose();
+            }
+            catch (Exception error)
+            {
+                firstError ??= error;
+            }
+
+            try
+            {
+                _shutdown.Dispose();
+            }
+            catch (Exception error)
+            {
+                firstError ??= error;
+            }
+
+            if (firstError is not null)
+            {
+                ExceptionDispatchInfo.Capture(firstError).Throw();
+            }
         }
         finally
         {
@@ -239,7 +264,7 @@ internal sealed class OverlayHttpServer : IOverlayHttpRuntime
 
     private async Task StopCoreAsync(CancellationToken cancellationToken)
     {
-        LoopbackListenerEndpoint[] endpoints;
+        ILoopbackListenerEndpoint[] endpoints;
         Task[] retirements;
         lock (_gate)
         {
@@ -249,12 +274,23 @@ internal sealed class OverlayHttpServer : IOverlayHttpRuntime
             }
 
             _started = false;
-            _shutdown.Cancel();
             endpoints = _endpoints.ToArray();
             retirements = _retirements.ToArray();
         }
 
-        await Task.WhenAll(endpoints.Select(endpoint => endpoint.StopAsync()));
+        Exception? firstError = null;
+        try
+        {
+            _shutdown.Cancel();
+        }
+        catch (Exception error)
+        {
+            firstError = error;
+        }
+
+        firstError = await CaptureFailureAsync(
+            () => Task.WhenAll(endpoints.Select(endpoint => endpoint.StopAsync())),
+            firstError);
         try
         {
             await Task.WhenAll(retirements).WaitAsync(cancellationToken);
@@ -262,9 +298,18 @@ internal sealed class OverlayHttpServer : IOverlayHttpRuntime
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
         {
         }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        if (firstError is not null)
+        {
+            ExceptionDispatchInfo.Capture(firstError).Throw();
+        }
     }
 
-    private LoopbackListenerEndpoint CreateEndpoint(int port)
+    internal virtual ILoopbackListenerEndpoint CreateEndpoint(int port)
     {
         return new LoopbackListenerEndpoint(port, _options, _dispatcher.HandleAsync, _logger);
     }
@@ -290,7 +335,7 @@ internal sealed class OverlayHttpServer : IOverlayHttpRuntime
     }
 
     private async Task RetireEndpointAsync(
-        LoopbackListenerEndpoint endpoint,
+        ILoopbackListenerEndpoint endpoint,
         TimeSpan gracePeriod)
     {
         try
@@ -308,6 +353,22 @@ internal sealed class OverlayHttpServer : IOverlayHttpRuntime
         }
 
         _logger.LogInformation("Stopped the retired loopback endpoint on port {Port}.", endpoint.Port);
+    }
+
+    private static async Task<Exception?> CaptureFailureAsync(
+        Func<Task> action,
+        Exception? firstError)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        return firstError;
     }
 
 }

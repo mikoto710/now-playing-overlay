@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Diagnostics;
@@ -192,8 +193,17 @@ internal sealed class WindowTitleSource : IMediaSourceProvider
             }
 
             _disposed = true;
-            _shutdown.Cancel();
             monitor = _monitor;
+        }
+
+        Exception? firstError = null;
+        try
+        {
+            _shutdown.Cancel();
+        }
+        catch (Exception error)
+        {
+            firstError = error;
         }
 
         if (monitor is not null)
@@ -205,9 +215,25 @@ internal sealed class WindowTitleSource : IMediaSourceProvider
             catch (OperationCanceledException)
             {
             }
+            catch (Exception error)
+            {
+                firstError ??= error;
+            }
         }
 
-        _shutdown.Dispose();
+        try
+        {
+            _shutdown.Dispose();
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        if (firstError is not null)
+        {
+            ExceptionDispatchInfo.Capture(firstError).Throw();
+        }
     }
 
     private async Task MonitorAsync(CancellationToken cancellationToken)

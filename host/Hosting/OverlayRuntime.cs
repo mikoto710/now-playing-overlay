@@ -9,13 +9,20 @@ internal enum OverlayRuntimeState
 {
     Created,
     Running,
+    Stopping,
     Stopped,
     Disposed,
 }
 
 /// <summary>
-/// Owns the one-shot Created -> Running -> Stopped -> Disposed lifecycle.
+/// Owns the one-shot Created -> Running -> Stopping -> Stopped -> Disposed lifecycle.
 /// </summary>
+/// <remarks>
+/// Start is legal only from Created; a failed start unwinds attempted components and ends Stopped.
+/// Stop enters Stopping once, gives every running component a cleanup attempt, then ends Stopped
+/// even when cleanup reports an error. Dispose releases every owned component and ends Disposed.
+/// The transition gate serializes lifecycle calls; Stopped is never restartable.
+/// </remarks>
 internal sealed class OverlayRuntime : IAsyncDisposable
 {
     // Serializes transitions; Stopped instances cannot start again.
@@ -112,9 +119,16 @@ internal sealed class OverlayRuntime : IAsyncDisposable
                 return;
             }
 
-            // Once shutdown starts, finish best-effort cleanup even if the caller stops waiting.
-            await StopRunningComponentsAsync();
-            _state = OverlayRuntimeState.Stopped;
+            _state = OverlayRuntimeState.Stopping;
+            try
+            {
+                // Once shutdown starts, finish cleanup even if the caller stops waiting.
+                await StopRunningComponentsAsync();
+            }
+            finally
+            {
+                _state = OverlayRuntimeState.Stopped;
+            }
         }
         finally
         {
@@ -135,14 +149,18 @@ internal sealed class OverlayRuntime : IAsyncDisposable
             Exception? firstError = null;
             if (_state == OverlayRuntimeState.Running)
             {
+                _state = OverlayRuntimeState.Stopping;
                 try
                 {
                     await StopRunningComponentsAsync();
-                    _state = OverlayRuntimeState.Stopped;
                 }
                 catch (Exception error)
                 {
                     firstError = error;
+                }
+                finally
+                {
+                    _state = OverlayRuntimeState.Stopped;
                 }
             }
 

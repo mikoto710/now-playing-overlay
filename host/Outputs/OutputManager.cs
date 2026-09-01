@@ -16,6 +16,13 @@ namespace NowPlayingOverlay.Host.Outputs;
 /// <summary>
 /// Runs latest-wins current outputs and an ordered, overflow-faulting History worker.
 /// </summary>
+/// <remarks>
+/// Current TXT, JSON, and Artwork consume a capacity-one drop-oldest stream. History consumes a
+/// bounded ordered subscription and faults explicitly on overflow. Target failures are isolated;
+/// an unexpected worker exit is latched separately and survives settings changes. A settings
+/// generation rejects late status writes, refreshes current outputs immediately, and lets History
+/// observe only later revisions. Stop is terminal and owns subscriptions, workers, and cancellation.
+/// </remarks>
 internal sealed class OutputManager : IOutputRuntime
 {
     internal const int HistoryQueueCapacity = 256;
@@ -141,7 +148,7 @@ internal sealed class OutputManager : IOutputRuntime
                 ? new OutputStatusSnapshot(0, "Outputs are ready. No output errors are recorded.")
                 : new OutputStatusSnapshot(
                     faulted,
-                    $"{faulted} output target(s) need attention. Open the logs for details.");
+                    $"{faulted} output component(s) need attention. Open the logs for details.");
         }
     }
 
@@ -164,11 +171,11 @@ internal sealed class OutputManager : IOutputRuntime
         }
 
         _started = false;
-        _shutdown!.Cancel();
-        _latestSubscription!.Dispose();
-        _historySubscription!.Dispose();
+        Exception? firstError = null;
+        firstError = CaptureFailure(_shutdown!.Cancel, firstError);
+        firstError = CaptureFailure(_latestSubscription!.Dispose, firstError);
+        firstError = CaptureFailure(_historySubscription!.Dispose, firstError);
         _latestSignals.Writer.TryComplete();
-        Exception? workerError = null;
         try
         {
             await Task.WhenAll(
@@ -178,11 +185,11 @@ internal sealed class OutputManager : IOutputRuntime
         }
         catch (Exception error)
         {
-            workerError = error;
+            firstError ??= error;
         }
         finally
         {
-            _shutdown.Dispose();
+            firstError = CaptureFailure(_shutdown.Dispose, firstError);
             _shutdown = null;
             _latestSubscription = null;
             _historySubscription = null;
@@ -191,9 +198,9 @@ internal sealed class OutputManager : IOutputRuntime
             _historyWorker = null;
         }
 
-        if (workerError is not null)
+        if (firstError is not null)
         {
-            ExceptionDispatchInfo.Capture(workerError).Throw();
+            ExceptionDispatchInfo.Capture(firstError).Throw();
         }
     }
 
@@ -604,6 +611,20 @@ internal sealed class OutputManager : IOutputRuntime
             or NotSupportedException
             or ArgumentException)
             || error is OperationCanceledException && !cancellationToken.IsCancellationRequested;
+    }
+
+    private static Exception? CaptureFailure(Action action, Exception? firstError)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        return firstError;
     }
 
     private static async Task AwaitWorkerAsync(Task task)

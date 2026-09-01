@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Media.Sources;
@@ -8,6 +9,14 @@ namespace NowPlayingOverlay.Host.Media.Windows;
 /// <summary>
 /// Owns the GSMTC catalog and binding to one selected media session.
 /// </summary>
+/// <remarks>
+/// No selection -> Unconfigured; selection -> Starting; one exact usable session -> Available.
+/// No exact session -> Unavailable/Missing; unresolved exact matches -> Unavailable/Ambiguous.
+/// Expected GSMTC or COM loss -> Unavailable/PlatformUnavailable; unexpected background failure
+/// -> Faulted. Configuration generation rejects work for an old selection; binding generation
+/// retries reads when the chosen session changes. Catalog and bound-session events only request a
+/// reread. This source owns and disposes the manager, session binding, and read cancellation.
+/// </remarks>
 internal sealed class WindowsMediaSource : IMediaSourceProvider
 {
     // Protects selection, bindings, status, generations, and read cancellation.
@@ -307,51 +316,72 @@ internal sealed class WindowsMediaSource : IMediaSourceProvider
             }
 
             _disposeStarted = true;
+            _disposed = true;
         }
 
-        _shutdown.Cancel();
-        await _initialization.WaitAsync();
-        IMediaSessionManager? manager;
-        IMediaSessionAdapter? boundSession;
+        Exception? firstError = CaptureFailure(_shutdown.Cancel, firstError: null);
+        var initializationEntered = false;
         try
         {
+            await _initialization.WaitAsync();
+            initializationEntered = true;
+            IMediaSessionManager? manager;
+            IMediaSessionAdapter? boundSession;
+            CancellationTokenSource? activeReadCancellation;
             lock (_gate)
             {
-                if (_disposed)
-                {
-                    return;
-                }
-
-                _disposed = true;
                 manager = _manager;
                 boundSession = _boundSession;
+                activeReadCancellation = _activeReadCancellation;
                 _manager = null;
                 _boundSession = null;
-                _activeReadCancellation?.Cancel();
                 _configurationGeneration++;
                 _bindingGeneration++;
             }
 
+            firstError = Cancel(activeReadCancellation, firstError);
+
             if (manager is not null)
             {
-                manager.SessionsChanged -= OnSessionsChanged;
+                firstError = CaptureFailure(
+                    () => manager.SessionsChanged -= OnSessionsChanged,
+                    firstError);
             }
 
             if (boundSession is not null)
             {
-                boundSession.Changed -= OnBoundSessionChanged;
-                boundSession.Dispose();
+                firstError = CaptureFailure(
+                    () => boundSession.Changed -= OnBoundSessionChanged,
+                    firstError);
+                firstError = CaptureFailure(boundSession.Dispose, firstError);
             }
 
-            manager?.Dispose();
+            if (manager is not null)
+            {
+                firstError = CaptureFailure(manager.Dispose, firstError);
+            }
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
         }
         finally
         {
-            _initialization.Release();
+            if (initializationEntered)
+            {
+                firstError = CaptureFailure(
+                    () => { _initialization.Release(); },
+                    firstError);
+            }
         }
 
-        _shutdown.Dispose();
-        _initialization.Dispose();
+        firstError = CaptureFailure(_shutdown.Dispose, firstError);
+        firstError = CaptureFailure(_initialization.Dispose, firstError);
+
+        if (firstError is not null)
+        {
+            ExceptionDispatchInfo.Capture(firstError).Throw();
+        }
     }
 
     private async Task<IReadOnlyList<SourceDescriptor>> DiscoverInactiveSourcesAsync(
@@ -840,6 +870,39 @@ internal sealed class WindowsMediaSource : IMediaSourceProvider
         return error is COMException
             or UnauthorizedAccessException
             or InvalidOperationException;
+    }
+
+    private static Exception? Cancel(
+        CancellationTokenSource? cancellation,
+        Exception? firstError)
+    {
+        try
+        {
+            cancellation?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        return firstError;
+    }
+
+    private static Exception? CaptureFailure(Action action, Exception? firstError)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        return firstError;
     }
 
     private static void ValidateSelection(SourceDescriptor? selection)

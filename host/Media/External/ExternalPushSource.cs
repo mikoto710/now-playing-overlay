@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Models;
 
@@ -101,7 +102,16 @@ internal sealed class ExternalPushSource : IMediaSourceProvider
 
             _disposed = true;
             _selection = null;
+        }
+
+        Exception? firstError = null;
+        try
+        {
             _shutdown.Cancel();
+        }
+        catch (Exception error)
+        {
+            firstError = error;
         }
 
         _lease.StateChanged -= OnLeaseStateChanged;
@@ -112,8 +122,24 @@ internal sealed class ExternalPushSource : IMediaSourceProvider
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
         {
         }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
 
-        _shutdown.Dispose();
+        try
+        {
+            _shutdown.Dispose();
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        if (firstError is not null)
+        {
+            ExceptionDispatchInfo.Capture(firstError).Throw();
+        }
     }
 
     private SourceDescriptor? GetSelection()

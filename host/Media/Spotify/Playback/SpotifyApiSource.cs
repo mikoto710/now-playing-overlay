@@ -1,4 +1,5 @@
 using System.Net;
+using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Media.Sources;
@@ -10,6 +11,14 @@ namespace NowPlayingOverlay.Host.Media.Spotify.Playback;
 /// <summary>
 /// Polls one authorized Spotify account and publishes complete cached observations.
 /// </summary>
+/// <remarks>
+/// Unselected -> Unconfigured; selected without credentials -> AuthorizationRequired; otherwise
+/// polling starts. Success -> Available. Network, 5xx, and invalid-response failures retain the
+/// last success as Available/Stale for 10 seconds, then become Unavailable while backing off.
+/// Rate limits become Unavailable/RateLimited and honor Retry-After. Authorization and forbidden
+/// responses stop the current generation; unexpected faults become Faulted. Configuration
+/// generation rejects results from an old account or selection. Disposal owns polling and clients.
+/// </remarks>
 internal sealed class SpotifyApiSource : IMediaSourceProvider
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2.5);
@@ -171,6 +180,7 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
     public async ValueTask DisposeAsync()
     {
         Task[] polling;
+        CancellationTokenSource? pollCancellation;
         lock (_gate)
         {
             if (_disposeStarted)
@@ -180,20 +190,30 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
 
             _disposeStarted = true;
             _disposed = true;
-            _shutdown.Cancel();
-            _pollCancellation?.Cancel();
+            pollCancellation = _pollCancellation;
             polling = _pollTasks.ToArray();
         }
 
-        await Task.WhenAll(polling.Select(IgnoreCancellationAsync));
+        Exception? firstError = null;
+        firstError = Cancel(_shutdown, firstError);
+        firstError = Cancel(pollCancellation, firstError);
+        firstError = await CaptureFailureAsync(
+            Task.WhenAll(polling.Select(IgnoreCancellationAsync)),
+            firstError);
         if (_ownedClient is not null)
         {
-            await _ownedClient.DisposeAsync();
+            firstError = await CaptureFailureAsync(
+                _ownedClient.DisposeAsync,
+                firstError);
         }
 
-        _ownedArtworkHttpClient?.Dispose();
-        _pollCancellation?.Dispose();
-        _shutdown.Dispose();
+        firstError = Dispose(_ownedArtworkHttpClient, firstError);
+        firstError = Dispose(pollCancellation, firstError);
+        firstError = Dispose(_shutdown, firstError);
+        if (firstError is not null)
+        {
+            ExceptionDispatchInfo.Capture(firstError).Throw();
+        }
     }
 
     private void RestartPollingLocked()
@@ -574,6 +594,71 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
         catch (OperationCanceledException)
         {
         }
+    }
+
+    private static Exception? Cancel(
+        CancellationTokenSource? cancellation,
+        Exception? firstError)
+    {
+        try
+        {
+            cancellation?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        return firstError;
+    }
+
+    private static Exception? Dispose(IDisposable? disposable, Exception? firstError)
+    {
+        try
+        {
+            disposable?.Dispose();
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        return firstError;
+    }
+
+    private static async Task<Exception?> CaptureFailureAsync(
+        Task task,
+        Exception? firstError)
+    {
+        try
+        {
+            await task;
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        return firstError;
+    }
+
+    private static async Task<Exception?> CaptureFailureAsync(
+        Func<ValueTask> action,
+        Exception? firstError)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        return firstError;
     }
 
     private sealed record PublishedValue(

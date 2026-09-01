@@ -112,6 +112,20 @@ public sealed class ActiveSourceManagerTests
         Assert.True(provider.Disposed);
     }
 
+    [Fact]
+    public async Task ProviderDisposeFailureDoesNotSkipRemainingProviders()
+    {
+        var failing = new StubProvider { ThrowOnDispose = true };
+        var remaining = new StubProvider(SourceProvider.SpotifyApi);
+        var manager = new ActiveSourceManager([failing, remaining], initialSelection: null);
+
+        await Assert.ThrowsAsync<IOException>(() => manager.DisposeAsync().AsTask());
+
+        Assert.True(failing.Disposed);
+        Assert.True(remaining.Disposed);
+        await manager.DisposeAsync();
+    }
+
     private static SessionObservation Playing(string source, string title)
     {
         return SessionObservation.Create(
@@ -120,18 +134,21 @@ public sealed class ActiveSourceManagerTests
             TrackMetadata.Create(title, "Artist", null));
     }
 
-    private sealed class StubProvider : IMediaSourceProvider
+    private sealed class StubProvider(SourceProvider provider = SourceProvider.WindowsMedia)
+        : IMediaSourceProvider
     {
         private SessionObservation _observation =
             SessionObservation.Create(null, PlaybackState.Unavailable);
 
         public event EventHandler? Changed;
 
-        public SourceProvider Provider => SourceProvider.WindowsMedia;
+        public SourceProvider Provider { get; } = provider;
 
         public SourceDescriptor? Selection { get; private set; }
 
         public bool Disposed { get; private set; }
+
+        public bool ThrowOnDispose { get; init; }
 
         public int ReadCount { get; private set; }
 
@@ -182,7 +199,9 @@ public sealed class ActiveSourceManagerTests
         public ValueTask DisposeAsync()
         {
             Disposed = true;
-            return ValueTask.CompletedTask;
+            return ThrowOnDispose
+                ? ValueTask.FromException(new IOException("provider dispose failed"))
+                : ValueTask.CompletedTask;
         }
     }
 }

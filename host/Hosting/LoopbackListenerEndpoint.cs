@@ -1,17 +1,25 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging;
 using NowPlayingOverlay.Host.Configuration;
 using NowPlayingOverlay.Host.Diagnostics;
 
 namespace NowPlayingOverlay.Host.Hosting;
 
-/// <summary>
-/// Owns one exact-IPv4 <see cref="HttpListener"/>, its accept loop, and every request accepted by
-/// that listener. Stop first prevents new accepts, then waits for the accept loop and all active
-/// requests before releasing the listener.
-/// </summary>
-internal sealed class LoopbackListenerEndpoint
+internal interface ILoopbackListenerEndpoint
+{
+    int Port { get; }
+
+    void Start();
+
+    void CloseAfterFailedStart();
+
+    Task StopAsync();
+}
+
+/// <summary>Owns one listener, its accept loop, and accepted requests.</summary>
+internal sealed class LoopbackListenerEndpoint : ILoopbackListenerEndpoint
 {
     private readonly HttpListener _listener = new();
     private readonly Func<HttpListenerContext, CancellationToken, Task> _handleContext;
@@ -48,8 +56,29 @@ internal sealed class LoopbackListenerEndpoint
     public void CloseAfterFailedStart()
     {
         Interlocked.Exchange(ref _stopped, 1);
-        _listener.Close();
-        _shutdown.Dispose();
+        Exception? firstError = null;
+        try
+        {
+            _listener.Close();
+        }
+        catch (Exception error)
+        {
+            firstError = error;
+        }
+
+        try
+        {
+            _shutdown.Dispose();
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        if (firstError is not null)
+        {
+            ExceptionDispatchInfo.Capture(firstError).Throw();
+        }
     }
 
     public async Task StopAsync()
@@ -59,7 +88,16 @@ internal sealed class LoopbackListenerEndpoint
             return;
         }
 
-        _shutdown.Cancel();
+        Exception? firstError = null;
+        try
+        {
+            _shutdown.Cancel();
+        }
+        catch (Exception error)
+        {
+            firstError = error;
+        }
+
         try
         {
             _listener.Stop();
@@ -67,15 +105,44 @@ internal sealed class LoopbackListenerEndpoint
         catch (ObjectDisposedException)
         {
         }
-
-        if (_acceptLoop is not null)
+        catch (Exception error)
         {
-            await _acceptLoop;
+            firstError ??= error;
         }
 
-        await Task.WhenAll(_requests.Keys);
-        _listener.Close();
-        _shutdown.Dispose();
+        var acceptedBeforeStop = _requests.Keys.ToArray();
+        if (_acceptLoop is not null)
+        {
+            firstError = await CaptureFailureAsync(_acceptLoop, firstError);
+        }
+
+        var requests = acceptedBeforeStop
+            .Concat(_requests.Keys)
+            .Distinct()
+            .ToArray();
+        firstError = await CaptureFailureAsync(Task.WhenAll(requests), firstError);
+        try
+        {
+            _listener.Close();
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        try
+        {
+            _shutdown.Dispose();
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        if (firstError is not null)
+        {
+            ExceptionDispatchInfo.Capture(firstError).Throw();
+        }
     }
 
     private async Task AcceptLoopAsync()
@@ -116,5 +183,21 @@ internal sealed class LoopbackListenerEndpoint
                 TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
         }
+    }
+
+    private static async Task<Exception?> CaptureFailureAsync(
+        Task task,
+        Exception? firstError)
+    {
+        try
+        {
+            await task;
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        return firstError;
     }
 }

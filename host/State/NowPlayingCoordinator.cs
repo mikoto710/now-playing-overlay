@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Artwork;
@@ -11,6 +12,13 @@ namespace NowPlayingOverlay.Host.State;
 /// <summary>
 /// Serializes source reads, Store commits, and asynchronous artwork completion.
 /// </summary>
+/// <remarks>
+/// Changed -> debounce/coalesce -> generation-bound read -> main snapshot commit -> optional
+/// artwork read -> generation and identity recheck -> artwork commit. The single message worker
+/// orders Store mutations; artwork I/O may overlap but completion re-enters that ordering point.
+/// Cancellation is an early-exit mechanism. Generation and media identity are the correctness
+/// barriers for late source and artwork results. Disposal terminates the pipeline and owns Source.
+/// </remarks>
 internal sealed class NowPlayingCoordinator : INowPlayingRuntime
 {
     // Protects lifecycle, generation, cancellation, and tracked artwork tasks.
@@ -124,6 +132,7 @@ internal sealed class NowPlayingCoordinator : INowPlayingRuntime
     {
         Task? signalPump;
         Task? worker;
+        CancellationTokenSource? activeReadCancellation;
         lock (_lifecycleGate)
         {
             if (_disposed)
@@ -137,25 +146,44 @@ internal sealed class NowPlayingCoordinator : INowPlayingRuntime
                 _source.Changed -= OnSourceChanged;
             }
 
-            _shutdown.Cancel();
-            _activeReadCancellation?.Cancel();
             _refreshSignals.Writer.TryComplete();
             _messages.Writer.TryComplete();
+            activeReadCancellation = _activeReadCancellation;
             signalPump = _signalPump;
             worker = _worker;
         }
 
-        await IgnoreCancellationAsync(signalPump);
-        await IgnoreCancellationAsync(worker);
+        Exception? firstError = null;
+        firstError = Cancel(_shutdown, firstError);
+        firstError = Cancel(activeReadCancellation, firstError);
+        firstError = await CaptureFailureAsync(
+            Task.WhenAll(
+                IgnoreCancellationAsync(signalPump),
+                IgnoreCancellationAsync(worker)),
+            firstError);
         Task[] artworkTasks;
         lock (_lifecycleGate)
         {
             artworkTasks = _artworkTasks.ToArray();
         }
 
-        await Task.WhenAll(artworkTasks.Select(IgnoreCancellationAsync));
-        await _source.DisposeAsync();
-        _shutdown.Dispose();
+        firstError = await CaptureFailureAsync(
+            Task.WhenAll(artworkTasks.Select(IgnoreCancellationAsync)),
+            firstError);
+        firstError = await CaptureFailureAsync(_source.DisposeAsync, firstError);
+        try
+        {
+            _shutdown.Dispose();
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        if (firstError is not null)
+        {
+            ExceptionDispatchInfo.Capture(firstError).Throw();
+        }
     }
 
     private void OnSourceChanged(object? sender, EventArgs args)
@@ -495,6 +523,57 @@ internal sealed class NowPlayingCoordinator : INowPlayingRuntime
         catch (OperationCanceledException)
         {
         }
+    }
+
+    private static Exception? Cancel(
+        CancellationTokenSource? cancellation,
+        Exception? firstError)
+    {
+        try
+        {
+            cancellation?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        return firstError;
+    }
+
+    private static async Task<Exception?> CaptureFailureAsync(
+        Task task,
+        Exception? firstError)
+    {
+        try
+        {
+            await task;
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        return firstError;
+    }
+
+    private static async Task<Exception?> CaptureFailureAsync(
+        Func<ValueTask> action,
+        Exception? firstError)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception error)
+        {
+            firstError ??= error;
+        }
+
+        return firstError;
     }
 
     private abstract record CoordinatorMessage;
