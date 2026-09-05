@@ -4,130 +4,59 @@
   <img src="host/Assets/NowPlayingOverlay.png" width="128" alt="Now Playing Overlay application icon">
 </p>
 
-A small Windows tray application that shows the current track and artwork in an OBS Browser Source.
-
-It supports four independent media sources:
-
-- **Windows Media** — reads a selected Windows media session, including Spotify, browsers, and other compatible players.
-- **Spotify API** — reads the current track from your Spotify account using your own Spotify Developer application Client ID.
-- **Browser Player** — receives playback metadata from supported browser players through the Host-provided Tampermonkey Producer.
-- **Window Title** — reads one selected desktop application's window title and optionally splits it into title and artist fields.
-
-The overlay can customize its colors, typography, background, and artwork layout. The Host can also write templated text, protocol JSON, current artwork, and track history to local files.
-
-## Requirements
-
-- Windows 10 version 1809 or later, x64
-- OBS Studio with Browser Source support
-- [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
-
-The runtime can also be installed with WinGet:
-
-```powershell
-winget install Microsoft.DotNet.DesktopRuntime.10
-```
+A Windows tray app that displays the current track and artwork in an OBS Browser Source. Customize the overlay's appearance or export track information to local files.
 
 ## Quick start
 
-1. Download the latest ZIP from [Releases](https://github.com/mikoto710/now-playing-overlay/releases), extract it, and run `NowPlayingOverlay.exe`.
-2. Open **Settings...** from the tray icon.
-3. Select a provider:
-   - **Windows Media:** start playback, select **Refresh**, and choose the player.
-   - **Spotify API:** open **Spotify Connection...**, enter your Client ID, and authorize in the browser.
-   - **Browser Player:** install the browser Producer from the running Host, copy the connection code, and paste it into the userscript menu once.
-   - **Window Title:** choose a window, then keep its complete title or explicitly configure a separator and field order.
-4. Optionally customize the overlay on **Appearance** or configure local files on **Outputs**, then select **Save**.
-5. Select **Copy OBS URL** from the tray menu.
-6. Add a **Browser** source in OBS, paste the URL, and set its size to `350 × 70`.
+Requires **Windows 10 1809+ (x64)**, **OBS Studio**, and the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/10.0).
 
-The default overlay URL is:
+1. Download the ZIP from [Releases](https://github.com/mikoto710/now-playing-overlay/releases), extract it, and run `NowPlayingOverlay.exe`.
+2. Open **Settings...** from the tray icon, choose and configure a source below, then select **Save**.
+3. Select **Copy OBS URL** from the tray menu.
+4. Add a **Browser** source in OBS, paste the URL, and set its size to **350 × 70** for the default scale.
 
-```text
-http://127.0.0.1:13130/NowPlaying.html
-```
+The app runs in the system tray. Use **Appearance** in Settings to customize the overlay, or **Open Overlay Preview** from the tray menu to check it before using OBS.
 
-The application has no main window. Use the tray menu to open a preview, change settings, view logs, or exit.
+## Choose a source
 
-## Spotify setup
+| Source | Setup |
+| --- | --- |
+| **Windows Media** | Start playback, select **Refresh**, and choose a Windows media session, such as Spotify or a compatible browser/player. |
+| **Spotify API** | Connect your Spotify account using your own Developer app Client ID; see below. |
+| **Browser Player** | Install the Tampermonkey Producer and pair it with the app. Supports YouTube, Spotify Web, and other listed players. [Setup and supported sites](docs/browser-producer.md#install-and-connect). |
+| **Window Title** | Choose a desktop window and use its whole title or configure a title/artist split. [Setup and limitations](docs/window-title.md#setup). |
 
-Create an application in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) and register this redirect URI:
+### Spotify API setup
+
+Create an app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) with this redirect URI:
 
 ```text
 http://127.0.0.1:13130/oauth/spotify/callback
 ```
 
-If you changed the application port, replace `13130` with the current port. The complete URI, including the port and path, must match the Dashboard entry.
+If you changed the local port, update the URI to match. In **Spotify Connection...**, enter the Client ID and authorize in your browser. No Client Secret is required.
 
-Only the Client ID is required. Authorization uses the system browser and PKCE; no Client Secret is stored by the application.
+## Usage notes
 
-## Browser Player setup
-
-Browser Player is the simple browser-integration path. It does not require a separate bridge application or any manual ingest-protocol work:
-
-1. Install [Tampermonkey](https://www.tampermonkey.net/) in the browser that plays your music.
-2. Open **Settings...**, choose **Browser Player**, and select **Install Browser Producer...**.
-3. Select **Copy Connection Code**.
-4. On a supported music page, open Tampermonkey's **Now Playing Overlay Browser Producer** menu, choose **Configure Now Playing Overlay**, and paste the code.
-5. Save **Browser Player** as the active provider and start playback.
-
-The Producer has site-specific metadata and artwork readers for Spotify Web, YouTube/YouTube Music, SoundCloud, Deezer, Yandex Music, Pretzel, Plex, Chillhop, and Bilibili, followed by a general Media Session fallback. These readers use separate page fields for title and artist; they do not guess the order of an `Artist - Title` string.
-
-The script manages authentication, Producer identity, ordering, heartbeat, retry, Host restart recovery, multi-tab ownership, and current-cover transfer internally. Artwork URLs stay in the browser: the script retrieves supported images and uploads only validated bytes to the local Host. Its key is stored in userscript-private storage and is sent only to `127.0.0.1`. Use **Rotate Code...** to invalidate the old code, clear the active lease, and copy a replacement. See [Browser Producer](docs/browser-producer.md) for troubleshooting and adapter guidance.
-
-## Window Title setup
-
-Window Title is the fallback for desktop players that expose useful text in a normal top-level window but do not publish a Windows media session:
-
-1. Open the player and make sure its main window has a title.
-2. Open **Settings...**, choose **Window Title**, select **Refresh**, and choose the application window.
-3. Keep **Use whole title** to publish the complete caption as the track title, or choose **Split title**.
-4. For split mode, enter the exact separator, choose its first or last occurrence, and specify whether the left side is the title or artist.
-5. Check the Title and Artist preview, then select **Save**.
-
-The Host does not guess whether a caption is `Artist - Title` or `Title - Artist`. Split mode publishes no track when the configured separator is absent or either side is empty. Window titles do not provide reliable pause, timeline, or artwork information, so this source treats a usable caption as playing. See [Window Title](docs/window-title.md) for target matching and limitations.
-
-## Notes
-
-- The local server listens only on `127.0.0.1`.
-- Only one instance runs for each Windows user.
-- Pausing or stopping playback hides the overlay.
-- Window Title is a best-effort exception: it cannot detect real pause state and remains visible while a usable caption exists.
-- If OBS is blank, use **Open Overlay Preview** first, then refresh the Browser Source.
-- Settings and protected Spotify credentials are stored under `%LOCALAPPDATA%\NowPlayingOverlay`.
-- The Browser Player ingest key is protected for the current Windows user and is never placed in the overlay URL.
-
-## Local outputs
-
-Open **Settings... > Outputs** to configure one templated TXT file, one Local Protocol v3 JSON file, one stable current-artwork PNG, and one append-only History file. Outputs are disabled by default and work even when no OBS Browser Source is open.
-
-TXT templates use tokens such as `{nowPlaying}`, `{title}`, `{artist}`, `{albumTitle}`, `{playback}`, `{position}`, and `{observedAt}`. Current files are replaced atomically; History adds one line only when the committed track identity changes. A failure in one target does not stop media sources, the overlay, or other outputs.
-
-See [Local outputs](docs/outputs.md) for the complete token syntax, no-media behavior, file semantics, and OBS acceptance checklist.
+- Pausing or stopping playback hides the overlay. **Window Title** cannot detect pause state and stays visible while a usable caption exists; it provides no artwork or timeline.
+- If OBS is blank, check **Open Overlay Preview**, then refresh the OBS Browser Source.
+- Under **Settings... > Outputs**, optionally enable TXT, JSON, artwork PNG, or track history files. [Output guide](docs/outputs.md).
+- The local server listens only on `127.0.0.1`. Settings are stored in `%LOCALAPPDATA%\NowPlayingOverlay`.
 
 ## Development
 
-Requires the .NET 10 SDK, Node.js 22, and npm.
+Requires the .NET 10 SDK, Node.js 22, and npm. From the repository root:
 
 ```powershell
-.\scripts\check.ps1
-.\scripts\publish-fast.ps1
-.\scripts\publish.ps1
+npm --prefix web install
+.\scripts\check.ps1       # Validate
+.\scripts\publish.ps1     # Validate and package a release
 ```
 
-- `check.ps1` runs the normal validation chain.
-- `publish-fast.ps1` creates a quick Debug executable without tests.
-- `publish.ps1` runs release validation, including the real-browser layout check, and creates the release package.
+See [technical documentation](docs) and the [release checklist](docs/release-checklist.md).
 
-The release ZIP contains `NowPlayingOverlay.exe`, the README, and the license. The userscript remains embedded in the executable and is installed through **Install Browser Producer...** while the Host is running.
+## Credits and license
 
-Protocol, source, Outputs, and release details live in [`docs`](docs), not in this README.
-
-## Acknowledgements
-
-This project draws inspiration from [Snip](https://github.com/dlrudie/Snip) and [Tuna](https://github.com/univrsal/tuna) for now-playing metadata and source-integration patterns. The Browser Producer's site extraction behavior is independently implemented for this project's local protocol.
-
-The front-end overlay presentation was inspired by [Zyphen's Now Playing](https://github.com/ZyphenVisuals/zyphens-now-playing).
-
-## License
+Inspired by [Snip](https://github.com/dlrudie/Snip), [Tuna](https://github.com/univrsal/tuna), and [Zyphen's Now Playing](https://github.com/ZyphenVisuals/zyphens-now-playing). Browser site readers are independently implemented for this project.
 
 [GNU General Public License v3.0](LICENSE)
