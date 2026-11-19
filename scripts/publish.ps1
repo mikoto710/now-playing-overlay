@@ -7,9 +7,7 @@ $checkScript = Join-Path $PSScriptRoot "check.ps1"
 $hostProject = Join-Path $repositoryRoot "host\NowPlayingOverlay.Host.csproj"
 $publishDirectory = Join-Path $repositoryRoot "artifacts\publish\win-x64"
 $releaseDirectory = Join-Path $repositoryRoot "artifacts\release"
-$releaseVersion = "0.3.0"
 $expectedExecutableName = "NowPlayingOverlay.exe"
-$releaseArchiveName = "NowPlayingOverlay-v$releaseVersion-win-x64.zip"
 $publishArtifactsRoot = [System.IO.Path]::GetFullPath(
     (Join-Path ([System.IO.Path]::GetTempPath()) "NowPlayingOverlay-publish-$([guid]::NewGuid().ToString('N'))")
 )
@@ -35,17 +33,18 @@ function Assert-ReleaseVersionSources {
         [string]$Version
     )
 
-    [xml]$hostProjectXml = Get-Content -LiteralPath $hostProject -Raw
-    $hostVersionNode = $hostProjectXml.SelectSingleNode("/Project/PropertyGroup/Version")
-    $hostVersion = if ($null -eq $hostVersionNode) { $null } else { $hostVersionNode.InnerText }
-    if ($hostVersion -ne $Version) {
-        throw "Expected host version '$Version', but found '$hostVersion'."
-    }
-
     $webPackagePath = Join-Path $repositoryRoot "web\package.json"
     $webPackage = Get-Content -LiteralPath $webPackagePath -Raw | ConvertFrom-Json
     if ($webPackage.version -ne $Version) {
         throw "Expected web version '$Version', but found '$($webPackage.version)'."
+    }
+
+    $lockPath = Join-Path $repositoryRoot "web\package-lock.json"
+    # Windows PowerShell's ConvertFrom-Json cannot read the lockfile's empty root-package key.
+    $lockVersions = @(& node -p "const lock = require(process.argv[1]); [lock.version, lock.packages[''].version].join('\n')" $lockPath)
+    if ($LASTEXITCODE -ne 0 -or $lockVersions.Count -ne 2 -or
+        $lockVersions[0] -ne $Version -or $lockVersions[1] -ne $Version) {
+        throw "Expected web lockfile and root package versions '$Version', found '$($lockVersions -join ', ')'."
     }
 
     $browserProducerPath = Join-Path $repositoryRoot "integrations\NowPlayingOverlay.user.js"
@@ -270,7 +269,7 @@ function New-ReleasePackage {
         [string]$Directory,
 
         [Parameter(Mandatory)]
-        [string]$ArchiveName
+        [string]$Version
     )
 
     $readmePath = Join-Path $repositoryRoot "README.md"
@@ -287,12 +286,13 @@ function New-ReleasePackage {
     $repositoryUrl = "https://github.com/mikoto710/now-playing-overlay"
     $readme = [System.IO.File]::ReadAllText($readmePath)
     $readme = $readme -replace '(?m)^<p align="center">\s*<img src="host/Assets/NowPlayingOverlay\.png"[^>]*>\s*</p>\r?\n(?:\r?\n)?', ''
-    $readme = $readme.Replace('](docs/', "]($repositoryUrl/blob/v$releaseVersion/docs/")
-    $readme = $readme.Replace('](docs)', "]($repositoryUrl/tree/v$releaseVersion/docs)")
+    $readme = $readme.Replace('](docs/', "]($repositoryUrl/blob/v$Version/docs/")
+    $readme = $readme.Replace('](docs)', "]($repositoryUrl/tree/v$Version/docs)")
     [System.IO.File]::WriteAllText((Join-Path $stagingDirectory "README.md"), $readme)
     Copy-Item -LiteralPath $licensePath -Destination $stagingDirectory
 
-    $archivePath = Join-Path $Directory $ArchiveName
+    $archiveName = "NowPlayingOverlay-v$Version-win-x64.zip"
+    $archivePath = Join-Path $Directory $archiveName
     $packageFiles = @(Get-ChildItem -LiteralPath $stagingDirectory -File)
     Compress-Archive -LiteralPath $packageFiles.FullName -DestinationPath $archivePath
     Remove-Item -LiteralPath $stagingDirectory -Recurse -Force
@@ -319,7 +319,7 @@ function New-ReleasePackage {
     $archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
 
     $releaseItems = @(Get-ChildItem -LiteralPath $Directory -Force)
-    $expectedReleaseItems = @($ArchiveName)
+    $expectedReleaseItems = @($archiveName)
     $actualReleaseItems = @($releaseItems.Name | Sort-Object)
     if (($actualReleaseItems -join "`n") -cne (($expectedReleaseItems | Sort-Object) -join "`n")) {
         throw "Unexpected release directory entries: $($actualReleaseItems -join ', ')"
@@ -343,6 +343,11 @@ if (-not (Test-Path -LiteralPath $hostProject -PathType Leaf)) {
     throw "Host project is missing at '$hostProject'."
 }
 
+[xml]$hostProjectXml = Get-Content -LiteralPath $hostProject -Raw
+$releaseVersion = $hostProjectXml.SelectSingleNode("/Project/PropertyGroup/Version").InnerText
+if ($releaseVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
+    throw "Expected a numeric major.minor.patch version in '$hostProject', found '$releaseVersion'."
+}
 Assert-ReleaseVersionSources -Version $releaseVersion
 Reset-PublishDirectory -Directory $publishDirectory
 Reset-ReleaseDirectory -Directory $releaseDirectory
@@ -383,7 +388,7 @@ try {
     $releasePackage = New-ReleasePackage `
         -Executable $publishedExecutable `
         -Directory $releaseDirectory `
-        -ArchiveName $releaseArchiveName
+        -Version $releaseVersion
 
     $sizeMiB = [Math]::Round($publishedExecutable.Length / 1MB, 1)
     Write-Host "Published $($publishedExecutable.FullName) ($sizeMiB MiB)"
