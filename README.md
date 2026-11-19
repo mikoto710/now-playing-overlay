@@ -28,7 +28,7 @@ The app runs in the system tray. Use **Appearance** in Settings to customize the
 
 ### Spotify API setup
 
-Create an app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) with this redirect URI:
+Create an app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) and register the following redirect URI. In Development Mode, the app owner needs Spotify Premium. Add anyone else who will use the app under **Settings > Users Management**.
 
 ```text
 http://127.0.0.1:13130/oauth/spotify/callback
@@ -47,7 +47,7 @@ After each playback request finishes, the source waits **3 seconds while playing
 
 ## Development
 
-Requires the .NET 10 SDK, Node.js 22, and npm. From the repository root:
+Requires the .NET 10 SDK, Node.js 22.13.0 or later in the 22.x series, and npm. Run these commands from the repository root.
 
 ```powershell
 npm --prefix web install
@@ -55,7 +55,7 @@ npm --prefix web install
 .\scripts\publish.ps1     # Validate and package a release
 ```
 
-See [technical documentation](docs) and the [release checklist](docs/release-checklist.md).
+See the [technical documentation](docs).
 
 ## Credits and license
 

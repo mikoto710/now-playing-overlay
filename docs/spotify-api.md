@@ -1,5 +1,15 @@
 # Spotify API polling and diagnostics
 
+## Account setup
+
+For a Development Mode app, the owner needs an active Spotify Premium account.
+To connect another account, open **Settings > Users Management** in the Spotify
+Developer Dashboard and add that user's Spotify email. If browser authorization
+succeeds but playback requests return HTTP 403, check the allowlist and the
+owner's subscription. [Spotify quota modes](https://developer.spotify.com/documentation/web-api/concepts/quota-modes).
+
+## Polling
+
 The Spotify source calls `GET /v1/me/player/currently-playing`. After each request
 finishes, it waits **3 seconds while playing** or **5 seconds while paused, idle
 (including HTTP 204), or showing unsupported content**. With negligible response

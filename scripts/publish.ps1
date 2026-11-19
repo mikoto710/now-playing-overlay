@@ -284,7 +284,12 @@ function New-ReleasePackage {
     $stagingDirectory = Join-Path $Directory "package"
     $null = New-Item -ItemType Directory -Path $stagingDirectory
     Copy-Item -LiteralPath $Executable.FullName -Destination $stagingDirectory
-    Copy-Item -LiteralPath $readmePath -Destination $stagingDirectory
+    $repositoryUrl = "https://github.com/mikoto710/now-playing-overlay"
+    $readme = [System.IO.File]::ReadAllText($readmePath)
+    $readme = $readme -replace '(?m)^<p align="center">\s*<img src="host/Assets/NowPlayingOverlay\.png"[^>]*>\s*</p>\r?\n(?:\r?\n)?', ''
+    $readme = $readme.Replace('](docs/', "]($repositoryUrl/blob/v$releaseVersion/docs/")
+    $readme = $readme.Replace('](docs)', "]($repositoryUrl/tree/v$releaseVersion/docs)")
+    [System.IO.File]::WriteAllText((Join-Path $stagingDirectory "README.md"), $readme)
     Copy-Item -LiteralPath $licensePath -Destination $stagingDirectory
 
     $archivePath = Join-Path $Directory $ArchiveName

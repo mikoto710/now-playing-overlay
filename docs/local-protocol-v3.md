@@ -1,8 +1,8 @@
 # Local protocol version 3
 
-> Status: current output protocol and Browser Player input contract as of v0.3.0. Phase A, Phase B, PC-01/PC-02/PC-03, and ART-01/ART-02/ART-03 are implemented and accepted. [`local-protocol-v2.md`](./local-protocol-v2.md) is historical only.
+> The host serves output at `/api/v3` and accepts Browser Player input at `/ingest/v1`. Phase A, Phase B, PC-01/PC-02/PC-03, and ART-01/ART-02/ART-03 are implemented and accepted. [Protocol v2 history](./local-protocol-v2.md).
 
-This document freezes the next local contract shared by the host and embedded browser client. The service remains bound only to `127.0.0.1`; the default port remains `13130`.
+The host and embedded browser client use this contract over `127.0.0.1`. The default port is `13130`.
 
 ## Atomic endpoint namespace
 
