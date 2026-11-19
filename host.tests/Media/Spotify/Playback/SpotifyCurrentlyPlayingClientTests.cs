@@ -112,11 +112,7 @@ public sealed class SpotifyCurrentlyPlayingClientTests
         held.RunQueued();
         finishBody.SetResult();
         await Assert.ThrowsAsync<SpotifyRateLimitException>(() => second.WaitAsync(TimeSpan.FromSeconds(5)));
-        while (!first.IsCompleted)
-        {
-            await held.RunNextAsync();
-        }
-
+        await held.RunUntilCompletedAsync(first);
         await Assert.ThrowsAsync<SpotifyRateLimitException>(() => first);
         Assert.Equal(0, forcedRefreshes);
         Assert.Equal(2, sends);
@@ -235,6 +231,23 @@ public sealed class SpotifyCurrentlyPlayingClientTests
         {
             var callback = await _pending.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
             callback();
+        }
+
+        public async Task RunUntilCompletedAsync(Task request)
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            while (!request.IsCompleted)
+            {
+                var readable = _pending.Reader.WaitToReadAsync(timeout.Token).AsTask();
+                if (await Task.WhenAny(request, readable) == request)
+                {
+                    timeout.Cancel();
+                    return;
+                }
+
+                await readable;
+                RunQueued();
+            }
         }
 
         public void RunQueued()
