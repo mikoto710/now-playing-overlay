@@ -35,8 +35,9 @@ step counts consecutive 429 responses for that endpoint across classifications.
 
 The delay is the greater of a valid `Retry-After` and the local interval, plus
 0–10% of the local interval as positive jitter. `Retry-After` accepts seconds or an
-HTTP date, and can exceed the local cap. Invalid or past headers retain the local
-minimum. These intervals are the overlay's retry defaults. Spotify measures the
+HTTP date, and can exceed the local cap. The app uses the time remaining until
+that date when it schedules the next request. Invalid or past headers retain the
+local minimum. These intervals are the overlay's retry defaults. Spotify measures the
 Web API call rate over a rolling 30 second window. [Spotify rate limits](https://developer.spotify.com/documentation/web-api/concepts/rate-limits).
 
 429 bodies have a separate 16 KiB limit and a 5 second timeout. If the body is

@@ -1,15 +1,16 @@
+using System.Net.Http.Headers;
 using System.Text.Json;
 
 namespace NowPlayingOverlay.Host.Media.Spotify;
 
-internal sealed record SpotifyRateLimitResponse(bool IsQuotaExceeded, string ParseStatus, TimeSpan? RetryAfter)
+internal sealed record SpotifyRateLimitResponse(bool IsQuotaExceeded, string ParseStatus, RetryConditionHeaderValue? RetryAfter)
 {
     private const int MaximumBytes = 16 * 1024;
 
     public static async Task<SpotifyRateLimitResponse> ReadAsync(
-        SpotifyHttpResponse response, TimeProvider clock, CancellationToken cancellationToken)
+        SpotifyHttpResponse response, CancellationToken cancellationToken)
     {
-        var retryAfter = GetRetryAfter(response.Message, clock);
+        var retryAfter = ReadRetryAfter(response.Message);
         try
         {
             var bytes = await response.ReadBodyAsync(MaximumBytes, cancellationToken);
@@ -47,13 +48,17 @@ internal sealed record SpotifyRateLimitResponse(bool IsQuotaExceeded, string Par
         }
     }
 
-    private static TimeSpan? GetRetryAfter(HttpResponseMessage response, TimeProvider clock)
+    public TimeSpan? GetRetryDelay(DateTimeOffset now)
+    {
+        var delay = RetryAfter?.Delta ?? (RetryAfter?.Date is { } date ? date - now : null);
+        return delay is { } value && value < TimeSpan.Zero ? TimeSpan.Zero : delay;
+    }
+
+    private static RetryConditionHeaderValue? ReadRetryAfter(HttpResponseMessage response)
     {
         try
         {
-            var header = response.Headers.RetryAfter;
-            var delay = header?.Delta ?? (header?.Date is { } date ? date - clock.GetUtcNow() : null);
-            return delay is { } value && value < TimeSpan.Zero ? TimeSpan.Zero : delay;
+            return response.Headers.RetryAfter;
         }
         catch (FormatException)
         {

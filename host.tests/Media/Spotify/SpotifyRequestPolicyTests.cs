@@ -147,15 +147,24 @@ public sealed class SpotifyRequestPolicyTests
     }
 
     [Fact]
-    public async Task HttpDateAndPositiveJitterAreAddedWithoutShorteningTheServerDeadline()
+    public async Task Slow429BodyPreservesTheAbsoluteServerDeadlineAndAddsLocalJitter()
     {
         var clock = new PolicyClock();
-        var policy = new SpotifyRequestPolicy(timeProvider: clock, jitter: () => 1);
-        var response = Response("");
-        response.Headers.RetryAfter = new(clock.GetUtcNow().AddHours(1));
+        using var policy = new SpotifyRequestPolicy(timeProvider: clock, jitter: () => 1);
+        var serverDeadline = clock.GetUtcNow().AddHours(1);
+        var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        {
+            Content = new StreamContent(new ResponseStream((_, _) =>
+            {
+                clock.Advance(TimeSpan.FromSeconds(4));
+                return ValueTask.FromResult(0);
+            })),
+        };
+        response.Headers.RetryAfter = new(serverDeadline);
         var error = await Assert.ThrowsAsync<SpotifyRateLimitException>(() => policy.SendAsync(
             Client, SpotifyEndpoint.CurrentlyPlaying, () => Task.FromResult(response), CancellationToken.None));
-        Assert.Equal(TimeSpan.FromSeconds(3603), error.RetryAfter);
+        Assert.Equal(serverDeadline.AddSeconds(3), error.Cooldown.NotBeforeUtc);
+        Assert.Equal(TimeSpan.FromSeconds(3599), error.RetryAfter);
     }
 
     [Fact]

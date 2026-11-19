@@ -104,7 +104,7 @@ internal sealed class SpotifyRequestPolicy : IDisposable
             {
                 using (received)
                 {
-                    var details = await SpotifyRateLimitResponse.ReadAsync(received, _clock, cancellationToken);
+                    var details = await SpotifyRateLimitResponse.ReadAsync(received, cancellationToken);
                     throw Register429(key, details);
                 }
             }
@@ -170,8 +170,9 @@ internal sealed class SpotifyRequestPolicy : IDisposable
                 : Math.Min(30 * Math.Pow(2, Math.Min(count - 1, 4)), 300);
             var random = _jitter();
             var jitterSeconds = localSeconds * 0.1 * (double.IsFinite(random) ? Math.Clamp(random, 0, 1) : 0);
-            var seconds = Math.Max(details.RetryAfter?.TotalSeconds ?? 0, localSeconds) + jitterSeconds;
             var now = _clock.GetUtcNow();
+            var retryAfter = details.GetRetryDelay(now);
+            var seconds = Math.Max(retryAfter?.TotalSeconds ?? 0, localSeconds) + jitterSeconds;
             var maximumDuration = DateTimeOffset.MaxValue - now;
             var duration = seconds >= maximumDuration.TotalSeconds ? maximumDuration : TimeSpan.FromSeconds(seconds);
             var entry = new SpotifyCooldown(key.Client, key.Endpoint, quota,
@@ -182,7 +183,7 @@ internal sealed class SpotifyRequestPolicy : IDisposable
                 "Spotify HTTP 429. Endpoint={Endpoint} Classification={Classification} Reason={Reason} RetryAfterSeconds={RetryAfterSeconds} ChosenDelaySeconds={ChosenDelaySeconds} NextAttemptAtUtc={NextAttemptAtUtc:O} Consecutive429={Consecutive429} BodyParseStatus={BodyParseStatus}.",
                 EndpointName(key.Endpoint), quota ? "quota" : "rate_or_unknown",
                 details.IsQuotaExceeded ? "QUOTA_EXCEEDED" : "unconfirmed",
-                details.RetryAfter?.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "missing",
+                retryAfter?.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "missing",
                 duration.TotalSeconds, entry.NotBeforeUtc, count, details.ParseStatus);
             return new(entry, duration);
         }
