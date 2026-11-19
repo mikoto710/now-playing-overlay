@@ -104,6 +104,10 @@ internal sealed class SpotifyRequestPolicy : IDisposable
             {
                 using (received)
                 {
+                    lock (_gate)
+                    {
+                        GetCounts(endpoint).Responses429++;
+                    }
                     var details = await SpotifyRateLimitResponse.ReadAsync(received, cancellationToken);
                     throw Register429(key, details);
                 }
@@ -161,7 +165,6 @@ internal sealed class SpotifyRequestPolicy : IDisposable
     {
         lock (_gate)
         {
-            GetCounts(key.Endpoint).Responses429++;
             _cooldowns.TryGetValue(key, out var previous);
             var count = Math.Min(previous?.Value.Consecutive429 ?? 0, 1000) + 1;
             var quota = details.IsQuotaExceeded;

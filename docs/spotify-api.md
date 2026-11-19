@@ -71,8 +71,9 @@ server delay, chosen delay, next attempt UTC, consecutive count, and body parse
 status. Restored cooldowns and recovery write Information entries, including the
 polling interval when polling resumes. Every 15 minutes, `Spotify request summary`
 reports actual HTTP sends, successes, and 429 responses for each endpoint that has
-sent a request, including zero counts for an idle window. `Successes` counts 2xx
-headers even if the body later fails. A 401 retry and a token refresh each count
+sent a request, including zero counts for an idle window. `Successes` and
+`Responses429` count the corresponding headers in the window when they arrive,
+even if the body later fails. A 401 retry and a token refresh each count
 as a send. Local cooldown checks do not add to the count. `PollingState` and
 `IntervalSeconds` give the current polling state and wait.
 

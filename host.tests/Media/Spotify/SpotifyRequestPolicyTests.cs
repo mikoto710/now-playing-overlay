@@ -343,14 +343,23 @@ public sealed class SpotifyRequestPolicyTests
         Assert.Equal(TimeSpan.FromMinutes(15), timer.DueTime);
         Assert.Equal(TimeSpan.FromMinutes(15), timer.Period);
 
-        await LimitAsync(policy, "");
-        await Assert.ThrowsAsync<SpotifyRateLimitException>(() => policy.SendAsync(Client, SpotifyEndpoint.CurrentlyPlaying,
-            () => throw new InvalidOperationException("Locally blocked requests must not send."), CancellationToken.None));
         using var success = await policy.SendAsync(Client, SpotifyEndpoint.Token,
             () => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)), CancellationToken.None);
-
-        clock.Advance(TimeSpan.FromMinutes(15) + TimeSpan.FromMilliseconds(100));
-        timer.Fire();
+        clock.Advance(TimeSpan.FromMinutes(15) - TimeSpan.FromSeconds(1));
+        var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        {
+            Content = new StreamContent(new ResponseStream((_, _) =>
+            {
+                // The 429 headers and the end of its body fall in different summary windows.
+                clock.Advance(TimeSpan.FromMilliseconds(1100));
+                timer.Fire();
+                return ValueTask.FromResult(0);
+            })),
+        };
+        await Assert.ThrowsAsync<SpotifyRateLimitException>(() => policy.SendAsync(Client, SpotifyEndpoint.CurrentlyPlaying,
+            () => Task.FromResult(response), CancellationToken.None));
+        await Assert.ThrowsAsync<SpotifyRateLimitException>(() => policy.SendAsync(Client, SpotifyEndpoint.CurrentlyPlaying,
+            () => throw new InvalidOperationException("Locally blocked requests must not send."), CancellationToken.None));
         Assert.Contains(log.Messages, line => line.Contains("Endpoint=currently-playing Requests=1 Successes=0 Responses429=1"));
         Assert.Contains(log.Messages, line => line.Contains("Endpoint=token Requests=1 Successes=1 Responses429=0"));
 
