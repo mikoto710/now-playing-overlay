@@ -20,7 +20,7 @@ internal sealed class BoundedFileLoggerProvider(BoundedLogFile logFile) : ILogge
         // Program owns the file so bootstrap and shutdown failures share the same bounded log.
     }
 
-    private sealed class BoundedFileLogger(BoundedLogFile logFile, string category) : ILogger
+    private class BoundedFileLogger(BoundedLogFile logFile, string category) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state)
             where TState : notnull
@@ -48,29 +48,8 @@ internal sealed class BoundedFileLoggerProvider(BoundedLogFile logFile) : ILogge
         }
     }
 
-    private sealed class BoundedFileLogger<T>(BoundedLogFile logFile) : ILogger<T>
+    private sealed class BoundedFileLogger<T>(BoundedLogFile logFile)
+        : BoundedFileLogger(logFile, typeof(T).FullName ?? typeof(T).Name), ILogger<T>
     {
-        private readonly ILogger _inner = new BoundedFileLogger(logFile, typeof(T).FullName ?? typeof(T).Name);
-
-        public IDisposable? BeginScope<TState>(TState state)
-            where TState : notnull
-        {
-            return _inner.BeginScope(state);
-        }
-
-        public bool IsEnabled(LogLevel logLevel)
-        {
-            return _inner.IsEnabled(logLevel);
-        }
-
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter)
-        {
-            _inner.Log(logLevel, eventId, state, exception, formatter);
-        }
     }
 }
