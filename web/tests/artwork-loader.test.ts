@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, type Mocked } from "vitest";
 import {
   ArtworkLoader,
   preloadArtwork,
@@ -158,11 +158,7 @@ function asFactory(image: FakeImage): ArtworkImageFactory {
   return () => image as unknown as HTMLImageElement;
 }
 
-function createTarget(): ArtworkTarget & {
-  clearArtwork: ReturnType<typeof vi.fn>;
-  isArtworkCurrent: ReturnType<typeof vi.fn>;
-  replaceArtwork: ReturnType<typeof vi.fn>;
-} {
+function createTarget(): Mocked<ArtworkTarget> {
   return {
     clearArtwork: vi.fn(),
     isArtworkCurrent: vi.fn(() => false),
