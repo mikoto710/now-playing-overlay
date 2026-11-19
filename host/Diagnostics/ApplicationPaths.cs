@@ -12,6 +12,7 @@ internal sealed record ApplicationPaths
         LogFilePath = Path.Combine(LogDirectory, "NowPlayingOverlay.log");
         SettingsFilePath = Path.Combine(RootDirectory, "settings.json");
         SpotifyCredentialsFilePath = Path.Combine(RootDirectory, "spotify-credentials.dat");
+        SpotifyCooldownFilePath = Path.Combine(RootDirectory, "spotify-cooldowns.json");
         IngestKeyFilePath = Path.Combine(RootDirectory, "ingest-key.dat");
     }
 
@@ -24,6 +25,7 @@ internal sealed record ApplicationPaths
     public string SettingsFilePath { get; }
 
     public string SpotifyCredentialsFilePath { get; }
+    public string SpotifyCooldownFilePath { get; }
 
     public string IngestKeyFilePath { get; }
 

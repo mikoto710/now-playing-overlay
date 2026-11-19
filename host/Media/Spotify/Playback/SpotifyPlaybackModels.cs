@@ -36,7 +36,6 @@ internal enum SpotifyApiFailureKind
 {
     Unauthorized,
     Forbidden,
-    RateLimited,
     Transient,
     InvalidResponse,
 }
@@ -47,18 +46,15 @@ internal sealed class SpotifyApiRequestException : Exception
         SpotifyApiFailureKind failureKind,
         string message,
         HttpStatusCode? statusCode = null,
-        TimeSpan? retryAfter = null,
         Exception? innerException = null)
         : base(message, innerException)
     {
         FailureKind = failureKind;
         StatusCode = statusCode;
-        RetryAfter = retryAfter;
     }
 
     public SpotifyApiFailureKind FailureKind { get; }
 
     public HttpStatusCode? StatusCode { get; }
 
-    public TimeSpan? RetryAfter { get; }
 }

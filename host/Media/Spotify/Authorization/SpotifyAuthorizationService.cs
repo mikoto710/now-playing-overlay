@@ -25,7 +25,8 @@ internal sealed class SpotifyAuthorizationService : IAsyncDisposable
     public SpotifyAuthorizationService(
         string credentialFilePath,
         SpotifyAuthorizationCallbackBroker callbackBroker,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        SpotifyRequestPolicy? requestPolicy = null)
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
         _ownedHttpClient = new HttpClient
@@ -33,7 +34,7 @@ internal sealed class SpotifyAuthorizationService : IAsyncDisposable
             Timeout = TimeSpan.FromSeconds(30),
         };
         _credentialStore = new SpotifyCredentialStore(credentialFilePath);
-        _tokenClient = new SpotifyTokenClient(_ownedHttpClient, _timeProvider);
+        _tokenClient = new SpotifyTokenClient(_ownedHttpClient, _timeProvider, requestPolicy);
         _callbackBroker = callbackBroker
             ?? throw new ArgumentNullException(nameof(callbackBroker));
         _openBrowser = OpenSystemBrowser;
@@ -52,6 +53,8 @@ internal sealed class SpotifyAuthorizationService : IAsyncDisposable
         _callbackBroker = callbackBroker ?? new SpotifyAuthorizationCallbackBroker();
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
+
+    internal SpotifyRequestPolicy RequestPolicy => _tokenClient.RequestPolicy;
 
     public SpotifyConnectionState GetConnectionState(SpotifyClientId clientId)
     {

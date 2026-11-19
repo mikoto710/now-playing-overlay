@@ -20,10 +20,14 @@ internal sealed class SpotifyTokenClient
     private readonly HttpClient _httpClient;
     private readonly TimeProvider _timeProvider;
 
-    public SpotifyTokenClient(HttpClient httpClient, TimeProvider? timeProvider = null)
+    public SpotifyRequestPolicy RequestPolicy { get; }
+
+    public SpotifyTokenClient(HttpClient httpClient, TimeProvider? timeProvider = null,
+        SpotifyRequestPolicy? requestPolicy = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _timeProvider = timeProvider ?? TimeProvider.System;
+        RequestPolicy = requestPolicy ?? new SpotifyRequestPolicy(timeProvider: _timeProvider);
     }
 
     public Task<SpotifyTokenResult> ExchangeAuthorizationCodeAsync(
@@ -78,9 +82,9 @@ internal sealed class SpotifyTokenClient
         {
             Content = new FormUrlEncodedContent(parameters),
         };
-        using var response = await _httpClient.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
+        using var response = await RequestPolicy.SendAsync(
+            new SpotifyClientId(parameters["client_id"]), SpotifyEndpoint.Token,
+            () => _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken),
             cancellationToken);
         if (response.Content.Headers.ContentLength > MaximumResponseBytes)
         {

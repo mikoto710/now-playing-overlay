@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using NowPlayingOverlay.Host.Media.Spotify;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Media.Spotify.Playback;
 
@@ -92,7 +93,7 @@ public sealed class SpotifyCurrentlyPlayingClientTests
     }
 
     [Fact]
-    public async Task RateLimitExposesTheServerRetryAfterDelay()
+    public async Task RateLimitUsesTheLocalMinimumWhenTheServerRequestsAShorterDelay()
     {
         var response = new HttpResponseMessage((HttpStatusCode)429);
         response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
@@ -100,13 +101,38 @@ public sealed class SpotifyCurrentlyPlayingClientTests
         using var httpClient = new HttpClient(new QueueHandler(new Queue<HttpResponseMessage>([response])));
         await using var client = CreateClient(httpClient);
 
-        var error = await Assert.ThrowsAsync<SpotifyApiRequestException>(() =>
+        var error = await Assert.ThrowsAsync<SpotifyRateLimitException>(() =>
             client.GetCurrentlyPlayingAsync(
                 new SpotifyClientId("client-id"),
                 CancellationToken.None));
 
-        Assert.Equal(SpotifyApiFailureKind.RateLimited, error.FailureKind);
-        Assert.Equal(TimeSpan.FromSeconds(17), error.RetryAfter);
+        Assert.False(error.Cooldown.IsQuotaExceeded);
+        Assert.InRange(error.RetryAfter.TotalSeconds, 30, 33);
+    }
+
+    [Fact]
+    public async Task QuotaResponseIsClassifiedBeforeAnotherHttpRequestOrTokenRefresh()
+    {
+        var clock = new PolicyClock();
+        var policy = new SpotifyRequestPolicy(timeProvider: clock, jitter: () => 0);
+        var requests = 0;
+        var tokens = 0;
+        using var httpClient = new HttpClient(new QueueHandler(new(
+        [
+            JsonResponse((HttpStatusCode)429, "{\"error\":{\"reason\":\"QUOTA_EXCEEDED\"}}"),
+        ]), _ => requests++));
+        await using var client = new SpotifyCurrentlyPlayingClient((_, _, _) =>
+        {
+            tokens++;
+            return Task.FromResult(new SpotifyAccessToken("token", clock.GetUtcNow().AddHours(1)));
+        }, httpClient, policy);
+        var error = await Assert.ThrowsAsync<SpotifyRateLimitException>(() =>
+            client.GetCurrentlyPlayingAsync(new SpotifyClientId("client-id"), CancellationToken.None));
+        Assert.True(error.Cooldown.IsQuotaExceeded);
+        await Assert.ThrowsAsync<SpotifyRateLimitException>(() =>
+            client.GetCurrentlyPlayingAsync(new SpotifyClientId("client-id"), CancellationToken.None));
+        Assert.Equal(1, requests);
+        Assert.Equal(1, tokens);
     }
 
     private static SpotifyCurrentlyPlayingClient CreateClient(HttpClient httpClient)

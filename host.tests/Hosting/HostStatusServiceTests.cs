@@ -1,6 +1,9 @@
 using NowPlayingOverlay.Host.Artwork;
 using NowPlayingOverlay.Host.Hosting;
 using NowPlayingOverlay.Host.Media.Sources;
+using NowPlayingOverlay.Host.Media.Spotify;
+using NowPlayingOverlay.Host.Media.Spotify.Authorization;
+using NowPlayingOverlay.Host.Media.Spotify.Playback;
 using NowPlayingOverlay.Host.Models;
 using NowPlayingOverlay.Host.State;
 using NowPlayingOverlay.Host.Tests.TestInfrastructure;
@@ -61,5 +64,32 @@ public sealed class HostStatusServiceTests
             service.GetCurrent().Text);
 
         await coordinator.DisposeAsync();
+    }
+
+    [Theory]
+    [InlineData(false, "Spotify API: Rate Limited")]
+    [InlineData(true, "Spotify API: Quota Exceeded")]
+    public async Task Spotify429StatusDistinguishesConfirmedQuotaFromUnconfirmedRateLimits(bool quota, string expected)
+    {
+        using var http = new HttpClient();
+        var provider = new SpotifyApiSource((_, _) => Task.FromException<SpotifyPlaybackResult>(
+            new SpotifyRateLimitException(new SpotifyCooldown("connection", SpotifyEndpoint.CurrentlyPlaying,
+                quota, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(15), 1), TimeSpan.FromMinutes(15))),
+            new SpotifyClientId("client-id"), http, TimeProvider.System,
+            (delay, cancellationToken) => new ValueTask(Task.Delay(delay, cancellationToken)));
+        await using var source = new ActiveSourceManager([provider], SourceDescriptor.SpotifyApi());
+        var store = new NowPlayingStore(NowPlayingSnapshot.CreateInitial(Guid.NewGuid(), DateTimeOffset.UtcNow));
+        await using var coordinator = new NowPlayingCoordinator(source, store, new ArtworkCache());
+        var runtime = new HostRuntimeState(TimeProvider.System);
+        runtime.MarkReady();
+        var service = new HostStatusService(runtime, coordinator, source, store);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (source.GetState().Status != SourceStatus.Unavailable)
+        {
+            await Task.Delay(1, timeout.Token);
+        }
+
+        Assert.Equal(expected, service.GetCurrent().Text);
+        Assert.False(service.GetCurrent().IsFaulted);
     }
 }

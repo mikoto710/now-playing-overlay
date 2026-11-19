@@ -19,6 +19,7 @@ internal sealed class SpotifyCurrentlyPlayingClient : IAsyncDisposable
     private readonly HttpClient _httpClient;
     private readonly HttpClient? _ownedHttpClient;
     private int _disposeStarted;
+    internal SpotifyRequestPolicy RequestPolicy { get; }
 
     public SpotifyCurrentlyPlayingClient(
         SpotifyAuthorizationService authorizationService,
@@ -27,16 +28,19 @@ internal sealed class SpotifyCurrentlyPlayingClient : IAsyncDisposable
         _ownedAuthorizationService = authorizationService
             ?? throw new ArgumentNullException(nameof(authorizationService));
         _getAccessToken = authorizationService.GetAccessTokenAsync;
+        RequestPolicy = authorizationService.RequestPolicy;
         _httpClient = httpClient ?? new HttpClient();
         _ownedHttpClient = httpClient is null ? _httpClient : null;
     }
 
     internal SpotifyCurrentlyPlayingClient(
         Func<SpotifyClientId, bool, CancellationToken, Task<SpotifyAccessToken>> getAccessToken,
-        HttpClient httpClient)
+        HttpClient httpClient,
+        SpotifyRequestPolicy? requestPolicy = null)
     {
         _getAccessToken = getAccessToken ?? throw new ArgumentNullException(nameof(getAccessToken));
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        RequestPolicy = requestPolicy ?? new SpotifyRequestPolicy();
     }
 
     public async Task<SpotifyPlaybackResult> GetCurrentlyPlayingAsync(
@@ -44,10 +48,14 @@ internal sealed class SpotifyCurrentlyPlayingClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposeStarted != 0, this);
+        if (RequestPolicy.GetCooldown(clientId, SpotifyEndpoint.CurrentlyPlaying) is { } cooldown)
+        {
+            throw cooldown;
+        }
         var token = await _getAccessToken(clientId, false, cancellationToken);
         for (var attempt = 0; attempt < 2; attempt++)
         {
-            using var response = await SendAsync(token, cancellationToken);
+            using var response = await SendAsync(clientId, token, cancellationToken);
             if (response.StatusCode == HttpStatusCode.Unauthorized && attempt == 0)
             {
                 token = await _getAccessToken(clientId, true, cancellationToken);
@@ -75,15 +83,15 @@ internal sealed class SpotifyCurrentlyPlayingClient : IAsyncDisposable
     }
 
     private async Task<HttpResponseMessage> SendAsync(
+        SpotifyClientId clientId,
         SpotifyAccessToken token,
         CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, CurrentlyPlayingEndpoint);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Value);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        return await _httpClient.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
+        return await RequestPolicy.SendAsync(clientId, SpotifyEndpoint.CurrentlyPlaying,
+            () => _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken),
             cancellationToken);
     }
 
@@ -110,15 +118,6 @@ internal sealed class SpotifyCurrentlyPlayingClient : IAsyncDisposable
                 SpotifyApiFailureKind.Forbidden,
                 "Spotify denied access to the currently-playing endpoint.",
                 response.StatusCode);
-        }
-
-        if ((int)response.StatusCode == 429)
-        {
-            throw new SpotifyApiRequestException(
-                SpotifyApiFailureKind.RateLimited,
-                "Spotify rate-limited the currently-playing request.",
-                response.StatusCode,
-                GetRetryAfter(response));
         }
 
         if ((int)response.StatusCode >= 500)
@@ -286,22 +285,5 @@ internal sealed class SpotifyCurrentlyPlayingClient : IAsyncDisposable
         }
 
         return destination.ToArray();
-    }
-
-    private static TimeSpan? GetRetryAfter(HttpResponseMessage response)
-    {
-        var retryAfter = response.Headers.RetryAfter;
-        if (retryAfter?.Delta is { } delta)
-        {
-            return delta < TimeSpan.Zero ? TimeSpan.Zero : delta;
-        }
-
-        if (retryAfter?.Date is { } date)
-        {
-            var delay = date - DateTimeOffset.UtcNow;
-            return delay < TimeSpan.Zero ? TimeSpan.Zero : delay;
-        }
-
-        return null;
     }
 }

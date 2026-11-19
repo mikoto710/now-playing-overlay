@@ -1,4 +1,3 @@
-using System.Net;
 using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging.Abstractions;
 using NowPlayingOverlay.Host.Diagnostics;
@@ -15,13 +14,15 @@ namespace NowPlayingOverlay.Host.Media.Spotify.Playback;
 /// Unselected -> Unconfigured; selected without credentials -> AuthorizationRequired; otherwise
 /// polling starts. Success -> Available. Network, 5xx, and invalid-response failures retain the
 /// last success as Available/Stale for 10 seconds, then become Unavailable while backing off.
-/// Rate limits become Unavailable/RateLimited and honor Retry-After. Authorization and forbidden
+/// HTTP 429 becomes Unavailable/RateLimited or QuotaExceeded with persistent server-aware cooldowns.
+/// Playback polls wait 5 seconds while playing and 10 seconds while inactive. Authorization and forbidden
 /// responses stop the current generation; unexpected faults become Faulted. Configuration
 /// generation rejects results from an old account or selection. Disposal owns polling and clients.
 /// </remarks>
 internal sealed class SpotifyApiSource : IMediaSourceProvider
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2.5);
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan InactivePollInterval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan StaleGrace = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan[] TransientBackoff =
     [
@@ -40,6 +41,7 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
     private readonly TimeProvider _timeProvider;
     private readonly Func<TimeSpan, CancellationToken, ValueTask> _delay;
     private readonly ILogger<SpotifyApiSource> _logger;
+    private readonly SpotifyRequestPolicy _requestPolicy;
     private readonly CancellationTokenSource _shutdown = new();
     private readonly HashSet<Task> _pollTasks = [];
     private SpotifyClientId? _clientId;
@@ -68,7 +70,8 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
             client,
             TimeProvider.System,
             DefaultDelayAsync,
-            logger ?? NullLogger<SpotifyApiSource>.Instance)
+            logger ?? NullLogger<SpotifyApiSource>.Instance,
+            client.RequestPolicy)
     {
     }
 
@@ -78,7 +81,8 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
         HttpClient artworkHttpClient,
         TimeProvider timeProvider,
         Func<TimeSpan, CancellationToken, ValueTask> delay,
-        ILogger<SpotifyApiSource>? logger = null)
+        ILogger<SpotifyApiSource>? logger = null,
+        SpotifyRequestPolicy? requestPolicy = null)
         : this(
             readPlayback,
             initialClientId,
@@ -87,7 +91,8 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
             ownedClient: null,
             timeProvider,
             delay,
-            logger ?? NullLogger<SpotifyApiSource>.Instance)
+            logger ?? NullLogger<SpotifyApiSource>.Instance,
+            requestPolicy ?? new SpotifyRequestPolicy(timeProvider: timeProvider))
     {
     }
 
@@ -99,7 +104,8 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
         IAsyncDisposable? ownedClient,
         TimeProvider timeProvider,
         Func<TimeSpan, CancellationToken, ValueTask> delay,
-        ILogger<SpotifyApiSource> logger)
+        ILogger<SpotifyApiSource> logger,
+        SpotifyRequestPolicy requestPolicy)
     {
         _readPlayback = readPlayback ?? throw new ArgumentNullException(nameof(readPlayback));
         _clientId = initialClientId;
@@ -109,6 +115,7 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
         _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _delay = delay ?? throw new ArgumentNullException(nameof(delay));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _requestPolicy = requestPolicy;
     }
 
     public event EventHandler? Changed;
@@ -208,6 +215,7 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
         }
 
         firstError = Dispose(_ownedArtworkHttpClient, firstError);
+        firstError = Dispose(_requestPolicy, firstError);
         firstError = Dispose(pollCancellation, firstError);
         firstError = Dispose(_shutdown, firstError);
         if (firstError is not null)
@@ -230,12 +238,14 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
 
         if (_selection is null)
         {
+            _requestPolicy.SetPollingState("unselected");
             _state = SourceManagerState.Unconfigured;
             return;
         }
 
         if (_clientId is null)
         {
+            _requestPolicy.SetPollingState("authorization-required");
             _state = new SourceManagerState(
                 _selection,
                 SourceStatus.Unavailable,
@@ -247,6 +257,7 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
             _selection,
             SourceStatus.Starting,
             SourceStatusReason.Starting);
+        _requestPolicy.SetPollingState("starting");
         _pollCancellation = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
         var generation = _configurationGeneration;
         var clientId = _clientId.Value;
@@ -281,18 +292,32 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
             TimeSpan nextDelay;
             try
             {
+                if (_requestPolicy.GetCooldown(clientId, SpotifyEndpoint.CurrentlyPlaying) is { } cooldown)
+                {
+                    throw cooldown;
+                }
+
                 var result = await _readPlayback(clientId, cancellationToken);
                 transientFailures = 0;
                 PublishSuccess(generation, result);
-                nextDelay = PollInterval;
+                nextDelay = result.Track?.IsPlaying == true ? PollInterval : InactivePollInterval;
+                SetPollingState(generation, result.Track?.IsPlaying == true ? "playing:5s" : "inactive:10s", nextDelay);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 return;
             }
+            catch (SpotifyRateLimitException error)
+            {
+                PublishUnavailable(generation, error.Cooldown.IsQuotaExceeded
+                    ? SourceStatusReason.QuotaExceeded : SourceStatusReason.RateLimited);
+                SetPollingState(generation, error.Cooldown.IsQuotaExceeded ? "quota-cooldown" : "rate-cooldown", error.RetryAfter);
+                nextDelay = error.RetryAfter;
+            }
             catch (SpotifyReauthorizationRequiredException error)
             {
                 PublishUnavailable(generation, SourceStatusReason.AuthorizationRequired);
+                SetPollingState(generation, "authorization-required");
                 _logger.LogWarning(
                     "Spotify authorization must be renewed. Error type {ErrorType}, HRESULT {ErrorHResult}.",
                     error.GetType().Name,
@@ -301,20 +326,17 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
             }
             catch (SpotifyTokenRequestException error)
             {
-                if ((int)error.StatusCode == 429)
-                {
-                    PublishUnavailable(generation, SourceStatusReason.RateLimited);
-                    nextDelay = error.RetryAfter ?? PollInterval;
-                }
-                else if ((int)error.StatusCode >= 500)
+                if ((int)error.StatusCode >= 500)
                 {
                     transientFailures++;
                     PublishTransientFailure(generation, SourceStatusReason.ServiceUnavailable);
                     nextDelay = GetTransientBackoff(transientFailures);
+                    SetPollingState(generation, "service-backoff", nextDelay);
                 }
                 else
                 {
                     PublishUnavailable(generation, SourceStatusReason.AuthorizationRequired);
+                    SetPollingState(generation, "authorization-required");
                     _logger.LogWarning(
                         "Spotify token refresh failed and requires user action. HTTP status {StatusCode}.",
                         (int)error.StatusCode);
@@ -325,6 +347,7 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
                 error.FailureKind == SpotifyApiFailureKind.Unauthorized)
             {
                 PublishUnavailable(generation, SourceStatusReason.AuthorizationRequired);
+                SetPollingState(generation, "authorization-required");
                 _logger.LogWarning("Spotify rejected the refreshed access token.");
                 return;
             }
@@ -332,14 +355,9 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
                 error.FailureKind == SpotifyApiFailureKind.Forbidden)
             {
                 PublishUnavailable(generation, SourceStatusReason.Forbidden);
+                SetPollingState(generation, "forbidden");
                 _logger.LogWarning("Spotify denied currently-playing access.");
                 return;
-            }
-            catch (SpotifyApiRequestException error) when (
-                error.FailureKind == SpotifyApiFailureKind.RateLimited)
-            {
-                PublishUnavailable(generation, SourceStatusReason.RateLimited);
-                nextDelay = error.RetryAfter ?? PollInterval;
             }
             catch (SpotifyApiRequestException error) when (
                 error.FailureKind is SpotifyApiFailureKind.Transient
@@ -348,12 +366,14 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
                 transientFailures++;
                 PublishTransientFailure(generation, SourceStatusReason.ServiceUnavailable);
                 nextDelay = GetTransientBackoff(transientFailures);
+                SetPollingState(generation, "service-backoff", nextDelay);
             }
             catch (TaskCanceledException error)
             {
                 transientFailures++;
                 PublishTransientFailure(generation, SourceStatusReason.NetworkUnavailable);
                 nextDelay = GetTransientBackoff(transientFailures);
+                SetPollingState(generation, "network-backoff", nextDelay);
                 _logger.LogDebug(
                     "Spotify currently-playing request timed out. Error type {ErrorType}, HRESULT {ErrorHResult}.",
                     error.GetType().Name,
@@ -364,6 +384,7 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
                 transientFailures++;
                 PublishTransientFailure(generation, SourceStatusReason.NetworkUnavailable);
                 nextDelay = GetTransientBackoff(transientFailures);
+                SetPollingState(generation, "network-backoff", nextDelay);
                 _logger.LogDebug(
                     "Spotify currently-playing request failed over the network. Error type {ErrorType}, HRESULT {ErrorHResult}.",
                     error.GetType().Name,
@@ -372,16 +393,29 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
             catch (Exception error)
             {
                 PublishFaulted(generation, error);
+                SetPollingState(generation, "faulted");
                 return;
             }
 
             try
             {
-                await _delay(nextDelay, cancellationToken);
+                // Task.Delay has a finite range; long server deadlines are rechecked in chunks.
+                await _delay(nextDelay > TimeSpan.FromDays(1) ? TimeSpan.FromDays(1) : nextDelay, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 return;
+            }
+        }
+    }
+
+    private void SetPollingState(long generation, string state, TimeSpan? interval = null)
+    {
+        lock (_gate)
+        {
+            if (IsCurrentLocked(generation))
+            {
+                _requestPolicy.SetPollingState(state, interval);
             }
         }
     }

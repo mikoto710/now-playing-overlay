@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using NowPlayingOverlay.Host.Media.Spotify;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 
 namespace NowPlayingOverlay.Host.Tests.Media.Spotify.Authorization;
@@ -56,6 +57,29 @@ public sealed class SpotifyTokenClientTests
         Assert.Equal("access-token", result.AccessToken.Value);
         Assert.Equal(Now.AddHours(1), result.AccessToken.ExpiresAtUtc);
         Assert.Equal("refresh-token", result.RefreshToken);
+    }
+
+    [Fact]
+    public async Task RefreshAndReauthorizationSharePersistedTokenCooldown()
+    {
+        using var directory = new PolicyDirectory();
+        var clock = new PolicyClock();
+        var sends = 0;
+        using var http = new HttpClient(new StubHandler((_, _) =>
+        {
+            sends++;
+            return Task.FromResult(JsonResponse((HttpStatusCode)429, "broken json"));
+        }));
+        var first = new SpotifyTokenClient(http, clock, new SpotifyRequestPolicy(directory.Path, clock, () => 0));
+        var error = await Assert.ThrowsAsync<SpotifyRateLimitException>(() => first.RefreshAsync(
+            new SpotifyClientId("client-id"), "private-refresh-token", CancellationToken.None));
+        Assert.Equal(SpotifyEndpoint.Token, error.Cooldown.Endpoint);
+        Assert.Equal(TimeSpan.FromSeconds(30), error.RetryAfter);
+
+        var restarted = new SpotifyTokenClient(http, clock, new SpotifyRequestPolicy(directory.Path, clock, () => 0));
+        await Assert.ThrowsAsync<SpotifyRateLimitException>(() => restarted.ExchangeAuthorizationCodeAsync(
+            new SpotifyClientId("client-id"), "code", new Uri("http://127.0.0.1/callback"), "verifier", CancellationToken.None));
+        Assert.Equal(1, sends);
     }
 
     private static IReadOnlyDictionary<string, string> ParseForm(string body)

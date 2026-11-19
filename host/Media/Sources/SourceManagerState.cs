@@ -39,6 +39,7 @@ internal enum SourceStatusReason
     AuthorizationRequired,
     Forbidden,
     RateLimited,
+    QuotaExceeded,
     NetworkUnavailable,
     ServiceUnavailable,
     Unsupported,

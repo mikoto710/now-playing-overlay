@@ -1,4 +1,5 @@
 using System.Net;
+using NowPlayingOverlay.Host.Media.Spotify;
 using NowPlayingOverlay.Host.Media.Sources;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Media.Spotify.Playback;
@@ -29,7 +30,7 @@ public sealed class SpotifyApiSourceTests
         response.SetResult(SpotifyPlaybackResult.Idle);
         await WaitUntilAsync(() => delay.Requested.Count == 1);
 
-        Assert.Equal(TimeSpan.FromSeconds(2.5), delay.Requested[0]);
+        Assert.Equal(TimeSpan.FromSeconds(10), delay.Requested[0]);
         Assert.Equal(1, Volatile.Read(ref calls));
         Assert.Equal(PlaybackState.Idle, (await source.ReadAsync(CancellationToken.None)).Playback);
 
@@ -78,11 +79,41 @@ public sealed class SpotifyApiSourceTests
         Assert.Equal(SourceStatusReason.NetworkUnavailable, source.GetState().Reason);
         Assert.Equal(PlaybackState.Unavailable, (await source.ReadAsync(CancellationToken.None)).Playback);
         Assert.Equal(
-            [TimeSpan.FromSeconds(2.5), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10)],
+            [TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10)],
             delay.Requested);
 
         source.SetSelection(null);
         await delay.WaitForCancellationAsync(2);
+    }
+
+    [Fact]
+    public async Task PlaybackTransitionsSelectTheNextIntervalWithoutOverlappingRequests()
+    {
+        var outcomes = new Queue<SpotifyPlaybackResult>(
+        [
+            SpotifyPlaybackResult.FromTrack(new("id", "Track", "Artist", null, null, true)),
+            SpotifyPlaybackResult.FromTrack(new("id", "Track", "Artist", null, null, false)),
+            SpotifyPlaybackResult.Idle,
+            SpotifyPlaybackResult.Unsupported,
+            SpotifyPlaybackResult.FromTrack(new("id", "Track", "Artist", null, null, true)),
+        ]);
+        var delay = new StepDelay();
+        await using var source = CreateSource((_, _) => Task.FromResult(outcomes.Dequeue()), delay);
+        source.SetSelection(SourceDescriptor.SpotifyApi());
+        var intervals = new[] { 5, 10, 10, 10, 5 };
+        for (var index = 0; index < intervals.Length; index++)
+        {
+            await WaitUntilAsync(() => delay.Requested.Count > index);
+            Assert.Equal(TimeSpan.FromSeconds(intervals[index]), delay.Requested[index]);
+            if (index < 4)
+            {
+                delay.Release(index);
+                await WaitUntilAsync(() => delay.Requested.Count > index + 1);
+            }
+        }
+
+        source.SetSelection(null);
+        await delay.WaitForCancellationAsync(4);
     }
 
     [Fact]
@@ -105,11 +136,8 @@ public sealed class SpotifyApiSourceTests
                         false)));
                 }
 
-                throw new SpotifyApiRequestException(
-                    SpotifyApiFailureKind.RateLimited,
-                    "limited",
-                    (HttpStatusCode)429,
-                    TimeSpan.FromSeconds(17));
+                throw new SpotifyRateLimitException(new SpotifyCooldown("connection", SpotifyEndpoint.CurrentlyPlaying,
+                    false, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddHours(1), 1), TimeSpan.FromHours(1));
             },
             delay);
         source.SetSelection(SourceDescriptor.SpotifyApi());
@@ -119,10 +147,82 @@ public sealed class SpotifyApiSourceTests
 
         Assert.Equal(SourceStatusReason.RateLimited, source.GetState().Reason);
         Assert.Equal(PlaybackState.Unavailable, (await source.ReadAsync(CancellationToken.None)).Playback);
-        Assert.Equal(TimeSpan.FromSeconds(17), delay.Requested[1]);
+        Assert.Equal(TimeSpan.FromHours(1), delay.Requested[1]);
 
         source.SetSelection(null);
         await delay.WaitForCancellationAsync(1);
+    }
+
+    [Fact]
+    public async Task RestartAndReselectionWaitForThePersistedDeadlineBeforeReadingPlayback()
+    {
+        using var directory = new PolicyDirectory();
+        var clock = new PolicyClock();
+        var clientId = new SpotifyClientId("client-id");
+        var first = new SpotifyRequestPolicy(directory.Path, clock, () => 0);
+        await Assert.ThrowsAsync<SpotifyRateLimitException>(() => first.SendAsync(clientId,
+            SpotifyEndpoint.CurrentlyPlaying, () => Task.FromResult(new HttpResponseMessage((HttpStatusCode)429)
+            {
+                Content = new StringContent("{\"error\":{\"reason\":\"QUOTA_EXCEEDED\"}}"),
+            }), CancellationToken.None));
+        clock.Advance(TimeSpan.FromMinutes(4));
+        var restarted = new SpotifyRequestPolicy(directory.Path, clock, () => 0);
+        var delay = new StepDelay();
+        var calls = 0;
+        await using var source = new SpotifyApiSource((_, _) =>
+        {
+            Interlocked.Increment(ref calls);
+            return Task.FromResult(SpotifyPlaybackResult.Idle);
+        }, clientId, new HttpClient(new RejectingHandler()), clock, delay.DelayAsync, requestPolicy: restarted);
+
+        source.SetSelection(SourceDescriptor.SpotifyApi());
+        await WaitUntilAsync(() => delay.Requested.Count == 1);
+        Assert.Equal(0, Volatile.Read(ref calls));
+        Assert.Equal(TimeSpan.FromMinutes(11), delay.Requested[0]);
+        Assert.Equal(SourceStatusReason.QuotaExceeded, source.GetState().Reason);
+
+        source.SetSelection(null);
+        await delay.WaitForCancellationAsync(0);
+        source.SetSelection(SourceDescriptor.SpotifyApi());
+        await WaitUntilAsync(() => delay.Requested.Count == 2);
+        Assert.Equal(0, Volatile.Read(ref calls));
+        delay.Release(1);
+        await WaitUntilAsync(() => delay.Requested.Count == 3);
+        Assert.Equal(0, Volatile.Read(ref calls));
+        clock.Advance(TimeSpan.FromMinutes(11));
+        delay.Release(2);
+        await WaitUntilAsync(() => delay.Requested.Count == 4);
+        Assert.Equal(1, Volatile.Read(ref calls));
+        Assert.Equal(TimeSpan.FromSeconds(10), delay.Requested[3]);
+        Assert.Equal(SourceStatus.Available, source.GetState().Status);
+    }
+
+    [Fact]
+    public async Task TokenCooldownDoesNotBlockPlaybackWithAnAlreadyUsableAccessToken()
+    {
+        var clock = new PolicyClock();
+        var policy = new SpotifyRequestPolicy(timeProvider: clock, jitter: () => 0);
+        var clientId = new SpotifyClientId("client-id");
+        await Assert.ThrowsAsync<SpotifyRateLimitException>(() => policy.SendAsync(clientId,
+            SpotifyEndpoint.Token, () => Task.FromResult(new HttpResponseMessage((HttpStatusCode)429)), CancellationToken.None));
+        using var http = new HttpClient(new RejectingHandler());
+        await using var client = new SpotifyCurrentlyPlayingClient(
+            (_, _, _) => Task.FromResult(new SpotifyAccessToken("cached", clock.GetUtcNow().AddHours(1))),
+            new HttpClient(new NoContentHandler()), policy);
+        var delay = new StepDelay();
+        await using var source = new SpotifyApiSource(client.GetCurrentlyPlayingAsync, clientId, http,
+            clock, delay.DelayAsync, requestPolicy: policy);
+        source.SetSelection(SourceDescriptor.SpotifyApi());
+        await WaitUntilAsync(() => delay.Requested.Count == 1);
+        Assert.Equal(SourceStatus.Available, source.GetState().Status);
+        Assert.Equal(TimeSpan.FromSeconds(10), delay.Requested[0]);
+        Assert.NotNull(policy.GetCooldown(clientId, SpotifyEndpoint.Token));
+    }
+
+    private sealed class NoContentHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
     }
 
     [Fact]

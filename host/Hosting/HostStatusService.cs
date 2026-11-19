@@ -56,6 +56,7 @@ internal sealed class HostStatusService(
                 SourceStatusReason.AuthorizationRequired => "Authorization Required",
                 SourceStatusReason.Forbidden => "Access Denied",
                 SourceStatusReason.RateLimited => "Rate Limited",
+                SourceStatusReason.QuotaExceeded => "Quota Exceeded",
                 SourceStatusReason.NetworkUnavailable => "Network Unavailable",
                 SourceStatusReason.ServiceUnavailable => "Service Unavailable",
                 _ => "Unavailable",

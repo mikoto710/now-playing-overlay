@@ -6,6 +6,7 @@ using NowPlayingOverlay.Host.ControlPlane;
 using NowPlayingOverlay.Host.Diagnostics;
 using NowPlayingOverlay.Host.Media.External;
 using NowPlayingOverlay.Host.Media.Sources;
+using NowPlayingOverlay.Host.Media.Spotify;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Media.Spotify.Playback;
 using NowPlayingOverlay.Host.Media.Windows;
@@ -58,9 +59,12 @@ internal static class OverlayCompositionRoot
             new WindowsMediaSessionMatcher(),
             CreateLogger<WindowsMediaSource>(loggerProvider));
         var spotifyCallbackBroker = new SpotifyAuthorizationCallbackBroker();
+        var spotifyRequestPolicy = new SpotifyRequestPolicy(paths.SpotifyCooldownFilePath,
+            logger: CreateLogger<SpotifyRequestPolicy>(loggerProvider));
         var spotifyAuthorizationService = new SpotifyAuthorizationService(
             paths.SpotifyCredentialsFilePath,
-            spotifyCallbackBroker);
+            spotifyCallbackBroker,
+            requestPolicy: spotifyRequestPolicy);
         var spotifyApiSource = new SpotifyApiSource(
             new SpotifyCurrentlyPlayingClient(spotifyAuthorizationService),
             settings.Spotify.ToClientId(),
