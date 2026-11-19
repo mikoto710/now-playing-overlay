@@ -48,24 +48,24 @@ internal sealed class SpotifyCurrentlyPlayingClient : IAsyncDisposable
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposeStarted != 0, this);
-        if (RequestPolicy.GetCooldown(clientId, SpotifyEndpoint.CurrentlyPlaying) is { } cooldown)
+        var forceRefresh = false;
+        while (true)
         {
-            throw cooldown;
-        }
-        var token = await _getAccessToken(clientId, false, cancellationToken);
-        for (var attempt = 0; attempt < 2; attempt++)
-        {
-            using var response = await SendAsync(clientId, token, cancellationToken);
-            if (response.Message.StatusCode == HttpStatusCode.Unauthorized && attempt == 0)
+            cancellationToken.ThrowIfCancellationRequested();
+            if (RequestPolicy.GetCooldown(clientId, SpotifyEndpoint.CurrentlyPlaying) is { } cooldown)
             {
-                token = await _getAccessToken(clientId, true, cancellationToken);
-                continue;
+                throw cooldown;
             }
 
-            return await ReadResponseAsync(response, cancellationToken);
-        }
+            var token = await _getAccessToken(clientId, forceRefresh, cancellationToken);
+            using var response = await SendAsync(clientId, token, cancellationToken);
+            if (response.Message.StatusCode != HttpStatusCode.Unauthorized || forceRefresh)
+            {
+                return await ReadResponseAsync(response, cancellationToken);
+            }
 
-        throw new InvalidOperationException("Spotify authorization retry did not produce a response.");
+            forceRefresh = true;
+        }
     }
 
     public async ValueTask DisposeAsync()

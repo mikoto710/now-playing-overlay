@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Threading.Channels;
 using NowPlayingOverlay.Host.Media.Spotify;
 using NowPlayingOverlay.Host.Media.Spotify.Authorization;
 using NowPlayingOverlay.Host.Media.Spotify.Playback;
@@ -63,6 +64,50 @@ public sealed class SpotifyCurrentlyPlayingClientTests
     }
 
     [Fact]
+    public async Task ConcurrentPlayback429StopsTheForcedRefreshAfterA401()
+    {
+        var clientId = new SpotifyClientId("client-id");
+        var firstReply = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sends = 0;
+        var forcedRefreshes = 0;
+        using var http = new HttpClient(new QueueHandler(_ => Interlocked.Increment(ref sends) == 1
+            ? firstReply.Task : Task.FromResult(new HttpResponseMessage(HttpStatusCode.TooManyRequests))));
+        await using var client = new SpotifyCurrentlyPlayingClient((_, forceRefresh, _) =>
+        {
+            if (forceRefresh)
+            {
+                Interlocked.Increment(ref forcedRefreshes);
+            }
+            return Task.FromResult(new SpotifyAccessToken("cached", DateTimeOffset.UtcNow.AddHours(1)));
+        }, http);
+
+        var held = new QueuedContext();
+        var previousContext = SynchronizationContext.Current;
+        Task<SpotifyPlaybackResult> first;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(held);
+            first = client.GetCurrentlyPlayingAsync(clientId, CancellationToken.None);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previousContext);
+        }
+        var second = client.GetCurrentlyPlayingAsync(clientId, CancellationToken.None);
+        firstReply.SetResult(new HttpResponseMessage(HttpStatusCode.Unauthorized));
+        await held.RunNextAsync(); // Release the send lock, then let the second request register its 429.
+        await Assert.ThrowsAsync<SpotifyRateLimitException>(() => second.WaitAsync(TimeSpan.FromSeconds(5)));
+        while (!first.IsCompleted)
+        {
+            await held.RunNextAsync();
+        }
+
+        await Assert.ThrowsAsync<SpotifyRateLimitException>(() => first);
+        Assert.Equal(0, forcedRefreshes);
+        Assert.Equal(2, sends);
+    }
+
+    [Fact]
     public async Task NoContentAndNonTrackPayloadsClearTheCurrentTrack()
     {
         var responses = new Queue<HttpResponseMessage>(
@@ -97,7 +142,8 @@ public sealed class SpotifyCurrentlyPlayingClientTests
     {
         var content = new StreamContent(new ResponseStream((_, _) => throw new InvalidOperationException("Unexpected body read.")));
         content.Headers.ContentLength = 1024 * 1024 + 1;
-        using var http = new HttpClient(new QueueHandler(new([new HttpResponseMessage(HttpStatusCode.OK) { Content = content }])));
+        var responses = new Queue<HttpResponseMessage>([new(HttpStatusCode.OK) { Content = content }]);
+        using var http = new HttpClient(new QueueHandler(responses));
         await using var client = CreateClient(http);
         var error = await Assert.ThrowsAsync<SpotifyApiRequestException>(() =>
             client.GetCurrentlyPlayingAsync(new SpotifyClientId("client-id"), CancellationToken.None));
@@ -164,16 +210,30 @@ public sealed class SpotifyCurrentlyPlayingClientTests
         };
     }
 
-    private sealed class QueueHandler(
-        Queue<HttpResponseMessage> responses,
-        Action<HttpRequestMessage>? inspect = null) : HttpMessageHandler
+    private sealed class QueuedContext : SynchronizationContext
     {
+        private readonly Channel<Action> _pending = Channel.CreateUnbounded<Action>();
+        public override void Post(SendOrPostCallback callback, object? state) =>
+            _pending.Writer.TryWrite(() => callback(state));
+
+        public async Task RunNextAsync()
+        {
+            var callback = await _pending.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            callback();
+        }
+    }
+
+    private sealed class QueueHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> respond) : HttpMessageHandler
+    {
+        public QueueHandler(Queue<HttpResponseMessage> responses, Action<HttpRequestMessage>? inspect = null)
+            : this(request =>
+            {
+                inspect?.Invoke(request);
+                return Task.FromResult(responses.Dequeue());
+            }) { }
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            inspect?.Invoke(request);
-            return Task.FromResult(responses.Dequeue());
-        }
+            CancellationToken cancellationToken) => respond(request);
     }
 }
