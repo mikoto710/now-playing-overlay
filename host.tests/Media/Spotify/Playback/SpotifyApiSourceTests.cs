@@ -40,24 +40,14 @@ public sealed class SpotifyApiSourceTests
     }
 
     [Fact]
-    public async Task NetworkFailuresPreserveARecentTrackThenClearItAfterTenSeconds()
+    public async Task NetworkFailuresExpireTheLastTrackAndResetBackoffAfterRecovery()
     {
         var clock = new MutableTimeProvider(new DateTimeOffset(2026, 8, 17, 0, 0, 0, TimeSpan.Zero));
-        var outcomes = new Queue<Func<SpotifyPlaybackResult>>(
-        [
-            () => SpotifyPlaybackResult.FromTrack(new SpotifyPlaybackTrack(
-                "track-id",
-                "Track",
-                "Artist",
-                "Album",
-                null,
-                true)),
-            () => throw new HttpRequestException("offline"),
-            () => throw new HttpRequestException("still offline"),
-        ]);
+        var track = SpotifyPlaybackResult.FromTrack(new SpotifyPlaybackTrack("track-id", "Track", "Artist", "Album", null, true));
+        var online = true;
         var delay = new StepDelay();
         await using var source = CreateSource(
-            (_, _) => Task.FromResult(outcomes.Dequeue().Invoke()),
+            (_, _) => Task.FromResult(online ? track : throw new HttpRequestException("offline")),
             delay,
             clock);
         source.SetSelection(SourceDescriptor.SpotifyApi());
@@ -67,23 +57,34 @@ public sealed class SpotifyApiSourceTests
         Assert.Equal(PlaybackState.Playing, playing.Playback);
         Assert.Equal("track-id", playing.Identity!.ProviderTrackId);
 
-        clock.Advance(TimeSpan.FromSeconds(5));
-        delay.Release(0);
-        await WaitUntilAsync(() => delay.Requested.Count == 2);
+        online = false;
+        await AdvancePollAsync(5);
         Assert.Equal(SourceStatusReason.Stale, source.GetState().Reason);
         Assert.Equal(PlaybackState.Playing, (await source.ReadAsync(CancellationToken.None)).Playback);
 
-        clock.Advance(TimeSpan.FromSeconds(6));
-        delay.Release(1);
-        await WaitUntilAsync(() => delay.Requested.Count == 3);
+        await AdvancePollAsync(6);
         Assert.Equal(SourceStatusReason.NetworkUnavailable, source.GetState().Reason);
         Assert.Equal(PlaybackState.Unavailable, (await source.ReadAsync(CancellationToken.None)).Playback);
-        Assert.Equal(
-            [TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10)],
-            delay.Requested);
+        foreach (var seconds in new[] { 10, 20, 40, 60 })
+        {
+            await AdvancePollAsync(seconds);
+        }
+        online = true;
+        await AdvancePollAsync(60);
+        online = false;
+        await AdvancePollAsync(3);
+        Assert.Equal([3, 5, 10, 20, 40, 60, 60, 3, 5], delay.Requested.Select(interval => interval.TotalSeconds));
 
         source.SetSelection(null);
-        await delay.WaitForCancellationAsync(2);
+        await delay.WaitForCancellationAsync(delay.Requested.Count - 1);
+
+        async Task AdvancePollAsync(int seconds)
+        {
+            var count = delay.Requested.Count;
+            clock.Advance(TimeSpan.FromSeconds(seconds));
+            delay.Release(count - 1);
+            await WaitUntilAsync(() => delay.Requested.Count > count);
+        }
     }
 
     [Fact]
@@ -173,16 +174,16 @@ public sealed class SpotifyApiSourceTests
         var firstChunk = true;
         var body = new ResponseStream(async (buffer, cancellationToken) =>
         {
-            if (interrupted)
-            {
-                throw new HttpIOException(HttpRequestError.ResponseEnded);
-            }
             if (firstChunk)
             {
                 firstChunk = false;
                 clock.Advance(TimeSpan.FromSeconds(4));
                 buffer.Span[0] = (byte)'{';
                 return 1;
+            }
+            if (interrupted)
+            {
+                throw new HttpIOException(HttpRequestError.ResponseEnded);
             }
             secondRead.SetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
