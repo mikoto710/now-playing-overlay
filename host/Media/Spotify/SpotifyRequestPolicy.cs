@@ -63,11 +63,22 @@ internal sealed class SpotifyRequestPolicy : IDisposable
         }
     }
 
-    public SpotifyRateLimitException? GetCooldown(SpotifyClientId clientId, SpotifyEndpoint endpoint)
+    public async Task<SpotifyRateLimitException?> GetCooldownAsync(SpotifyClientId clientId,
+        SpotifyEndpoint endpoint, CancellationToken cancellationToken = default)
     {
-        lock (_gate)
+        var key = (GetClientKey(clientId), endpoint);
+        // A request holds this gate until it finishes classifying and recording a 429.
+        var requestGate = await EnterRequestAsync(key, cancellationToken);
+        try
         {
-            return GetCooldownLocked((GetClientKey(clientId), endpoint));
+            lock (_gate)
+            {
+                return GetCooldownLocked(key);
+            }
+        }
+        finally
+        {
+            requestGate.Release();
         }
     }
 
@@ -87,8 +98,7 @@ internal sealed class SpotifyRequestPolicy : IDisposable
         Func<Task<HttpResponseMessage>> send, CancellationToken cancellationToken)
     {
         var key = (GetClientKey(clientId), endpoint);
-        var requestGate = _requests.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
-        await requestGate.WaitAsync(cancellationToken);
+        var requestGate = await EnterRequestAsync(key, cancellationToken);
         try
         {
             lock (_gate)
@@ -135,6 +145,13 @@ internal sealed class SpotifyRequestPolicy : IDisposable
         {
             requestGate.Release();
         }
+    }
+
+    private async Task<SemaphoreSlim> EnterRequestAsync((string, SpotifyEndpoint) key, CancellationToken cancellationToken)
+    {
+        var requestGate = _requests.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
+        await requestGate.WaitAsync(cancellationToken);
+        return requestGate;
     }
 
     public void SetPollingState(string state, TimeSpan? interval = null)

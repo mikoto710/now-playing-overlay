@@ -68,10 +68,21 @@ public sealed class SpotifyCurrentlyPlayingClientTests
     {
         var clientId = new SpotifyClientId("client-id");
         var firstReply = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var bodyStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishBody = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var limited = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        {
+            Content = new StreamContent(new ResponseStream(async (_, cancellationToken) =>
+            {
+                bodyStarted.SetResult();
+                await finishBody.Task.WaitAsync(cancellationToken);
+                return 0;
+            })),
+        };
         var sends = 0;
         var forcedRefreshes = 0;
         using var http = new HttpClient(new QueueHandler(_ => Interlocked.Increment(ref sends) == 1
-            ? firstReply.Task : Task.FromResult(new HttpResponseMessage(HttpStatusCode.TooManyRequests))));
+            ? firstReply.Task : Task.FromResult(limited)));
         await using var client = new SpotifyCurrentlyPlayingClient((_, forceRefresh, _) =>
         {
             if (forceRefresh)
@@ -95,7 +106,11 @@ public sealed class SpotifyCurrentlyPlayingClientTests
         }
         var second = client.GetCurrentlyPlayingAsync(clientId, CancellationToken.None);
         firstReply.SetResult(new HttpResponseMessage(HttpStatusCode.Unauthorized));
-        await held.RunNextAsync(); // Release the send lock, then let the second request register its 429.
+        await held.RunNextAsync(); // The second request can now receive its 429 headers.
+        await bodyStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await held.RunNextAsync();
+        held.RunQueued();
+        finishBody.SetResult();
         await Assert.ThrowsAsync<SpotifyRateLimitException>(() => second.WaitAsync(TimeSpan.FromSeconds(5)));
         while (!first.IsCompleted)
         {
@@ -220,6 +235,14 @@ public sealed class SpotifyCurrentlyPlayingClientTests
         {
             var callback = await _pending.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
             callback();
+        }
+
+        public void RunQueued()
+        {
+            while (_pending.Reader.TryRead(out var callback))
+            {
+                callback();
+            }
         }
     }
 

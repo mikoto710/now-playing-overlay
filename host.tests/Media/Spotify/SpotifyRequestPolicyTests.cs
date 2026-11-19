@@ -47,7 +47,7 @@ public sealed class SpotifyRequestPolicyTests
         await LimitAsync(policy, "", SpotifyEndpoint.Token);
         using var success = await policy.SendAsync(Client, SpotifyEndpoint.CurrentlyPlaying,
             () => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent)), CancellationToken.None);
-        Assert.NotNull(policy.GetCooldown(Client, SpotifyEndpoint.Token));
+        Assert.NotNull(await policy.GetCooldownAsync(Client, SpotifyEndpoint.Token));
         Assert.Equal(TimeSpan.FromSeconds(30), (await LimitAsync(policy, "")).RetryAfter);
     }
 
@@ -184,7 +184,7 @@ public sealed class SpotifyRequestPolicyTests
             var error = await Assert.ThrowsAsync<SpotifyRateLimitException>(() => policy.SendAsync(
                 Client, SpotifyEndpoint.CurrentlyPlaying, () => Task.FromResult(response), CancellationToken.None));
             Assert.Equal(TimeSpan.FromMinutes(2), error.RetryAfter);
-            Assert.NotNull(policy.GetCooldown(Client, SpotifyEndpoint.CurrentlyPlaying));
+            Assert.NotNull(await policy.GetCooldownAsync(Client, SpotifyEndpoint.CurrentlyPlaying));
             Assert.Contains(log.Messages, line => line.Contains("BodyParseStatus=" + status));
         }
     }
@@ -203,9 +203,9 @@ public sealed class SpotifyRequestPolicyTests
 
         var log = new PolicyLogger();
         using var restarted = new SpotifyRequestPolicy(directory.Path, clock, () => 0, log);
-        Assert.Equal(TimeSpan.FromMinutes(11), restarted.GetCooldown(Client, endpoint)!.RetryAfter);
+        Assert.Equal(TimeSpan.FromMinutes(11), (await restarted.GetCooldownAsync(Client, endpoint))!.RetryAfter);
         Assert.Contains(log.Messages, line => line.Contains("restored") && line.Contains("RemainingSeconds=660"));
-        Assert.True(restarted.GetCooldown(Client, endpoint)!.Cooldown.IsQuotaExceeded);
+        Assert.True((await restarted.GetCooldownAsync(Client, endpoint))!.Cooldown.IsQuotaExceeded);
         var calls = 0;
         await Assert.ThrowsAsync<SpotifyRateLimitException>(() => restarted.SendAsync(Client, endpoint,
             () => { calls++; return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)); }, CancellationToken.None));
@@ -248,7 +248,7 @@ public sealed class SpotifyRequestPolicyTests
         var limited = await Assert.ThrowsAsync<SpotifyRateLimitException>(() => request);
         Assert.False(limited.Cooldown.IsQuotaExceeded);
         using var restarted = new SpotifyRequestPolicy(directory.Path, clock);
-        Assert.Equal(TimeSpan.FromMinutes(2), restarted.GetCooldown(Client, SpotifyEndpoint.CurrentlyPlaying)!.RetryAfter);
+        Assert.Equal(TimeSpan.FromMinutes(2), (await restarted.GetCooldownAsync(Client, SpotifyEndpoint.CurrentlyPlaying))!.RetryAfter);
     }
 
     [Fact]
@@ -282,7 +282,7 @@ public sealed class SpotifyRequestPolicyTests
         restartedClock.Advance(blocked.RetryAfter);
         using var success = await restarted.SendAsync(Client, SpotifyEndpoint.CurrentlyPlaying, Send, CancellationToken.None);
         Assert.Equal(1, sends);
-        Assert.True(restarted.GetCooldown(Client, SpotifyEndpoint.Token)!.Cooldown.IsQuotaExceeded);
+        Assert.True((await restarted.GetCooldownAsync(Client, SpotifyEndpoint.Token))!.Cooldown.IsQuotaExceeded);
     }
 
     [Fact]
@@ -299,7 +299,7 @@ public sealed class SpotifyRequestPolicyTests
             () => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent)), CancellationToken.None);
         policy.SetPollingState("playing:3s", TimeSpan.FromSeconds(3));
         using var restarted = new SpotifyRequestPolicy(directory.Path, clock);
-        Assert.Null(restarted.GetCooldown(Client, SpotifyEndpoint.CurrentlyPlaying));
+        Assert.Null(await restarted.GetCooldownAsync(Client, SpotifyEndpoint.CurrentlyPlaying));
         Assert.Contains(log.Messages, line => line.Contains("recovered") && line.Contains("Consecutive429=1"));
         Assert.Contains(log.Messages, line => line.Contains("polling resumed") && line.Contains("IntervalSeconds=3"));
     }
@@ -311,9 +311,9 @@ public sealed class SpotifyRequestPolicyTests
         var policy = new SpotifyRequestPolicy(timeProvider: clock, jitter: () => 0);
         await LimitAsync(policy, "");
         clock.UtcNow += TimeSpan.FromDays(1);
-        Assert.Equal(TimeSpan.FromSeconds(30), policy.GetCooldown(Client, SpotifyEndpoint.CurrentlyPlaying)!.RetryAfter);
+        Assert.Equal(TimeSpan.FromSeconds(30), (await policy.GetCooldownAsync(Client, SpotifyEndpoint.CurrentlyPlaying))!.RetryAfter);
         clock.Advance(TimeSpan.FromSeconds(30));
-        Assert.Null(policy.GetCooldown(Client, SpotifyEndpoint.CurrentlyPlaying));
+        Assert.Null(await policy.GetCooldownAsync(Client, SpotifyEndpoint.CurrentlyPlaying));
     }
 
     [Fact]
@@ -324,7 +324,7 @@ public sealed class SpotifyRequestPolicyTests
         var log = new PolicyLogger();
         var policy = new SpotifyRequestPolicy(directory.Path, new PolicyClock(), () => 0, log);
         await LimitAsync(policy, "{\"error\":{\"reason\":\"SECRET_TOKEN\",\"message\":\"private song\"},\"access_token\":\"credential\"}");
-        Assert.NotNull(policy.GetCooldown(Client, SpotifyEndpoint.CurrentlyPlaying));
+        Assert.NotNull(await policy.GetCooldownAsync(Client, SpotifyEndpoint.CurrentlyPlaying));
         Assert.Contains(log.Messages, line => line.Contains("persist"));
         var messages = string.Join('\n', log.Messages);
         foreach (var secret in new[] { "SECRET_TOKEN", "private song", "credential", Client.Value })

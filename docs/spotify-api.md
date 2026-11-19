@@ -23,6 +23,8 @@ The playback and OAuth token clients share a request policy. Admission and
 cooldown counters are independent for each Client ID and endpoint. A token
 cooldown permits playback queries while a cached access token is still usable.
 Calls to the same endpoint are serialized and recheck admission before sending.
+If a playback request is processing a 429, a second request waits for the cooldown
+decision before acquiring or refreshing a token.
 
 | Response classification | Local retry intervals |
 | --- | --- |

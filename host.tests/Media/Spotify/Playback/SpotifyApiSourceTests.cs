@@ -318,7 +318,7 @@ public sealed class SpotifyApiSourceTests
         await WaitUntilAsync(() => delay.Requested.Count == 1);
         Assert.Equal(SourceStatus.Available, source.GetState().Status);
         Assert.Equal(TimeSpan.FromSeconds(5), delay.Requested[0]);
-        Assert.NotNull(policy.GetCooldown(clientId, SpotifyEndpoint.Token));
+        Assert.NotNull(await policy.GetCooldownAsync(clientId, SpotifyEndpoint.Token));
     }
 
     [Fact]

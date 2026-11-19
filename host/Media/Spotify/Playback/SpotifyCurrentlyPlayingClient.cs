@@ -51,8 +51,7 @@ internal sealed class SpotifyCurrentlyPlayingClient : IAsyncDisposable
         var forceRefresh = false;
         while (true)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (RequestPolicy.GetCooldown(clientId, SpotifyEndpoint.CurrentlyPlaying) is { } cooldown)
+            if (await RequestPolicy.GetCooldownAsync(clientId, SpotifyEndpoint.CurrentlyPlaying, cancellationToken) is { } cooldown)
             {
                 throw cooldown;
             }
