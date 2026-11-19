@@ -30,7 +30,7 @@ public sealed class SpotifyApiSourceTests
         response.SetResult(SpotifyPlaybackResult.Idle);
         await WaitUntilAsync(() => delay.Requested.Count == 1);
 
-        Assert.Equal(TimeSpan.FromSeconds(10), delay.Requested[0]);
+        Assert.Equal(TimeSpan.FromSeconds(5), delay.Requested[0]);
         Assert.Equal(1, Volatile.Read(ref calls));
         Assert.Equal(PlaybackState.Idle, (await source.ReadAsync(CancellationToken.None)).Playback);
 
@@ -79,7 +79,7 @@ public sealed class SpotifyApiSourceTests
         Assert.Equal(SourceStatusReason.NetworkUnavailable, source.GetState().Reason);
         Assert.Equal(PlaybackState.Unavailable, (await source.ReadAsync(CancellationToken.None)).Playback);
         Assert.Equal(
-            [TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10)],
+            [TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10)],
             delay.Requested);
 
         source.SetSelection(null);
@@ -89,26 +89,33 @@ public sealed class SpotifyApiSourceTests
     [Fact]
     public async Task PlaybackTransitionsSelectTheNextIntervalWithoutOverlappingRequests()
     {
-        var outcomes = new Queue<SpotifyPlaybackResult>(
-        [
-            SpotifyPlaybackResult.FromTrack(new("id", "Track", "Artist", null, null, true)),
-            SpotifyPlaybackResult.FromTrack(new("id", "Track", "Artist", null, null, false)),
-            SpotifyPlaybackResult.Idle,
-            SpotifyPlaybackResult.Unsupported,
-            SpotifyPlaybackResult.FromTrack(new("id", "Track", "Artist", null, null, true)),
-        ]);
+        const string playing = """{"currently_playing_type":"track","item":{"name":"Track"},"is_playing":true}""";
+        const string paused = """{"currently_playing_type":"track","item":{"name":"Track"},"is_playing":false}""";
+        var bodies = new Queue<string?>([playing, paused, null, """{"currently_playing_type":"episode"}""", playing]);
+        using var http = new HttpClient(new PlaybackHandler(() => bodies.Dequeue() is { } json
+            ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) }
+            : new HttpResponseMessage(HttpStatusCode.NoContent)));
+        var clock = new PolicyClock();
+        var log = new PolicyLogger();
+        using var policy = new SpotifyRequestPolicy(timeProvider: clock, logger: log);
+        var clientId = new SpotifyClientId("client-id");
+        await using var client = new SpotifyCurrentlyPlayingClient(
+            (_, _, _) => Task.FromResult(new SpotifyAccessToken("cached", clock.GetUtcNow().AddHours(1))), http, policy);
         var delay = new StepDelay();
-        await using var source = CreateSource((_, _) => Task.FromResult(outcomes.Dequeue()), delay);
+        await using var source = new SpotifyApiSource(client.GetCurrentlyPlayingAsync, clientId, http, clock,
+            delay.DelayAsync, requestPolicy: policy);
         source.SetSelection(SourceDescriptor.SpotifyApi());
-        var intervals = new[] { 5, 10, 10, 10, 5 };
+        var intervals = new[] { 3, 5, 5, 5, 3 };
         for (var index = 0; index < intervals.Length; index++)
         {
             await WaitUntilAsync(() => delay.Requested.Count > index);
             Assert.Equal(TimeSpan.FromSeconds(intervals[index]), delay.Requested[index]);
-            if (index < 4)
+            clock.Advance(TimeSpan.FromMinutes(15));
+            var expected = intervals[index] == 3 ? "playing:3s IntervalSeconds=3" : "inactive:5s IntervalSeconds=5";
+            Assert.Contains("PollingState=" + expected, log.Messages.Last());
+            if (index + 1 < intervals.Length)
             {
                 delay.Release(index);
-                await WaitUntilAsync(() => delay.Requested.Count > index + 1);
             }
         }
 
@@ -274,7 +281,7 @@ public sealed class SpotifyApiSourceTests
         delay.Release(2);
         await WaitUntilAsync(() => delay.Requested.Count == 4);
         Assert.Equal(1, Volatile.Read(ref calls));
-        Assert.Equal(TimeSpan.FromSeconds(10), delay.Requested[3]);
+        Assert.Equal(TimeSpan.FromSeconds(5), delay.Requested[3]);
         Assert.Equal(SourceStatus.Available, source.GetState().Status);
     }
 
@@ -296,7 +303,7 @@ public sealed class SpotifyApiSourceTests
         source.SetSelection(SourceDescriptor.SpotifyApi());
         await WaitUntilAsync(() => delay.Requested.Count == 1);
         Assert.Equal(SourceStatus.Available, source.GetState().Status);
-        Assert.Equal(TimeSpan.FromSeconds(10), delay.Requested[0]);
+        Assert.Equal(TimeSpan.FromSeconds(5), delay.Requested[0]);
         Assert.NotNull(policy.GetCooldown(clientId, SpotifyEndpoint.Token));
     }
 

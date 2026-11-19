@@ -15,14 +15,14 @@ namespace NowPlayingOverlay.Host.Media.Spotify.Playback;
 /// polling starts. Success -> Available. Network, 5xx, and invalid-response failures retain the
 /// last success as Available/Stale for 10 seconds, then become Unavailable while backing off.
 /// HTTP 429 becomes Unavailable/RateLimited or QuotaExceeded with persistent server-aware cooldowns.
-/// Playback polls wait 5 seconds while playing and 10 seconds while inactive. Authorization and forbidden
+/// Playback polls wait 3 seconds while playing and 5 seconds while inactive. Authorization and forbidden
 /// responses stop the current generation; unexpected faults become Faulted. Configuration
 /// generation rejects results from an old account or selection. Disposal owns polling and clients.
 /// </remarks>
 internal sealed class SpotifyApiSource : IMediaSourceProvider
 {
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan InactivePollInterval = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan PlayingPollInterval = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan InactivePollInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan StaleGrace = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan[] TransientBackoff =
     [
@@ -300,8 +300,11 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
                 var result = await _readPlayback(clientId, cancellationToken);
                 transientFailures = 0;
                 PublishSuccess(generation, result);
-                nextDelay = result.Track?.IsPlaying == true ? PollInterval : InactivePollInterval;
-                SetPollingState(generation, result.Track?.IsPlaying == true ? "playing:5s" : "inactive:10s", nextDelay);
+                var (state, interval) = result.Track?.IsPlaying == true
+                    ? ("playing", PlayingPollInterval)
+                    : ("inactive", InactivePollInterval);
+                nextDelay = interval;
+                SetPollingState(generation, $"{state}:{interval.TotalSeconds}s", interval);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

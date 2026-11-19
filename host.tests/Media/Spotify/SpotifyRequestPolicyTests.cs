@@ -276,10 +276,10 @@ public sealed class SpotifyRequestPolicyTests
         clock.Advance(TimeSpan.FromSeconds(30));
         using var success = await policy.SendAsync(Client, SpotifyEndpoint.CurrentlyPlaying,
             () => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent)), CancellationToken.None);
-        policy.SetPollingState("playing:5s", TimeSpan.FromSeconds(5));
+        policy.SetPollingState("playing:3s", TimeSpan.FromSeconds(3));
         Assert.Null(new SpotifyRequestPolicy(directory.Path, clock).GetCooldown(Client));
         Assert.Contains(log.Messages, line => line.Contains("recovered") && line.Contains("Consecutive429=1"));
-        Assert.Contains(log.Messages, line => line.Contains("polling resumed") && line.Contains("IntervalSeconds=5"));
+        Assert.Contains(log.Messages, line => line.Contains("polling resumed") && line.Contains("IntervalSeconds=3"));
     }
 
     [Fact]
