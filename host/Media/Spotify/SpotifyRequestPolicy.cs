@@ -87,7 +87,7 @@ internal sealed class SpotifyRequestPolicy : IDisposable
         }
     }
 
-    public async Task<HttpResponseMessage> SendAsync(SpotifyClientId clientId, SpotifyEndpoint endpoint,
+    public async Task<SpotifyHttpResponse> SendAsync(SpotifyClientId clientId, SpotifyEndpoint endpoint,
         Func<Task<HttpResponseMessage>> send, CancellationToken cancellationToken)
     {
         var key = (GetClientKey(clientId), endpoint);
@@ -114,6 +114,7 @@ internal sealed class SpotifyRequestPolicy : IDisposable
                 }
             }
 
+            var received = new SpotifyHttpResponse(response, _clock);
             lock (_gate)
             {
                 if (response.IsSuccessStatusCode)
@@ -130,7 +131,7 @@ internal sealed class SpotifyRequestPolicy : IDisposable
                 }
             }
 
-            return response;
+            return received;
         }
         finally
         {

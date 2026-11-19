@@ -56,7 +56,7 @@ internal sealed class SpotifyCurrentlyPlayingClient : IAsyncDisposable
         for (var attempt = 0; attempt < 2; attempt++)
         {
             using var response = await SendAsync(clientId, token, cancellationToken);
-            if (response.StatusCode == HttpStatusCode.Unauthorized && attempt == 0)
+            if (response.Message.StatusCode == HttpStatusCode.Unauthorized && attempt == 0)
             {
                 token = await _getAccessToken(clientId, true, cancellationToken);
                 continue;
@@ -82,7 +82,7 @@ internal sealed class SpotifyCurrentlyPlayingClient : IAsyncDisposable
         }
     }
 
-    private async Task<HttpResponseMessage> SendAsync(
+    private async Task<SpotifyHttpResponse> SendAsync(
         SpotifyClientId clientId,
         SpotifyAccessToken token,
         CancellationToken cancellationToken)
@@ -96,9 +96,10 @@ internal sealed class SpotifyCurrentlyPlayingClient : IAsyncDisposable
     }
 
     private static async Task<SpotifyPlaybackResult> ReadResponseAsync(
-        HttpResponseMessage response,
+        SpotifyHttpResponse received,
         CancellationToken cancellationToken)
     {
+        var response = received.Message;
         if (response.StatusCode == HttpStatusCode.NoContent)
         {
             return SpotifyPlaybackResult.Idle;
@@ -138,13 +139,9 @@ internal sealed class SpotifyCurrentlyPlayingClient : IAsyncDisposable
 
         try
         {
-            var bytes = await ReadBoundedContentAsync(response.Content, cancellationToken);
+            var bytes = await received.ReadBodyAsync(MaximumResponseBytes, cancellationToken);
             using var document = JsonDocument.Parse(bytes);
             return MapPayload(document.RootElement);
-        }
-        catch (SpotifyApiRequestException)
-        {
-            throw;
         }
         catch (Exception error) when (error is JsonException
             or InvalidDataException
@@ -254,36 +251,5 @@ internal sealed class SpotifyCurrentlyPlayingClient : IAsyncDisposable
             && property.ValueKind == JsonValueKind.String
                 ? property.GetString()
                 : null;
-    }
-
-    private static async Task<byte[]> ReadBoundedContentAsync(
-        HttpContent content,
-        CancellationToken cancellationToken)
-    {
-        if (content.Headers.ContentLength is > MaximumResponseBytes)
-        {
-            throw new InvalidDataException("Spotify response exceeded the allowed size.");
-        }
-
-        await using var source = await content.ReadAsStreamAsync(cancellationToken);
-        using var destination = new MemoryStream();
-        var buffer = new byte[16 * 1024];
-        while (true)
-        {
-            var read = await source.ReadAsync(buffer, cancellationToken);
-            if (read == 0)
-            {
-                break;
-            }
-
-            if (destination.Length + read > MaximumResponseBytes)
-            {
-                throw new InvalidDataException("Spotify response exceeded the allowed size.");
-            }
-
-            destination.Write(buffer, 0, read);
-        }
-
-        return destination.ToArray();
     }
 }

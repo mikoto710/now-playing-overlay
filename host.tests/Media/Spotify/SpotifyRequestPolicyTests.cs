@@ -90,7 +90,7 @@ public sealed class SpotifyRequestPolicyTests
         using var policy = new SpotifyRequestPolicy(directory.Path, logger: log);
         using var response = await policy.SendAsync(Client, SpotifyEndpoint.CurrentlyPlaying,
             () => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent)), CancellationToken.None);
-        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, response.Message.StatusCode);
         Assert.Contains(log.Messages, line => line.Contains("load failed"));
     }
 
@@ -206,6 +206,28 @@ public sealed class SpotifyRequestPolicyTests
         Assert.Equal(2, repeated.Cooldown.Consecutive429);
         Assert.Equal(TimeSpan.FromMinutes(30), repeated.RetryAfter);
         Assert.DoesNotContain(Client.Value, File.ReadAllText(directory.Path));
+    }
+
+    [Fact]
+    public async Task CancellationAfter429HeadersStillPersistsTheServerDeadline()
+    {
+        using var directory = new PolicyDirectory();
+        var clock = new PolicyClock();
+        using var policy = new SpotifyRequestPolicy(directory.Path, clock, () => 0);
+        using var caller = new CancellationTokenSource();
+        var started = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests)
+        {
+            Content = new StreamContent(ResponseStream.Stalled(started)),
+        };
+        response.Headers.RetryAfter = new(TimeSpan.FromMinutes(2));
+        var request = policy.SendAsync(Client, SpotifyEndpoint.CurrentlyPlaying, () => Task.FromResult(response), caller.Token);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        caller.Cancel();
+        var limited = await Assert.ThrowsAsync<SpotifyRateLimitException>(() => request);
+        Assert.False(limited.Cooldown.IsQuotaExceeded);
+        using var restarted = new SpotifyRequestPolicy(directory.Path, clock);
+        Assert.Equal(TimeSpan.FromMinutes(2), restarted.GetCooldown(Client, SpotifyEndpoint.CurrentlyPlaying)!.RetryAfter);
     }
 
     [Fact]

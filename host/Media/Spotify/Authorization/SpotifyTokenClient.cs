@@ -82,20 +82,17 @@ internal sealed class SpotifyTokenClient
         {
             Content = new FormUrlEncodedContent(parameters),
         };
-        using var response = await RequestPolicy.SendAsync(
+        using var received = await RequestPolicy.SendAsync(
             new SpotifyClientId(parameters["client_id"]), SpotifyEndpoint.Token,
             () => _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken),
             cancellationToken);
-        if (response.Content.Headers.ContentLength > MaximumResponseBytes)
+        var response = received.Message;
+        byte[] body;
+        try
         {
-            throw new SpotifyTokenRequestException(
-                response.StatusCode,
-                errorCode: null,
-                "Spotify token response exceeded the supported size.");
+            body = await received.ReadBodyAsync(MaximumResponseBytes, cancellationToken);
         }
-
-        var body = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-        if (body.Length > MaximumResponseBytes)
+        catch (InvalidDataException)
         {
             throw new SpotifyTokenRequestException(
                 response.StatusCode,

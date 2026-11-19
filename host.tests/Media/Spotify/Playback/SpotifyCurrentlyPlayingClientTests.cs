@@ -93,6 +93,18 @@ public sealed class SpotifyCurrentlyPlayingClientTests
     }
 
     [Fact]
+    public async Task DeclaredOversizePlaybackBodyIsRejectedBeforeItIsRead()
+    {
+        var content = new StreamContent(new ResponseStream((_, _) => throw new InvalidOperationException("Unexpected body read.")));
+        content.Headers.ContentLength = 1024 * 1024 + 1;
+        using var http = new HttpClient(new QueueHandler(new([new HttpResponseMessage(HttpStatusCode.OK) { Content = content }])));
+        await using var client = CreateClient(http);
+        var error = await Assert.ThrowsAsync<SpotifyApiRequestException>(() =>
+            client.GetCurrentlyPlayingAsync(new SpotifyClientId("client-id"), CancellationToken.None));
+        Assert.Equal(SpotifyApiFailureKind.InvalidResponse, error.FailureKind);
+    }
+
+    [Fact]
     public async Task RateLimitUsesTheLocalMinimumWhenTheServerRequestsAShorterDelay()
     {
         var response = new HttpResponseMessage((HttpStatusCode)429);

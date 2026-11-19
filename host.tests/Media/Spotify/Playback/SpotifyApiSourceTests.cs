@@ -153,6 +153,87 @@ public sealed class SpotifyApiSourceTests
         await delay.WaitForCancellationAsync(1);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task InterruptedOrStalledPlaybackBodyUsesNetworkBackoffAndRecovers(bool interrupted)
+    {
+        var requests = 0;
+        var clock = new PolicyClock();
+        var secondRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstChunk = true;
+        var body = new ResponseStream(async (buffer, cancellationToken) =>
+        {
+            if (interrupted)
+            {
+                throw new HttpIOException(HttpRequestError.ResponseEnded);
+            }
+            if (firstChunk)
+            {
+                firstChunk = false;
+                clock.Advance(TimeSpan.FromSeconds(4));
+                buffer.Span[0] = (byte)'{';
+                return 1;
+            }
+            secondRead.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return 0;
+        });
+        using var http = new HttpClient(new PlaybackHandler(() => ++requests == 1
+            ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(body) }
+            : new HttpResponseMessage(HttpStatusCode.NoContent)));
+        using var policy = new SpotifyRequestPolicy(timeProvider: clock);
+        await using var client = new SpotifyCurrentlyPlayingClient(
+            (_, _, _) => Task.FromResult(new SpotifyAccessToken("cached", clock.GetUtcNow().AddHours(1))), http, policy);
+        var delay = new StepDelay();
+        await using var source = CreateSource(client.GetCurrentlyPlayingAsync, delay);
+        source.SetSelection(SourceDescriptor.SpotifyApi());
+
+        if (!interrupted)
+        {
+            await secondRead.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            clock.Advance(TimeSpan.FromSeconds(1));
+        }
+        await WaitUntilAsync(() => delay.Requested.Count > 0 || source.GetState().Status == SourceStatus.Faulted);
+        Assert.Equal(SourceStatusReason.NetworkUnavailable, source.GetState().Reason);
+        Assert.Equal(TimeSpan.FromSeconds(5), Assert.Single(delay.Requested));
+        delay.Release(0);
+        await WaitUntilAsync(() => source.GetState().Status == SourceStatus.Available);
+        Assert.Equal(PlaybackState.Idle, (await source.ReadAsync(CancellationToken.None)).Playback);
+        Assert.Equal(2, requests);
+    }
+
+    private sealed class PlaybackHandler(Func<HttpResponseMessage> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(respond());
+    }
+
+    [Fact]
+    public async Task DeselectingSpotifyCancelsAnInFlightBodyWithoutRetrying()
+    {
+        var started = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var requests = 0;
+        using var http = new HttpClient(new PlaybackHandler(() =>
+        {
+            requests++;
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(ResponseStream.Stalled(started)) };
+        }));
+        await using var client = new SpotifyCurrentlyPlayingClient(
+            (_, _, _) => Task.FromResult(new SpotifyAccessToken("cached", DateTimeOffset.UtcNow.AddHours(1))), http);
+        var delay = new StepDelay();
+        await using var source = CreateSource(client.GetCurrentlyPlayingAsync, delay);
+        source.SetSelection(SourceDescriptor.SpotifyApi());
+        var reading = await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        source.SetSelection(null);
+
+        Assert.True(reading.IsCancellationRequested);
+        Assert.Equal(SourceStatus.Unconfigured, source.GetState().Status);
+        await source.DisposeAsync();
+        Assert.Equal(1, requests);
+        Assert.Empty(delay.Requested);
+    }
+
     [Fact]
     public async Task RestartAndReselectionWaitForThePersistedDeadlineBeforeReadingPlayback()
     {

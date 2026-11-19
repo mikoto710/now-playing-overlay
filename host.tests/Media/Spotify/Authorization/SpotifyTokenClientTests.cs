@@ -60,6 +60,51 @@ public sealed class SpotifyTokenClientTests
     }
 
     [Fact]
+    public async Task StalledAuthorizationCodeExchangeTimesOutWithoutReplayingTheCode()
+    {
+        var clock = new PolicyClock();
+        var started = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sends = 0;
+        using var http = new HttpClient(new StubHandler((_, _) =>
+        {
+            sends++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StreamContent(ResponseStream.Stalled(started)),
+            });
+        }));
+        using var caller = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var client = new SpotifyTokenClient(http, clock);
+        var exchange = client.ExchangeAuthorizationCodeAsync(new SpotifyClientId("client-id"), "code",
+            new Uri("http://127.0.0.1/callback"), "verifier", caller.Token);
+        await started.Task.WaitAsync(caller.Token);
+        clock.Advance(TimeSpan.FromSeconds(5));
+        await Assert.ThrowsAsync<HttpRequestException>(() => exchange.WaitAsync(caller.Token));
+        Assert.Equal(1, sends);
+    }
+
+    [Fact]
+    public async Task ChunkedTokenResponseStopsAtTheSizeLimit()
+    {
+        const int oversizedLength = 64 * 1024 + 1;
+        var bytesRead = 0;
+        var body = new ResponseStream((buffer, _) =>
+        {
+            Assert.True(bytesRead < oversizedLength, "The token client read beyond the first oversized chunk.");
+            var count = Math.Min(buffer.Length, oversizedLength - bytesRead);
+            bytesRead += count;
+            return ValueTask.FromResult(count);
+        });
+        using var http = new HttpClient(new StubHandler((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(body) })));
+        var client = new SpotifyTokenClient(http);
+        var error = await Assert.ThrowsAsync<SpotifyTokenRequestException>(() =>
+            client.RefreshAsync(new SpotifyClientId("client-id"), "refresh-token", CancellationToken.None));
+        Assert.Contains("size", error.Message);
+        Assert.Equal(oversizedLength, bytesRead);
+    }
+
+    [Fact]
     public async Task RefreshAndReauthorizationSharePersistedTokenCooldown()
     {
         using var directory = new PolicyDirectory();
