@@ -78,7 +78,10 @@ public sealed class SpotifyTokenClientTests
         var exchange = client.ExchangeAuthorizationCodeAsync(new SpotifyClientId("client-id"), "code",
             new Uri("http://127.0.0.1/callback"), "verifier", caller.Token);
         await started.Task.WaitAsync(caller.Token);
+        var deadline = Assert.Single(clock.Timers);
+        Assert.Equal(TimeSpan.FromSeconds(5), deadline.DueTime);
         clock.Advance(TimeSpan.FromSeconds(5));
+        deadline.Fire();
         await Assert.ThrowsAsync<HttpRequestException>(() => exchange.WaitAsync(caller.Token));
         Assert.Equal(1, sends);
     }

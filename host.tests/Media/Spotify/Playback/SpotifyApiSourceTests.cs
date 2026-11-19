@@ -98,6 +98,7 @@ public sealed class SpotifyApiSourceTests
         var clock = new PolicyClock();
         var log = new PolicyLogger();
         using var policy = new SpotifyRequestPolicy(timeProvider: clock, logger: log);
+        var summary = Assert.Single(clock.Timers);
         var clientId = new SpotifyClientId("client-id");
         await using var client = new SpotifyCurrentlyPlayingClient(
             (_, _, _) => Task.FromResult(new SpotifyAccessToken("cached", clock.GetUtcNow().AddHours(1))), http, policy);
@@ -111,6 +112,7 @@ public sealed class SpotifyApiSourceTests
             await WaitUntilAsync(() => delay.Requested.Count > index);
             Assert.Equal(TimeSpan.FromSeconds(intervals[index]), delay.Requested[index]);
             clock.Advance(TimeSpan.FromMinutes(15));
+            summary.Fire();
             var expected = intervals[index] == 3 ? "playing:3s IntervalSeconds=3" : "inactive:5s IntervalSeconds=5";
             Assert.Contains("PollingState=" + expected, log.Messages.Last());
             if (index + 1 < intervals.Length)
@@ -199,7 +201,10 @@ public sealed class SpotifyApiSourceTests
         if (!interrupted)
         {
             await secondRead.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var deadline = Assert.Single(clock.Timers);
+            Assert.Equal(TimeSpan.FromSeconds(5), deadline.DueTime);
             clock.Advance(TimeSpan.FromSeconds(1));
+            deadline.Fire();
         }
         await WaitUntilAsync(() => delay.Requested.Count > 0 || source.GetState().Status == SourceStatus.Faulted);
         Assert.Equal(SourceStatusReason.NetworkUnavailable, source.GetState().Reason);
