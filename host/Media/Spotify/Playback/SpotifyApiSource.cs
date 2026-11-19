@@ -14,7 +14,7 @@ namespace NowPlayingOverlay.Host.Media.Spotify.Playback;
 /// Unselected -> Unconfigured; selected without credentials -> AuthorizationRequired; otherwise
 /// polling starts. Success -> Available. Network, 5xx, and invalid-response failures retain the
 /// last success as Available/Stale for 10 seconds, then become Unavailable while backing off.
-/// HTTP 429 becomes Unavailable/RateLimited or QuotaExceeded with persistent server-aware cooldowns.
+/// HTTP 429 becomes Unavailable/RateLimited or QuotaExceeded. Cooldowns honor Retry-After and survive restarts.
 /// Playback polls wait 3 seconds while playing and 5 seconds while inactive. Authorization and forbidden
 /// responses stop the current generation; unexpected faults become Faulted. Configuration
 /// generation rejects results from an old account or selection. Disposal owns polling and clients.
@@ -326,10 +326,7 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
             {
                 if ((int)error.StatusCode >= 500)
                 {
-                    transientFailures++;
-                    PublishTransientFailure(generation, SourceStatusReason.ServiceUnavailable);
-                    nextDelay = GetTransientBackoff(transientFailures);
-                    SetPollingState(generation, "service-backoff", nextDelay);
+                    nextDelay = BackOffAfter(SourceStatusReason.ServiceUnavailable);
                 }
                 else
                 {
@@ -361,17 +358,11 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
                 error.FailureKind is SpotifyApiFailureKind.Transient
                     or SpotifyApiFailureKind.InvalidResponse)
             {
-                transientFailures++;
-                PublishTransientFailure(generation, SourceStatusReason.ServiceUnavailable);
-                nextDelay = GetTransientBackoff(transientFailures);
-                SetPollingState(generation, "service-backoff", nextDelay);
+                nextDelay = BackOffAfter(SourceStatusReason.ServiceUnavailable);
             }
             catch (TaskCanceledException error)
             {
-                transientFailures++;
-                PublishTransientFailure(generation, SourceStatusReason.NetworkUnavailable);
-                nextDelay = GetTransientBackoff(transientFailures);
-                SetPollingState(generation, "network-backoff", nextDelay);
+                nextDelay = BackOffAfter(SourceStatusReason.NetworkUnavailable);
                 _logger.LogDebug(
                     "Spotify currently-playing request timed out. Error type {ErrorType}, HRESULT {ErrorHResult}.",
                     error.GetType().Name,
@@ -379,10 +370,7 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
             }
             catch (HttpRequestException error)
             {
-                transientFailures++;
-                PublishTransientFailure(generation, SourceStatusReason.NetworkUnavailable);
-                nextDelay = GetTransientBackoff(transientFailures);
-                SetPollingState(generation, "network-backoff", nextDelay);
+                nextDelay = BackOffAfter(SourceStatusReason.NetworkUnavailable);
                 _logger.LogDebug(
                     "Spotify currently-playing request failed over the network. Error type {ErrorType}, HRESULT {ErrorHResult}.",
                     error.GetType().Name,
@@ -404,6 +392,15 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
             {
                 return;
             }
+        }
+
+        TimeSpan BackOffAfter(SourceStatusReason reason)
+        {
+            var interval = GetTransientBackoff(++transientFailures);
+            PublishTransientFailure(generation, reason);
+            var state = reason == SourceStatusReason.NetworkUnavailable ? "network-backoff" : "service-backoff";
+            SetPollingState(generation, state, interval);
+            return interval;
         }
     }
 
