@@ -209,6 +209,40 @@ public sealed class SpotifyRequestPolicyTests
     }
 
     [Fact]
+    public async Task RestartAfterAClockRollbackStillHonorsBothEndpointDeadlines()
+    {
+        using var directory = new PolicyDirectory();
+        var clock = new PolicyClock();
+        using (var original = new SpotifyRequestPolicy(directory.Path, clock, () => 0))
+        {
+            await LimitAsync(original, "");
+            await LimitAsync(original, """{"error":{"reason":"QUOTA_EXCEEDED"}}""", SpotifyEndpoint.Token);
+            clock.Advance(TimeSpan.FromSeconds(30));
+            clock.UtcNow -= TimeSpan.FromHours(1);
+            await LimitAsync(original, "");
+        }
+
+        var restartedClock = new PolicyClock { UtcNow = clock.GetUtcNow() };
+        using var restarted = new SpotifyRequestPolicy(directory.Path, restartedClock, () => 0);
+        var sends = 0;
+        Task<HttpResponseMessage> Send()
+        {
+            sends++;
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
+        }
+
+        var blocked = await Assert.ThrowsAsync<SpotifyRateLimitException>(() =>
+            restarted.SendAsync(Client, SpotifyEndpoint.CurrentlyPlaying, Send, CancellationToken.None));
+        Assert.Equal(TimeSpan.FromSeconds(60), blocked.RetryAfter);
+        Assert.Equal(2, blocked.Cooldown.Consecutive429);
+        Assert.Equal(0, sends);
+        restartedClock.Advance(blocked.RetryAfter);
+        using var success = await restarted.SendAsync(Client, SpotifyEndpoint.CurrentlyPlaying, Send, CancellationToken.None);
+        Assert.Equal(1, sends);
+        Assert.True(restarted.GetCooldown(Client, SpotifyEndpoint.Token)!.Cooldown.IsQuotaExceeded);
+    }
+
+    [Fact]
     public async Task SuccessClearsPersistedCooldownAndLogsRecovery()
     {
         using var directory = new PolicyDirectory();

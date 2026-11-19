@@ -38,7 +38,6 @@ internal sealed class SpotifyCooldownStore(string path)
                 || !entry.ClientKey.All(char.IsAsciiHexDigit)
                 || !Enum.IsDefined(entry.Endpoint)
                 || entry.Consecutive429 <= 0
-                || entry.FirstFailureAtUtc > entry.NotBeforeUtc
                 || !keys.Add((entry.ClientKey, entry.Endpoint)))
             {
                 throw new InvalidDataException("Invalid Spotify cooldown entry.");
