@@ -36,6 +36,8 @@ http://127.0.0.1:13130/oauth/spotify/callback
 
 If you changed the local port, update the URI to match. In **Spotify Connection...**, enter the Client ID and authorize in your browser. No Client Secret is required.
 
+After each playback request finishes, the source waits **3 seconds while playing** or **5 seconds while paused or idle**. Playback and token responses each have 5 seconds to finish reading after the headers arrive. On network failure the source retries after 5, 10, 20, 40, then 60 seconds. Spotify 429 cooldowns carry over when you restart the app. [Polling, cooldowns, and diagnostic logs](docs/spotify-api.md).
+
 ## Usage notes
 
 - Pausing or stopping playback hides the overlay. **Window Title** cannot detect pause state and stays visible while a usable caption exists; it provides no artwork or timeline.
