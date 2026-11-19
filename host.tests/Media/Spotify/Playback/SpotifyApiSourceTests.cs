@@ -247,7 +247,7 @@ public sealed class SpotifyApiSourceTests
         using var directory = new PolicyDirectory();
         var clock = new PolicyClock();
         var clientId = new SpotifyClientId("client-id");
-        var first = new SpotifyRequestPolicy(directory.Path, clock, () => 0);
+        using var first = new SpotifyRequestPolicy(directory.Path, clock, () => 0);
         await Assert.ThrowsAsync<SpotifyRateLimitException>(() => first.SendAsync(clientId,
             SpotifyEndpoint.CurrentlyPlaying, () => Task.FromResult(new HttpResponseMessage((HttpStatusCode)429)
             {
@@ -256,16 +256,24 @@ public sealed class SpotifyApiSourceTests
         clock.Advance(TimeSpan.FromMinutes(4));
         var restarted = new SpotifyRequestPolicy(directory.Path, clock, () => 0);
         var delay = new StepDelay();
-        var calls = 0;
-        await using var source = new SpotifyApiSource((_, _) =>
+        var tokens = 0;
+        var requests = 0;
+        using var http = new HttpClient(new PlaybackHandler(() =>
         {
-            Interlocked.Increment(ref calls);
-            return Task.FromResult(SpotifyPlaybackResult.Idle);
-        }, clientId, new HttpClient(new RejectingHandler()), clock, delay.DelayAsync, requestPolicy: restarted);
+            Interlocked.Increment(ref requests);
+            return new HttpResponseMessage(HttpStatusCode.NoContent);
+        }));
+        await using var client = new SpotifyCurrentlyPlayingClient((_, _, _) =>
+        {
+            Interlocked.Increment(ref tokens);
+            return Task.FromResult(new SpotifyAccessToken("cached", clock.GetUtcNow().AddHours(1)));
+        }, http, restarted);
+        await using var source = new SpotifyApiSource(client.GetCurrentlyPlayingAsync, clientId, http, clock,
+            delay.DelayAsync, requestPolicy: restarted);
 
         source.SetSelection(SourceDescriptor.SpotifyApi());
         await WaitUntilAsync(() => delay.Requested.Count == 1);
-        Assert.Equal(0, Volatile.Read(ref calls));
+        Assert.Equal((0, 0), (tokens, requests));
         Assert.Equal(TimeSpan.FromMinutes(11), delay.Requested[0]);
         Assert.Equal(SourceStatusReason.QuotaExceeded, source.GetState().Reason);
 
@@ -273,14 +281,14 @@ public sealed class SpotifyApiSourceTests
         await delay.WaitForCancellationAsync(0);
         source.SetSelection(SourceDescriptor.SpotifyApi());
         await WaitUntilAsync(() => delay.Requested.Count == 2);
-        Assert.Equal(0, Volatile.Read(ref calls));
+        Assert.Equal((0, 0), (tokens, requests));
         delay.Release(1);
         await WaitUntilAsync(() => delay.Requested.Count == 3);
-        Assert.Equal(0, Volatile.Read(ref calls));
+        Assert.Equal((0, 0), (tokens, requests));
         clock.Advance(TimeSpan.FromMinutes(11));
         delay.Release(2);
         await WaitUntilAsync(() => delay.Requested.Count == 4);
-        Assert.Equal(1, Volatile.Read(ref calls));
+        Assert.Equal((1, 1), (tokens, requests));
         Assert.Equal(TimeSpan.FromSeconds(5), delay.Requested[3]);
         Assert.Equal(SourceStatus.Available, source.GetState().Status);
     }
@@ -293,10 +301,10 @@ public sealed class SpotifyApiSourceTests
         var clientId = new SpotifyClientId("client-id");
         await Assert.ThrowsAsync<SpotifyRateLimitException>(() => policy.SendAsync(clientId,
             SpotifyEndpoint.Token, () => Task.FromResult(new HttpResponseMessage((HttpStatusCode)429)), CancellationToken.None));
-        using var http = new HttpClient(new RejectingHandler());
+        using var http = new HttpClient(new PlaybackHandler(() => new HttpResponseMessage(HttpStatusCode.NoContent)));
         await using var client = new SpotifyCurrentlyPlayingClient(
             (_, _, _) => Task.FromResult(new SpotifyAccessToken("cached", clock.GetUtcNow().AddHours(1))),
-            new HttpClient(new NoContentHandler()), policy);
+            http, policy);
         var delay = new StepDelay();
         await using var source = new SpotifyApiSource(client.GetCurrentlyPlayingAsync, clientId, http,
             clock, delay.DelayAsync, requestPolicy: policy);
@@ -305,12 +313,6 @@ public sealed class SpotifyApiSourceTests
         Assert.Equal(SourceStatus.Available, source.GetState().Status);
         Assert.Equal(TimeSpan.FromSeconds(5), delay.Requested[0]);
         Assert.NotNull(policy.GetCooldown(clientId, SpotifyEndpoint.Token));
-    }
-
-    private sealed class NoContentHandler : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent));
     }
 
     [Fact]

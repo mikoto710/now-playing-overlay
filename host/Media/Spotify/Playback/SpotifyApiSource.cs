@@ -292,11 +292,6 @@ internal sealed class SpotifyApiSource : IMediaSourceProvider
             TimeSpan nextDelay;
             try
             {
-                if (_requestPolicy.GetCooldown(clientId, SpotifyEndpoint.CurrentlyPlaying) is { } cooldown)
-                {
-                    throw cooldown;
-                }
-
                 var result = await _readPlayback(clientId, cancellationToken);
                 transientFailures = 0;
                 PublishSuccess(generation, result);

@@ -108,8 +108,7 @@ internal sealed class SpotifyTokenClient
                 errorCode,
                 errorCode is null
                     ? $"Spotify token request failed with HTTP {(int)response.StatusCode}."
-                    : $"Spotify token request failed with '{errorCode}'.",
-                GetRetryAfter(response));
+                    : $"Spotify token request failed with '{errorCode}'.");
         }
 
         TokenResponse document;
@@ -178,23 +177,6 @@ internal sealed class SpotifyTokenClient
         }
         catch (JsonException)
         {
-        }
-
-        return null;
-    }
-
-    private TimeSpan? GetRetryAfter(HttpResponseMessage response)
-    {
-        var retryAfter = response.Headers.RetryAfter;
-        if (retryAfter?.Delta is { } delta)
-        {
-            return delta < TimeSpan.Zero ? TimeSpan.Zero : delta;
-        }
-
-        if (retryAfter?.Date is { } date)
-        {
-            var delay = date - _timeProvider.GetUtcNow();
-            return delay < TimeSpan.Zero ? TimeSpan.Zero : delay;
         }
 
         return null;

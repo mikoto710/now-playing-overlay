@@ -62,29 +62,24 @@ internal sealed class SpotifyRequestPolicy : IDisposable
         }
     }
 
-    public SpotifyRateLimitException? GetCooldown(SpotifyClientId clientId, SpotifyEndpoint? endpoint = null)
+    public SpotifyRateLimitException? GetCooldown(SpotifyClientId clientId, SpotifyEndpoint endpoint)
     {
-        var key = GetClientKey(clientId);
         lock (_gate)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            ActiveCooldown? latest = null;
-            var remaining = TimeSpan.Zero;
-            foreach (var ((clientKey, target), cooldown) in _cooldowns)
-            {
-                if (clientKey == key && (endpoint is null || target == endpoint))
-                {
-                    var candidate = cooldown.Duration - _clock.GetElapsedTime(cooldown.StartedTimestamp);
-                    if (candidate > remaining)
-                    {
-                        latest = cooldown;
-                        remaining = candidate;
-                    }
-                }
-            }
-
-            return latest is null ? null : new(latest.Value, remaining);
+            return GetCooldownLocked((GetClientKey(clientId), endpoint));
         }
+    }
+
+    private SpotifyRateLimitException? GetCooldownLocked((string, SpotifyEndpoint) key)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_cooldowns.TryGetValue(key, out var cooldown))
+        {
+            return null;
+        }
+
+        var remaining = cooldown.Duration - _clock.GetElapsedTime(cooldown.StartedTimestamp);
+        return remaining > TimeSpan.Zero ? new(cooldown.Value, remaining) : null;
     }
 
     public async Task<SpotifyHttpResponse> SendAsync(SpotifyClientId clientId, SpotifyEndpoint endpoint,
@@ -95,13 +90,12 @@ internal sealed class SpotifyRequestPolicy : IDisposable
         await requestGate.WaitAsync(cancellationToken);
         try
         {
-            if (GetCooldown(clientId, endpoint) is { } existing)
-            {
-                throw existing;
-            }
-
             lock (_gate)
             {
+                if (GetCooldownLocked(key) is { } existing)
+                {
+                    throw existing;
+                }
                 GetCounts(endpoint).Requests++;
             }
             var response = await send();
