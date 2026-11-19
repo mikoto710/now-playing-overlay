@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -98,20 +99,19 @@ internal sealed class SpotifyRequestPolicy : IDisposable
                 }
                 GetCounts(endpoint).Requests++;
             }
-            var response = await send();
-            if ((int)response.StatusCode == 429)
+            var received = new SpotifyHttpResponse(await send(), _clock);
+            if (received.Message.StatusCode == HttpStatusCode.TooManyRequests)
             {
-                using (response)
+                using (received)
                 {
-                    var details = await SpotifyRateLimitResponse.ReadAsync(response, _clock, cancellationToken);
+                    var details = await SpotifyRateLimitResponse.ReadAsync(received, _clock, cancellationToken);
                     throw Register429(key, details);
                 }
             }
 
-            var received = new SpotifyHttpResponse(response, _clock);
             lock (_gate)
             {
-                if (response.IsSuccessStatusCode)
+                if (received.Message.IsSuccessStatusCode)
                 {
                     GetCounts(endpoint).Successes++;
                     if (_cooldowns.Remove(key, out var recovered))

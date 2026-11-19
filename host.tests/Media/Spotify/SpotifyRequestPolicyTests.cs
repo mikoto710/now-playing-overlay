@@ -161,10 +161,10 @@ public sealed class SpotifyRequestPolicyTests
     [Fact]
     public async Task OversizedAndUnreadableBodiesStillRetain429AndRetryAfter()
     {
-        foreach (var content in new HttpContent[]
+        foreach (var (content, status) in new (HttpContent, string)[]
         {
-            new StringContent(new string('x', 16385)),
-            new StreamContent(new BrokenStream()),
+            (new StringContent(new string('x', 16385)), "too_large"),
+            (new StreamContent(new BrokenStream()), "read_failed"),
         })
         {
             var log = new PolicyLogger();
@@ -176,7 +176,7 @@ public sealed class SpotifyRequestPolicyTests
                 Client, SpotifyEndpoint.CurrentlyPlaying, () => Task.FromResult(response), CancellationToken.None));
             Assert.Equal(TimeSpan.FromMinutes(2), error.RetryAfter);
             Assert.NotNull(policy.GetCooldown(Client, SpotifyEndpoint.CurrentlyPlaying));
-            Assert.Contains(log.Messages, line => line.Contains("BodyParseStatus=too_large") || line.Contains("BodyParseStatus=read_failed"));
+            Assert.Contains(log.Messages, line => line.Contains("BodyParseStatus=" + status));
         }
     }
 
@@ -208,8 +208,10 @@ public sealed class SpotifyRequestPolicyTests
         Assert.DoesNotContain(Client.Value, File.ReadAllText(directory.Path));
     }
 
-    [Fact]
-    public async Task CancellationAfter429HeadersStillPersistsTheServerDeadline()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CancellationOrTimeoutAfter429HeadersStillPersistsTheServerDeadline(bool callerCancels)
     {
         using var directory = new PolicyDirectory();
         var clock = new PolicyClock();
@@ -223,7 +225,17 @@ public sealed class SpotifyRequestPolicyTests
         response.Headers.RetryAfter = new(TimeSpan.FromMinutes(2));
         var request = policy.SendAsync(Client, SpotifyEndpoint.CurrentlyPlaying, () => Task.FromResult(response), caller.Token);
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        caller.Cancel();
+        if (callerCancels)
+        {
+            caller.Cancel();
+        }
+        else
+        {
+            var deadline = Assert.Single(clock.Timers);
+            Assert.Equal(TimeSpan.FromSeconds(5), deadline.DueTime);
+            clock.Advance(deadline.DueTime);
+            deadline.Fire();
+        }
         var limited = await Assert.ThrowsAsync<SpotifyRateLimitException>(() => request);
         Assert.False(limited.Cooldown.IsQuotaExceeded);
         using var restarted = new SpotifyRequestPolicy(directory.Path, clock);

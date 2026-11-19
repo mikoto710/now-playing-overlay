@@ -7,32 +7,18 @@ internal sealed record SpotifyRateLimitResponse(bool IsQuotaExceeded, string Par
     private const int MaximumBytes = 16 * 1024;
 
     public static async Task<SpotifyRateLimitResponse> ReadAsync(
-        HttpResponseMessage response, TimeProvider clock, CancellationToken cancellationToken)
+        SpotifyHttpResponse response, TimeProvider clock, CancellationToken cancellationToken)
     {
-        var retryAfter = GetRetryAfter(response, clock);
-        if (response.Content.Headers.ContentLength is > MaximumBytes)
-        {
-            return new(false, "too_large", retryAfter);
-        }
-
+        var retryAfter = GetRetryAfter(response.Message, clock);
         try
         {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(5));
-            await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
-            var bytes = new byte[MaximumBytes + 1];
-            var count = await stream.ReadAtLeastAsync(bytes, bytes.Length, false, timeout.Token);
-            if (count > MaximumBytes)
-            {
-                return new(false, "too_large", retryAfter);
-            }
-
-            if (count == 0)
+            var bytes = await response.ReadBodyAsync(MaximumBytes, cancellationToken);
+            if (bytes.Length == 0)
             {
                 return new(false, "empty", retryAfter);
             }
 
-            using var document = JsonDocument.Parse(bytes.AsMemory(0, count));
+            using var document = JsonDocument.Parse(bytes);
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object
                 || !root.TryGetProperty("error", out var error)
@@ -50,7 +36,11 @@ internal sealed record SpotifyRateLimitResponse(bool IsQuotaExceeded, string Par
         {
             return new(false, "invalid_json", retryAfter);
         }
-        catch (Exception error) when (error is IOException or HttpRequestException or OperationCanceledException)
+        catch (InvalidDataException)
+        {
+            return new(false, "too_large", retryAfter);
+        }
+        catch (Exception error) when (error is HttpRequestException or OperationCanceledException)
         {
             // Headers already established 429; a body failure must not discard its cooldown.
             return new(false, "read_failed", retryAfter);

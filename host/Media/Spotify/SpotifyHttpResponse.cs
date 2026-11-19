@@ -30,7 +30,9 @@ internal sealed class SpotifyHttpResponse(HttpResponseMessage message, TimeProvi
             var buffer = new byte[16 * 1024];
             while (true)
             {
-                var count = await source.ReadAsync(buffer, reading.Token);
+                // One extra byte distinguishes an exactly full response from an oversized one.
+                var toRead = (int)Math.Min(buffer.Length, maximumBytes - destination.Length + 1);
+                var count = await source.ReadAsync(buffer.AsMemory(0, toRead), reading.Token);
                 reading.Token.ThrowIfCancellationRequested();
                 if (count == 0)
                 {
